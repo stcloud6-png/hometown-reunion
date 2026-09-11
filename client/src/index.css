@@ -59,6 +59,8 @@
   --status-busy-fg: #822a1c;
   --status-private-bg: #e5e7eb;
   --status-private-fg: #525866;
+  --status-pool-bg: #d7ecf6;
+  --status-pool-fg: #0d5a7a;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
   --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0), 0px 1px 2px -1px hsl(0 0% 0% / 0);
@@ -162,6 +164,8 @@
   --status-busy-fg: #ec9a8d;
   --status-private-bg: #2d2f34;
   --status-private-fg: #abb0ba;
+  --status-pool-bg: #1d3c4a;
+  --status-pool-fg: #8ecdea;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
   --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0), 0px 1px 2px -1px hsl(0 0% 0% / 0);
@@ -351,5 +355,9 @@
   .status-private {
     background-color: var(--status-private-bg);
     color: var(--status-private-fg);
+  }
+  .status-pool {
+    background-color: var(--status-pool-bg);
+    color: var(--status-pool-fg);
   }
 }

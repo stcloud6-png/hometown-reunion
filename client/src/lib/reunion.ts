@@ -14,7 +14,7 @@
 // ---------------------------------------------------------------------------
 
 export type Period = "m" | "a" | "e";
-export type SlotStatus = "ok" | "maybe" | "busy" | "private";
+export type SlotStatus = "ok" | "maybe" | "busy" | "private" | "pool-day";
 
 export interface SlotValue {
   s: SlotStatus;
@@ -119,6 +119,7 @@ export const STATUS_LABEL: Record<SlotStatus, string> = {
   maybe: "Possibly available",
   busy: "Existing event",
   private: "Private / unavailable",
+  "pool-day": "Drinking All Day at the Pool",
 };
 /** Compact labels used in the slot grid itself (busy is overridden by mieventoOrEventLabel()). */
 export const STATUS_SHORT: Record<SlotStatus, string> = {
@@ -126,6 +127,7 @@ export const STATUS_SHORT: Record<SlotStatus, string> = {
   maybe: "Maybe",
   busy: "MiEvento",
   private: "Private",
+  "pool-day": "Drinking All Day at the Pool",
 };
 
 /** Shoulder days: outside the core MiEvento window, on either end of the trip. */
@@ -361,15 +363,27 @@ export function eventAppliesToDate(eventId: string, iso: string): boolean {
   return !!event?.days.includes(iso);
 }
 
-/** The events selectable as a "busy" reason for a given date (excludes yacht-club always; excludes pool-day inside the MiEvento window). */
+/** The events selectable as a "busy" reason for a given date (excludes yacht-club; excludes pool-day — that's now its own standalone status, see statusesForSlot()). */
 export function eventsForDate(iso: string): ScheduledEvent[] {
   return SCHEDULED_EVENTS.filter(
-    (e) => e.id !== "yacht-club" && !(e.id === "pool-day" && iso >= MIEVENTO_START && iso <= MIEVENTO_END) && eventAppliesToDate(e.id, iso),
+    (e) => e.id !== "yacht-club" && e.id !== "pool-day" && eventAppliesToDate(e.id, iso),
   );
 }
 
 export function isPoolDayEligible(iso: string): boolean {
   return POOL_DAY_DATES.includes(iso);
+}
+
+/**
+ * The selectable statuses for a given day+period slot, in the exact order the
+ * live site presents them. "Drinking All Day at the Pool" is a 5th, standalone
+ * status (not a "busy" reason) offered only on Morning/Afternoon slots within
+ * the pool-day-eligible date range (Jan 13–27) — Evening slots never offer it.
+ */
+export function statusesForSlot(iso: string, period: Period): SlotStatus[] {
+  const base: SlotStatus[] = ["ok", "maybe", "busy", "private"];
+  if (period !== "e" && isPoolDayEligible(iso)) return [...base, "pool-day"];
+  return base;
 }
 
 /** Group-planned sub-event ids are prefixed "czr-" + the base activity id. */
@@ -437,12 +451,13 @@ export interface WindowTally {
   maybe: string[];
   busy: string[];
   private: string[];
+  "pool-day": string[];
   out: string[];
 }
 
-/** Tallies who's ok/maybe/busy/private/out for a specific day+period, optionally filtered to people interested in `activityId`. */
+/** Tallies who's ok/maybe/busy/private/pool-day/out for a specific day+period, optionally filtered to people interested in `activityId`. */
 export function tallyWindow(people: Person[], iso: string, period: Period, activityId?: string): WindowTally {
-  const tally: WindowTally = { ok: [], maybe: [], busy: [], private: [], out: [] };
+  const tally: WindowTally = { ok: [], maybe: [], busy: [], private: [], "pool-day": [], out: [] };
   for (const person of people) {
     if (activityId && !person.interests?.includes(activityId)) continue;
     const status = statusFor(person, iso, period);
@@ -472,6 +487,21 @@ export interface ClusterSummary {
   tier: "none" | "public" | "candidate" | "spinoff";
 }
 
+/** Best windows scoped to the people interested in one activity — "Day, Period — X of Y free" lines for a cluster card. */
+export function bestWindowsForActivity(people: Person[], activityId: string, limit = 3): { iso: string; period: Period; day: DayInfo; available: number; total: number }[] {
+  const interested = people.filter((p) => p.interests?.includes(activityId));
+  const total = interested.length;
+  if (total === 0) return [];
+  const rows: { iso: string; period: Period; day: DayInfo; available: number; total: number }[] = [];
+  for (const day of DAYS) {
+    for (const period of PERIODS) {
+      const tally = tallyWindow(interested, day.iso, period);
+      rows.push({ iso: day.iso, period, day, available: tally.ok.length, total });
+    }
+  }
+  return rows.sort((a, b) => b.available - a.available).slice(0, limit);
+}
+
 /** Buckets each activity's interest level against CLUSTER_THRESHOLDS. */
 export function clusterSummaries(people: Person[], activities: Activity[]): ClusterSummary[] {
   return activities.map((activity) => {
@@ -483,6 +513,29 @@ export function clusterSummaries(people: Person[], activities: Activity[]): Clus
     else if (count >= CLUSTER_THRESHOLDS.publicMinInterest) tier = "public";
     return { activity, interestedCount: count, interestedNames, tier };
   }).sort((a, b) => b.interestedCount - a.interestedCount);
+}
+
+export interface SharedCommitment {
+  event: ScheduledEvent;
+  count: number;
+}
+
+/** Tallies how many respondents currently have each known scheduled event (Yacht Club, MiEvento week bookings, tours, pool day, ...) marked on their schedule — "times blocked by existing events the group already knows about." */
+export function sharedCommitments(people: Person[]): SharedCommitment[] {
+  const counts: Record<string, number> = {};
+  for (const person of people) {
+    const seen = new Set<string>();
+    for (const day of Object.values(person.slots ?? {})) {
+      for (const slot of Object.values(day ?? {})) {
+        if ((slot?.s === "busy" || slot?.s === "pool-day") && slot.t && !isGroupPlannedId(slot.t)) seen.add(slot.t);
+      }
+    }
+    if (person.arrival <= YACHT_LOCK.iso && person.departure >= YACHT_LOCK.iso) seen.add(YACHT_LOCK.tag);
+    for (const id of Array.from(seen)) counts[id] = (counts[id] ?? 0) + 1;
+  }
+  return SCHEDULED_EVENTS.filter((e) => e.id !== "other" && counts[e.id])
+    .map((event) => ({ event, count: counts[event.id] }))
+    .sort((a, b) => b.count - a.count);
 }
 
 /** Distinct labels of any auto-slot conflicts (scheduled group events) a person's slots reference. */

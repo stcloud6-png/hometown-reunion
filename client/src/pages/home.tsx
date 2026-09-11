@@ -19,7 +19,7 @@ export default function Home() {
       <header className="border-b">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4">
           <div className="flex items-center gap-3">
-            <img src="/reunion-logo.jpg" alt="CZR BHS87 Reunion" className="h-10 w-10 rounded-full object-cover" />
+            <img src={`${import.meta.env.BASE_URL}reunion-logo.jpg`} alt="CZR BHS87 Reunion" className="h-10 w-10 rounded-full object-cover" />
             <div>
               <p className="text-sm font-semibold leading-tight">CZR BHS87 Reunion</p>
               <p className="text-xs text-muted-foreground">{formatDateRange(START_DATE, END_DATE)}, 2027</p>
@@ -42,13 +42,20 @@ export default function Home() {
       <main className="mx-auto max-w-5xl px-4 py-8">
         {tab === "entry" ? (
           <>
-            <div className="mb-8 text-center">
-              <h1 className="text-3xl font-semibold">Mark once, meet more.</h1>
-              <p className="mt-2 text-muted-foreground">
-                Tell us when you're in town and what you're up for — the group dashboard turns everyone's
-                answers into the best windows to get together.
+            <div className="mb-10 flex flex-col items-center gap-3 text-center">
+              <img src={`${import.meta.env.BASE_URL}reunion-logo.jpg`} alt="CZR BHS87 Reunion" className="h-20 w-20 rounded-full object-cover shadow-md" />
+              <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">CZR BHS87</h1>
+              <p className="font-serif text-lg italic text-muted-foreground">The Meetup &amp; Planning Organizer</p>
+              <p className="max-w-xl text-muted-foreground">
+                Panama &middot; January 9&ndash;30, 2027. Tell the group when you're around and what you're up for
+                &mdash; we'll find the times that work for the most of us.
               </p>
+              <Button asChild size="lg" className="mt-2 rounded-full px-8" data-testid="button-mark-availability">
+                <a href="#entry-form">Mark my availability</a>
+              </Button>
+              <p className="text-xs text-muted-foreground">Takes about two minutes</p>
             </div>
+            <div id="entry-form" />
             <EntryForm
               activities={data.activities}
               eventPlans={data.eventPlans}
@@ -75,6 +82,10 @@ export default function Home() {
           />
         )}
       </main>
+
+      <footer className="border-t py-6 text-center text-xs text-muted-foreground">
+        CZR BHS87 Reunion &middot; Jan 9 &ndash; 30, 2027 &middot; Mark once, meet more.
+      </footer>
     </div>
   );
 }

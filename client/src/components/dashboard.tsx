@@ -9,7 +9,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
-import { Info, Settings, Download, ShieldCheck, Anchor, ClipboardCheck, CalendarHeart } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Info, Settings, Download, ShieldCheck, Anchor, ClipboardCheck, CalendarHeart,
+  ChevronDown, Flame, Users, Grid3x3, CalendarClock,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import YachtPaymentDialog from "@/components/yacht-payment-dialog";
 import MieventoDialog from "@/components/mievento-dialog";
@@ -19,18 +23,24 @@ import {
   type ClusterResource,
   type EventPlan,
   type EventPlanStatus,
+  type Period,
   type Person,
   CLUSTER_RESOURCE_LINKS,
+  DAYS,
   EVENT_PLAN_STATUS_LABEL,
   MAINTENANCE_PIN,
   MIEVENTO_INTENT_LABEL,
+  PERIODS,
   PERIOD_LABEL,
   STATUS_LABEL,
   bestWindows,
+  bestWindowsForActivity,
   clusterSummaries,
   exportAvailabilityCsv,
   formatDateRange,
   mieventoDays,
+  sharedCommitments,
+  tallyWindow,
 } from "@/lib/reunion";
 
 interface DashboardProps {
@@ -53,6 +63,48 @@ interface DashboardProps {
 function useMaintenanceUnlock() {
   const [unlocked, setUnlocked] = useState(false);
   return { unlocked, setUnlocked };
+}
+
+/** Collapsible dashboard section wrapper, matching the live site's collapse/expand section chrome. */
+function CollapsibleSection({
+  icon,
+  title,
+  subcopy,
+  defaultOpen = false,
+  testId,
+  children,
+}: {
+  icon?: React.ReactNode;
+  title: string;
+  subcopy: string;
+  defaultOpen?: boolean;
+  testId: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card data-testid={testId}>
+        <CollapsibleTrigger asChild>
+          <button type="button" className="w-full text-left" data-testid={`${testId}-trigger`}>
+            <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  {icon}
+                  {title}
+                </CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">{subcopy}</p>
+              </div>
+              <ChevronDown className={cn("mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+            </CardHeader>
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent>{children}</CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
 }
 
 export default function Dashboard({
@@ -78,6 +130,7 @@ export default function Dashboard({
 
   const windows = useMemo(() => bestWindows(people, 5), [people]);
   const clusters = useMemo(() => clusterSummaries(people, activities), [people, activities]);
+  const commitments = useMemo(() => sharedCommitments(people), [people]);
 
   function submitPin() {
     if (pinInput === MAINTENANCE_PIN) {
@@ -164,24 +217,28 @@ export default function Dashboard({
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Best windows for the group</CardTitle>
-          <p className="text-sm text-muted-foreground">Day/period combinations where the most people are marked available.</p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-2 sm:grid-cols-5">
-            {windows.map((w) => (
-              <div key={`${w.iso}-${w.period}`} className="rounded-md border p-3 text-center" data-testid={`window-${w.iso}-${w.period}`}>
-                <p className="text-sm font-medium">{w.day.short}</p>
-                <p className="text-xs text-muted-foreground">{PERIOD_LABEL[w.period]}</p>
-                <p className="mt-1 text-lg font-semibold text-primary">{w.available}/{w.total}</p>
-              </div>
-            ))}
-            {windows.length === 0 && <p className="text-sm text-muted-foreground">No responses yet.</p>}
-          </div>
-        </CardContent>
-      </Card>
+      <p className="text-sm text-muted-foreground" data-testid="text-dashboard-hint">
+        Filter by interest anytime — hover the left edge of the screen (or the filter button on mobile), or enable
+        the pills here via Settings in the top-right.
+      </p>
+
+      <CollapsibleSection
+        icon={<Flame className="h-5 w-5" />}
+        title="Best windows for the group"
+        subcopy="Best days for the group — bar shades show how free each morning, afternoon and evening are (hover for detail)."
+        testId="section-best-windows"
+      >
+        <div className="grid gap-2 sm:grid-cols-5">
+          {windows.map((w) => (
+            <div key={`${w.iso}-${w.period}`} className="rounded-md border p-3 text-center" data-testid={`window-${w.iso}-${w.period}`}>
+              <p className="text-sm font-medium">{w.day.short}</p>
+              <p className="text-xs text-muted-foreground">{PERIOD_LABEL[w.period]}</p>
+              <p className="mt-1 text-lg font-semibold text-primary">{w.available}/{w.total}</p>
+            </div>
+          ))}
+          {windows.length === 0 && <p className="text-sm text-muted-foreground">No responses yet.</p>}
+        </div>
+      </CollapsibleSection>
 
       <RollCallCard
         people={people}
@@ -193,12 +250,13 @@ export default function Dashboard({
         onSaveMieventoIntents={onSaveMieventoIntents}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Interest clusters</CardTitle>
-          <p className="text-sm text-muted-foreground">Who wants to do what, and who's organizing it.</p>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <CollapsibleSection
+        title="Interest clusters"
+        subcopy="Interests several classmates share — the windows where the most are free, plus resources to help each group plan. Know a venue or tool? Suggest it for the group to consider."
+        defaultOpen
+        testId="section-interest-clusters"
+      >
+        <div className="space-y-4">
           {clusters.filter((c) => c.interestedCount > 0).map((cluster) => {
             const plan = eventPlans.find((p) => p.activity_id === cluster.activity.id);
             const lead = clusterLeads.find((l) => l.activity_id === cluster.activity.id);
@@ -206,6 +264,7 @@ export default function Dashboard({
               ...(CLUSTER_RESOURCE_LINKS[cluster.activity.id] ?? []),
               ...clusterResources.filter((r) => r.activity_id === cluster.activity.id).map((r) => ({ label: r.label, url: r.url })),
             ];
+            const topWindows = bestWindowsForActivity(people, cluster.activity.id, 3);
             return (
               <div key={cluster.activity.id} className="rounded-md border p-4" data-testid={`cluster-${cluster.activity.id}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -216,16 +275,37 @@ export default function Dashboard({
                   </div>
                 </div>
 
-                {resources.length > 0 && (
-                  <ul className="mt-2 list-inside list-disc text-sm">
-                    {resources.map((r) => (
-                      <li key={r.url}>
-                        <a href={r.url} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
-                          {r.label}
-                        </a>
+                {cluster.interestedNames.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {cluster.interestedNames.map((n) => (
+                      <span key={n} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{n}</span>
+                    ))}
+                  </div>
+                )}
+
+                {topWindows.length > 0 && (
+                  <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+                    {topWindows.map((w) => (
+                      <li key={`${w.iso}-${w.period}`}>
+                        {w.day.short}, {PERIOD_LABEL[w.period]} — {w.available} of {w.total} free
                       </li>
                     ))}
                   </ul>
+                )}
+
+                {resources.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resources &amp; tools</p>
+                    <ul className="mt-1 list-inside list-disc text-sm">
+                      {resources.map((r) => (
+                        <li key={r.url}>
+                          <a href={r.url} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+                            {r.label}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
 
                 <div className="mt-3 rounded-md bg-muted/50 p-3">
@@ -237,13 +317,14 @@ export default function Dashboard({
                         {plan.venue && ` · ${plan.venue}`}
                         {typeof plan.max_size === "number" && ` · ${plan.max_size} spots`}
                       </p>
-                      {lead && <p className="mt-1 text-muted-foreground">Event Organizer: {lead.lead_name}</p>}
+                      {lead && <p className="mt-1 text-muted-foreground">Event Organizer: {lead.lead_name} — the interest group will be notified and a group chat will follow.</p>}
+                      <p className="mt-1 text-xs text-muted-foreground">It's also reflected on your schedule in "Mark your time slots."</p>
                       {unlocked && (
                         <EventPlanEditor activityId={cluster.activity.id} initial={plan} onSave={onSaveEventPlan} sessionEmail={sessionEmail} />
                       )}
                     </div>
                   ) : lead ? (
-                    <p className="text-sm text-muted-foreground">No plan yet — Event Organizer: {lead.lead_name}</p>
+                    <p className="text-sm text-muted-foreground">No plan yet — Event Organizer: {lead.lead_name} — the interest group will be notified and a group chat will follow.</p>
                   ) : (
                     <VolunteerLeadForm activityId={cluster.activity.id} onVolunteer={onVolunteerLead} />
                   )}
@@ -256,40 +337,151 @@ export default function Dashboard({
           {clusters.every((c) => c.interestedCount === 0) && (
             <p className="text-sm text-muted-foreground">No interests marked yet.</p>
           )}
-        </CardContent>
-      </Card>
+          <p className="pt-1 text-xs text-muted-foreground">More clusters appear here as interest grows.</p>
+        </div>
+      </CollapsibleSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Who's in town when</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="py-2 pr-4">Name</th>
-                  <th className="py-2 pr-4">In town</th>
-                  <th className="py-2">Interests</th>
+      <CollapsibleSection
+        icon={<Grid3x3 className="h-5 w-5" />}
+        title="Group availability heatmap"
+        subcopy="Greener = more of the group can make it. Tap any cell for the full breakdown."
+        testId="section-heatmap"
+      >
+        <AvailabilityHeatmap people={people} />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        icon={<Users className="h-5 w-5" />}
+        title="Who's in town when"
+        subcopy="Everyone who has responded so far."
+        testId="section-who-is-in-town"
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground">
+                <th className="py-2 pr-4">Name</th>
+                <th className="py-2 pr-4">In town</th>
+                <th className="py-2">Interests</th>
+              </tr>
+            </thead>
+            <tbody>
+              {people.map((p) => (
+                <tr key={p.name} className="border-b last:border-0" data-testid={`row-person-${p.name}`}>
+                  <td className="py-2 pr-4 font-medium">{p.name}</td>
+                  <td className="py-2 pr-4 text-muted-foreground">{formatDateRange(p.arrival, p.departure)}</td>
+                  <td className="py-2 text-muted-foreground">{p.interests.length}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {people.map((p) => (
-                  <tr key={p.name} className="border-b last:border-0" data-testid={`row-person-${p.name}`}>
-                    <td className="py-2 pr-4 font-medium">{p.name}</td>
-                    <td className="py-2 pr-4 text-muted-foreground">{formatDateRange(p.arrival, p.departure)}</td>
-                    <td className="py-2 text-muted-foreground">{p.interests.length}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        icon={<CalendarClock className="h-5 w-5" />}
+        title="Shared commitments"
+        subcopy="Times blocked by existing events the group already knows about."
+        testId="section-shared-commitments"
+      >
+        {commitments.length > 0 ? (
+          <ul className="space-y-2 text-sm">
+            {commitments.map(({ event, count }) => (
+              <li key={event.id} className="flex items-center justify-between rounded-md border p-2" data-testid={`commitment-${event.id}`}>
+                <div>
+                  <p className="font-medium">{event.label}</p>
+                  {event.note && <p className="text-xs text-muted-foreground">{event.note}</p>}
+                </div>
+                <Badge variant="secondary">{count} on schedule</Badge>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">No shared commitments logged yet.</p>
+        )}
+      </CollapsibleSection>
 
       <p className="pt-4 text-center text-sm text-muted-foreground">
         CZR BHS87 Reunion · Jan 9 – 30, 2027 · Mark once, meet more.
       </p>
+    </div>
+  );
+}
+
+function heatColor(ratio: number, inTown: number): string {
+  if (inTown === 0) return "hsl(220 8% 90%)";
+  const alpha = 0.12 + ratio * 0.78;
+  return `hsl(152 40% 32% / ${alpha.toFixed(2)})`;
+}
+
+function AvailabilityHeatmap({ people }: { people: Person[] }) {
+  const rows = useMemo(
+    () =>
+      DAYS.map((day) => ({
+        day,
+        cells: PERIODS.map((period) => {
+          const tally = tallyWindow(people, day.iso, period);
+          const inTown = people.length - tally.out.length;
+          const ratio = inTown > 0 ? tally.ok.length / inTown : 0;
+          return { period, tally, inTown, ratio };
+        }),
+      })),
+    [people],
+  );
+
+  if (people.length === 0) {
+    return <p className="text-sm text-muted-foreground">No responses yet.</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-separate border-spacing-1 text-xs" data-testid="heatmap-grid">
+        <thead>
+          <tr>
+            <th className="text-left text-muted-foreground">Day</th>
+            {PERIODS.map((p) => (
+              <th key={p} className="px-2 text-muted-foreground">{PERIOD_LABEL[p]}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ day, cells }) => (
+            <tr key={day.iso}>
+              <td className="pr-2 text-right font-medium text-muted-foreground">{day.short}</td>
+              {cells.map(({ period, tally, inTown, ratio }) => (
+                <td key={period}>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="h-8 w-16 rounded-sm border border-card-border text-[10px] font-medium"
+                        style={{ backgroundColor: heatColor(ratio, inTown) }}
+                        data-testid={`heatmap-cell-${day.iso}-${period}`}
+                      >
+                        {inTown > 0 ? `${tally.ok.length}/${inTown}` : "—"}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 text-sm">
+                      <p className="font-medium">{day.label} — {PERIOD_LABEL[period]}</p>
+                      <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                        <li>{STATUS_LABEL.ok}: {tally.ok.length}</li>
+                        <li>{STATUS_LABEL.maybe}: {tally.maybe.length}</li>
+                        <li>{STATUS_LABEL.busy}: {tally.busy.length}</li>
+                        <li>{STATUS_LABEL.private}: {tally.private.length}</li>
+                        <li>{STATUS_LABEL["pool-day"]}: {tally["pool-day"].length}</li>
+                        <li>Out of town: {tally.out.length}</li>
+                      </ul>
+                      {tally.ok.length > 0 && (
+                        <p className="mt-2 text-xs">Available: {tally.ok.join(", ")}</p>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
