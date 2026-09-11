@@ -65,9 +65,13 @@ export default function Home() {
             eventPlans={data.eventPlans}
             isDemo={data.isDemo}
             sessionEmail={data.sessionEmail}
+            myPerson={data.myPerson(data.sessionEmail)}
             onSuggestResource={data.suggestResource}
             onVolunteerLead={data.volunteerLead}
             onSaveEventPlan={data.saveEventPlan}
+            onSendSignInLink={data.sendSignInLink}
+            onConfirmYachtPaid={(paid) => data.updateMyPerson({ yacht_paid: paid })}
+            onSaveMieventoIntents={(intents) => data.updateMyPerson({ mievento_intents: intents })}
           />
         )}
       </main>

@@ -229,6 +229,48 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     persistSession(null);
   }, [persistSession]);
 
+  /**
+   * Find the caller's own row by case-insensitive email match against the
+   * currently signed-in session — the only row RLS will let them update.
+   * Returns null when stubbed-out with no session, or no match on file.
+   */
+  const myPerson = useCallback(
+    (email: string | null | undefined): Person | null => {
+      const target = (email ?? session?.email ?? "").trim().toLowerCase();
+      if (!target) return null;
+      return people.find((p) => (p.email ?? "").trim().toLowerCase() === target) ?? null;
+    },
+    [people, session],
+  );
+
+  /**
+   * Partial update to the signed-in user's own row (yacht_paid,
+   * mievento_intents, etc). Requires an authenticated session whose email
+   * matches the target row — enforced both here (myPerson lookup) and by
+   * Supabase RLS server-side. Sends only the changed columns so unrelated
+   * fields (slots, interests, ...) are left untouched by the upsert.
+   */
+  const updateMyPerson = useCallback(
+    async (patch: Partial<Person>) => {
+      if (!session?.accessToken) throw new Error("Sign in with your email first.");
+      const mine = myPerson(session.email);
+      if (!mine) throw new Error("No reunion entry found for your email yet. Fill out your availability first.");
+      if (stub) {
+        const target = (session.email ?? "").trim().toLowerCase();
+        setPeople((prev) => prev.map((p) => ((p.email ?? "").trim().toLowerCase() === target ? { ...p, ...patch } : p)));
+        return;
+      }
+      await supabaseRest("/people", {
+        method: "POST",
+        accessToken: session.accessToken,
+        prefer: "resolution=merge-duplicates,return=minimal",
+        body: { name: mine.name, email: mine.email, ...patch, updated_at: new Date().toISOString() },
+      });
+      await load();
+    },
+    [session, stub, load, myPerson],
+  );
+
   return {
     people,
     activities,
@@ -248,6 +290,17 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     linkError,
     completeMagicLink,
     signOut,
+    myPerson,
+    updateMyPerson,
+    sendSignInLink: stub
+      ? async (email: string) => {
+          // Never hit the real Supabase Auth endpoint while showing stub/demo
+          // data. Instead, simulate an instant sign-in so the rest of the
+          // authenticated flow (yacht payment / MiEvento intents) is
+          // exercisable during local QA without a real magic-link round trip.
+          persistSession({ accessToken: "stub-token", refreshToken: "stub-refresh", email });
+        }
+      : supabaseAuth.sendMagicLink,
   };
 }
 

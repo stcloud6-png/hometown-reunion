@@ -273,6 +273,20 @@ export const EVENT_PLAN_STATUS_LABEL: Record<EventPlanStatus, string> = {
   cancelled: "Cancelled",
 };
 
+/** Per-day interest level a person can declare for the core MiEvento week (Jan 17–24). */
+export type MieventoIntent = "very" | "somewhat" | "skip";
+export const MIEVENTO_INTENTS: MieventoIntent[] = ["very", "somewhat", "skip"];
+export const MIEVENTO_INTENT_LABEL: Record<MieventoIntent, string> = {
+  very: "Very interested",
+  somewhat: "Somewhat interested",
+  skip: "Not this year",
+};
+
+/** The core MiEvento window as a list of DayInfo, for the interest triage dialog. */
+export function mieventoDays(): DayInfo[] {
+  return DAYS.filter((d) => d.iso >= MIEVENTO_START && d.iso <= MIEVENTO_END);
+}
+
 export const MAINTENANCE_PIN = "3817";
 
 // ---------------------------------------------------------------------------
@@ -694,7 +708,14 @@ export { STORAGE_KEYS };
 
 type SlotEdit = [dayOffset: number, period: Period, status: SlotStatus, tag?: string];
 
-export function buildDemoPerson(name: string, arrivalOffset: number, departureOffset: number, edits: SlotEdit[], interests: string[]): Person {
+export function buildDemoPerson(
+  name: string,
+  arrivalOffset: number,
+  departureOffset: number,
+  edits: SlotEdit[],
+  interests: string[],
+  extra: Partial<Person> = {},
+): Person {
   const arrival = addDays(START_DATE, arrivalOffset);
   const departure = addDays(START_DATE, departureOffset);
   const slots = initSlots(arrival, departure);
@@ -702,7 +723,7 @@ export function buildDemoPerson(name: string, arrivalOffset: number, departureOf
     const iso = addDays(START_DATE, dayOffset);
     if (slots[iso]) slots[iso][period] = tag ? { s: status, t: tag } : { s: status };
   }
-  return { name, arrival, departure, slots, interests, updated_at: new Date().toISOString() };
+  return { name, arrival, departure, slots, interests, updated_at: new Date().toISOString(), ...extra };
 }
 
 export const DEMO_PEOPLE: Person[] = [
@@ -710,10 +731,10 @@ export const DEMO_PEOPLE: Person[] = [
     [12, "m", "busy", "golf-21"],
     [12, "a", "busy", "golf-21"],
     [13, "m", "busy", "railway-22"],
-  ], ["railway-87", "deep-sea-fishing", "cruise-87"]),
+  ], ["railway-87", "deep-sea-fishing", "cruise-87"], { email: "marcus.demo@example.com", yacht_paid: true }),
   buildDemoPerson("Danny Whitfield", 4, 10, [
     [8, "m", "busy", "transit-17"],
     [8, "a", "busy", "transit-17"],
-  ], ["napoli", "coronado", "casino"]),
+  ], ["napoli", "coronado", "casino"], { email: "danny.demo@example.com", mievento_intents: { "2027-01-17": "very", "2027-01-18": "somewhat" } }),
   buildDemoPerson("Jerry Pankow", 0, 21, [], ["napoli", "hiking", "escape-room"]),
 ];

@@ -9,8 +9,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
-import { Info, Settings, Download, ShieldCheck, Anchor, ClipboardCheck } from "lucide-react";
+import { Info, Settings, Download, ShieldCheck, Anchor, ClipboardCheck, CalendarHeart } from "lucide-react";
 import { cn } from "@/lib/utils";
+import YachtPaymentDialog from "@/components/yacht-payment-dialog";
+import MieventoDialog from "@/components/mievento-dialog";
 import {
   type Activity,
   type ClusterLead,
@@ -21,12 +23,14 @@ import {
   CLUSTER_RESOURCE_LINKS,
   EVENT_PLAN_STATUS_LABEL,
   MAINTENANCE_PIN,
+  MIEVENTO_INTENT_LABEL,
   PERIOD_LABEL,
   STATUS_LABEL,
   bestWindows,
   clusterSummaries,
   exportAvailabilityCsv,
   formatDateRange,
+  mieventoDays,
 } from "@/lib/reunion";
 
 interface DashboardProps {
@@ -37,9 +41,13 @@ interface DashboardProps {
   eventPlans: EventPlan[];
   isDemo: boolean;
   sessionEmail: string | null;
+  myPerson: Person | null;
   onSuggestResource: (resource: ClusterResource) => Promise<void>;
   onVolunteerLead: (lead: ClusterLead) => Promise<void>;
   onSaveEventPlan: (plan: EventPlan) => Promise<void>;
+  onSendSignInLink: (email: string) => Promise<void>;
+  onConfirmYachtPaid: (paid: boolean) => Promise<void>;
+  onSaveMieventoIntents: (intents: Record<string, string>) => Promise<void>;
 }
 
 function useMaintenanceUnlock() {
@@ -55,9 +63,13 @@ export default function Dashboard({
   eventPlans,
   isDemo,
   sessionEmail,
+  myPerson,
   onSuggestResource,
   onVolunteerLead,
   onSaveEventPlan,
+  onSendSignInLink,
+  onConfirmYachtPaid,
+  onSaveMieventoIntents,
 }: DashboardProps) {
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
@@ -171,7 +183,15 @@ export default function Dashboard({
         </CardContent>
       </Card>
 
-      <RollCallCard people={people} />
+      <RollCallCard
+        people={people}
+        isDemo={isDemo}
+        sessionEmail={sessionEmail}
+        myPerson={myPerson}
+        onSendSignInLink={onSendSignInLink}
+        onConfirmYachtPaid={onConfirmYachtPaid}
+        onSaveMieventoIntents={onSaveMieventoIntents}
+      />
 
       <Card>
         <CardHeader>
@@ -274,7 +294,17 @@ export default function Dashboard({
   );
 }
 
-function RollCallCard({ people }: { people: Person[] }) {
+interface RollCallCardProps {
+  people: Person[];
+  isDemo: boolean;
+  sessionEmail: string | null;
+  myPerson: Person | null;
+  onSendSignInLink: (email: string) => Promise<void>;
+  onConfirmYachtPaid: (paid: boolean) => Promise<void>;
+  onSaveMieventoIntents: (intents: Record<string, string>) => Promise<void>;
+}
+
+function RollCallCard({ people, isDemo, sessionEmail, myPerson, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents }: RollCallCardProps) {
   const attending = people.filter((p) => p.attending === true);
   const notSure = people.filter((p) => p.attending === false);
   const unanswered = people.filter((p) => p.attending == null);
@@ -282,30 +312,63 @@ function RollCallCard({ people }: { people: Person[] }) {
   const leadVolunteers = people.filter((p) => p.volunteer_lead);
   const yachtPaid = people.filter((p) => p.yacht_paid);
 
+  const days = mieventoDays();
+  const responded = people.filter((p) => p.mievento_intents && Object.keys(p.mievento_intents).length > 0);
+  const veryCount = people.reduce((sum, p) => sum + days.filter((d) => p.mievento_intents?.[d.iso] === "very").length, 0);
+
   return (
     <Card data-testid="card-roll-call">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ClipboardCheck className="h-5 w-5" /> Roll call
         </CardTitle>
-        <p className="text-sm text-muted-foreground">Who's confirmed, who's helping, and who's paid for the Yacht Club dinner.</p>
+        <p className="text-sm text-muted-foreground">
+          Who's confirmed, who's helping, who's paid for the Yacht Club dinner, and MiEvento interest so far.
+        </p>
       </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-md border p-3">
-          <p className="text-2xl font-semibold text-primary">{attending.length}</p>
-          <p className="text-sm text-muted-foreground">Count me in</p>
-          <p className="text-xs text-muted-foreground">{notSure.length} not sure · {unanswered.length} unanswered</p>
-        </div>
-        <div className="rounded-md border p-3">
-          <p className="text-2xl font-semibold text-primary">{leadVolunteers.length}</p>
-          <p className="text-sm text-muted-foreground">Volunteer leads</p>
-          <p className="text-xs text-muted-foreground">{supportVolunteers.length} offered to help support</p>
-        </div>
-        <div className="rounded-md border p-3">
-          <p className="flex items-center gap-1 text-2xl font-semibold text-primary">
-            <Anchor className="h-5 w-5" /> {yachtPaid.length}
-          </p>
-          <p className="text-sm text-muted-foreground">Yacht Club paid</p>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-4">
+          <div className="rounded-md border p-3">
+            <p className="text-2xl font-semibold text-primary">{attending.length}</p>
+            <p className="text-sm text-muted-foreground">Count me in</p>
+            <p className="text-xs text-muted-foreground">{notSure.length} not sure · {unanswered.length} unanswered</p>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="text-2xl font-semibold text-primary">{leadVolunteers.length}</p>
+            <p className="text-sm text-muted-foreground">Volunteer leads</p>
+            <p className="text-xs text-muted-foreground">{supportVolunteers.length} offered to help support</p>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="flex items-center gap-1 text-2xl font-semibold text-primary">
+              <Anchor className="h-5 w-5" /> {yachtPaid.length}
+            </p>
+            <p className="text-sm text-muted-foreground">Yacht Club paid</p>
+            <div className="mt-2">
+              <YachtPaymentDialog
+                isDemo={isDemo}
+                sessionEmail={sessionEmail}
+                myPerson={myPerson}
+                onSendSignInLink={onSendSignInLink}
+                onConfirmPaid={onConfirmYachtPaid}
+              />
+            </div>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="flex items-center gap-1 text-2xl font-semibold text-primary">
+              <CalendarHeart className="h-5 w-5" /> {responded.length}
+            </p>
+            <p className="text-sm text-muted-foreground">MiEvento responses</p>
+            <p className="text-xs text-muted-foreground">{veryCount} "{MIEVENTO_INTENT_LABEL.very.toLowerCase()}" picks across the week</p>
+            <div className="mt-2">
+              <MieventoDialog
+                isDemo={isDemo}
+                sessionEmail={sessionEmail}
+                myPerson={myPerson}
+                onSendSignInLink={onSendSignInLink}
+                onSaveIntents={onSaveMieventoIntents}
+              />
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>
