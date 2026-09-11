@@ -44,6 +44,12 @@ interface EntryFormProps {
   eventPlans: EventPlan[];
   onSave: (person: Person) => Promise<void>;
   onSuggestActivity: (id: string, label: string, suggestedBy: string) => Promise<void>;
+  onGoToDashboard?: () => void;
+}
+
+function toMDY(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${m}/${d}/${y}`;
 }
 
 function slugify(label: string): string {
@@ -70,7 +76,7 @@ const LEGEND_ITEMS: { status: SlotStatus; label: string; hint: string }[] = [
   { status: "private", label: "Private", hint: "Private / unavailable" },
 ];
 
-export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity }: EntryFormProps) {
+export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard }: EntryFormProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
   const [arrival, setArrival] = useState(initial?.arrival ?? START_DATE);
@@ -187,6 +193,16 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
           <Button variant="outline" onClick={() => setSaved(false)} data-testid="button-edit-again">
             Make changes
           </Button>
+          {onGoToDashboard && (
+            <button
+              type="button"
+              onClick={onGoToDashboard}
+              className="text-sm font-medium text-primary underline underline-offset-2"
+              data-testid="link-go-to-dashboard-confirmed"
+            >
+              Click here for Group Dashboard
+            </button>
+          )}
         </CardContent>
       </Card>
     );
@@ -199,26 +215,18 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
       <Card>
         <CardHeader>
           <CardTitle>Your name</CardTitle>
-          <p className="text-sm text-muted-foreground">First and last name so the group knows which entry is yours.</p>
+          <p className="text-sm text-muted-foreground">
+            First and last name so the group knows which entry is yours, plus your email so we can send you a
+            private link to view and update it whenever you return.
+          </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alex Morgan" data-testid="input-name" required />
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Email address</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Required. We'll email you a private link to view and update your entry whenever you return.
-          </p>
-        </CardHeader>
-        <CardContent>
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">Email address</Label>
             <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" data-testid="input-email" required />
           </div>
         </CardContent>
@@ -246,6 +254,9 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
               onChange={(e) => updateRange(e.target.value, departure)}
               data-testid="input-arrival"
             />
+            <p className="text-xs text-muted-foreground" data-testid="text-arrival-phrase">
+              {toMDY(arrival)} or earlier
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="departure">Depart</Label>
@@ -258,6 +269,9 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
               onChange={(e) => updateRange(arrival, e.target.value)}
               data-testid="input-departure"
             />
+            <p className="text-xs text-muted-foreground" data-testid="text-departure-phrase">
+              {toMDY(departure)} or later
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -323,6 +337,80 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full min-w-[640px] border-collapse text-sm" data-testid="table-time-slots">
+              <thead>
+                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-2">Day</th>
+                  {PERIODS.map((period) => (
+                    <th key={period} className="px-3 py-2">{PERIOD_LABEL[period]}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {days.map((day) => (
+                  <tr key={day.iso} className="border-b align-top last:border-0" data-testid={`row-day-${day.iso}`}>
+                    <td className="whitespace-nowrap px-3 py-3 font-medium">{day.label}</td>
+                    {PERIODS.map((period) => {
+                      const locked = isYachtLockSlot(day.iso, period);
+                      const current = slots[day.iso]?.[period] ?? { s: "ok" as SlotStatus };
+                      const statusOptions = statusesForSlot(day.iso, period);
+                      const options = [
+                        ...eventsForDate(day.iso).map((e) => ({ id: e.id, label: e.label })),
+                        ...groupPlannedEventsForDate(day.iso, eventPlans, activities),
+                      ];
+                      return (
+                        <td key={period} className="px-3 py-3">
+                          {locked ? (
+                            <div className={cn("rounded-md border px-3 py-2 text-sm text-muted-foreground", "bg-muted")} data-testid={`slot-locked-${day.iso}-${period}`}>
+                              Yacht Club 87 Dinner/Dance
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <Select
+                                value={current.s}
+                                onValueChange={(value) => setSlotStatus(day.iso, period, value as SlotStatus, current.t)}
+                              >
+                                <SelectTrigger className={cn("h-9", STATUS_COLOR[current.s])} data-testid={`select-status-${day.iso}-${period}`}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {statusOptions.map((s) => (
+                                    <SelectItem key={s} value={s}>
+                                      {s === "busy" ? mieventoOrEventLabel(day.iso) : STATUS_SHORT[s]}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {current.s === "busy" && (current.t
+                                ? <p className={cn("rounded-md px-2 py-1 text-xs", STATUS_COLOR.busy)}>{labelForTag(current.t, activities)}</p>
+                                : options.length > 0 && (
+                                  <Select
+                                    value=""
+                                    onValueChange={(value) => setSlotStatus(day.iso, period, "busy", value)}
+                                  >
+                                    <SelectTrigger className={cn("h-8 border-destructive/50 text-xs text-destructive")} data-testid={`select-event-${day.iso}-${period}`}>
+                                      <SelectValue placeholder="Which event?" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {options.map((o) => (
+                                        <SelectItem key={o.id} value={o.id}>
+                                          {o.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                ))}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div className="flex flex-wrap gap-3 rounded-md border bg-muted/40 p-3 text-xs" data-testid="slot-legend">
             {LEGEND_ITEMS.map((item, i) => (
               <span key={`${item.status}-${i}`} className="flex items-center gap-1.5">
@@ -335,72 +423,6 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
               <span title={STATUS_LABEL["pool-day"]}>{STATUS_LABEL["pool-day"]}</span>
             </span>
           </div>
-          {days.map((day) => (
-            <div key={day.iso} className="rounded-md border p-3" data-testid={`row-day-${day.iso}`}>
-              <div className="mb-2 flex items-center justify-between">
-                <span className="font-medium">{day.label}</span>
-              </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                {PERIODS.map((period) => {
-                  const locked = isYachtLockSlot(day.iso, period);
-                  const current = slots[day.iso]?.[period] ?? { s: "ok" as SlotStatus };
-                  const statusOptions = statusesForSlot(day.iso, period);
-                  const options = [
-                    ...eventsForDate(day.iso).map((e) => ({ id: e.id, label: e.label })),
-                    ...groupPlannedEventsForDate(day.iso, eventPlans, activities),
-                  ];
-                  return (
-                    <div key={period} className="space-y-1">
-                      <span className="text-xs uppercase text-muted-foreground">{PERIOD_LABEL[period]}</span>
-                      {locked ? (
-                        <div className={cn("rounded-md border px-3 py-2 text-sm", STATUS_COLOR.busy)} data-testid={`slot-locked-${day.iso}-${period}`}>
-                          Yacht Club 87 Dinner/Dance
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
-                          <Select
-                            value={current.s}
-                            onValueChange={(value) => setSlotStatus(day.iso, period, value as SlotStatus, current.t)}
-                          >
-                            <SelectTrigger className={cn("h-9", STATUS_COLOR[current.s])} data-testid={`select-status-${day.iso}-${period}`}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {statusOptions.map((s) => (
-                                <SelectItem key={s} value={s}>
-                                  {s === "busy" ? mieventoOrEventLabel(day.iso) : STATUS_SHORT[s]}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {current.s === "busy" && options.length > 0 && (
-                            <Select
-                              value={current.t ?? ""}
-                              onValueChange={(value) => setSlotStatus(day.iso, period, "busy", value)}
-                            >
-                              <SelectTrigger className="h-8 text-xs" data-testid={`select-event-${day.iso}-${period}`}>
-                                <SelectValue placeholder="Which one?" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {options.map((o) => (
-                                  <SelectItem key={o.id} value={o.id}>
-                                    {o.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                          {current.s === "busy" && current.t && (
-                            <p className="text-xs text-muted-foreground">{labelForTag(current.t, activities)}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
         </CardContent>
       </Card>
 
@@ -458,6 +480,20 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
           {saving ? "Saving…" : "Save my Info"}
         </Button>
       </div>
+
+      {onGoToDashboard && (
+        <p className="pt-2 text-center text-sm">
+          Want to know what others are doing?{" "}
+          <button
+            type="button"
+            onClick={onGoToDashboard}
+            className="font-medium text-primary underline underline-offset-2"
+            data-testid="link-go-to-dashboard"
+          >
+            Click here for Group Dashboard
+          </button>
+        </p>
+      )}
     </form>
   );
 }

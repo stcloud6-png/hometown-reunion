@@ -2,16 +2,13 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  Info, Settings, Download, ShieldCheck, Anchor, ClipboardCheck, CalendarHeart,
+  Info, Download, ShieldCheck, Anchor, ClipboardCheck, CalendarHeart, Lock, ArrowLeft,
   ChevronDown, Flame, Users, Grid3x3, CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,19 +23,25 @@ import {
   type Period,
   type Person,
   CLUSTER_RESOURCE_LINKS,
+  CLUSTER_THRESHOLDS,
   DAYS,
   EVENT_PLAN_STATUS_LABEL,
-  MAINTENANCE_PIN,
   MIEVENTO_INTENT_LABEL,
   PERIODS,
   PERIOD_LABEL,
   STATUS_LABEL,
-  bestWindows,
   bestWindowsForActivity,
+  bestWindowsRanked,
+  clusterStage,
   clusterSummaries,
   exportAvailabilityCsv,
   formatDateRange,
+  isYachtLockSlot,
+  labelForTag,
   mieventoDays,
+  mostRecentEditor,
+  pctScaleBg,
+  pctScaleColor,
   sharedCommitments,
   tallyWindow,
 } from "@/lib/reunion";
@@ -52,17 +55,15 @@ interface DashboardProps {
   isDemo: boolean;
   sessionEmail: string | null;
   myPerson: Person | null;
+  showPills: boolean;
+  unlocked: boolean;
   onSuggestResource: (resource: ClusterResource) => Promise<void>;
   onVolunteerLead: (lead: ClusterLead) => Promise<void>;
   onSaveEventPlan: (plan: EventPlan) => Promise<void>;
   onSendSignInLink: (email: string) => Promise<void>;
   onConfirmYachtPaid: (paid: boolean) => Promise<void>;
   onSaveMieventoIntents: (intents: Record<string, string>) => Promise<void>;
-}
-
-function useMaintenanceUnlock() {
-  const [unlocked, setUnlocked] = useState(false);
-  return { unlocked, setUnlocked };
+  onBackToAvailability: () => void;
 }
 
 /** Collapsible dashboard section wrapper, matching the live site's collapse/expand section chrome. */
@@ -116,127 +117,58 @@ export default function Dashboard({
   isDemo,
   sessionEmail,
   myPerson,
+  showPills,
+  unlocked,
   onSuggestResource,
   onVolunteerLead,
   onSaveEventPlan,
   onSendSignInLink,
   onConfirmYachtPaid,
   onSaveMieventoIntents,
+  onBackToAvailability,
 }: DashboardProps) {
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState(false);
-  const { unlocked, setUnlocked } = useMaintenanceUnlock();
-  const [showPills, setShowPills] = useState(true);
-
-  const windows = useMemo(() => bestWindows(people, 5), [people]);
+  const rankedWindows = useMemo(() => bestWindowsRanked(people, 6), [people]);
   const clusters = useMemo(() => clusterSummaries(people, activities), [people, activities]);
   const commitments = useMemo(() => sharedCommitments(people), [people]);
+  const lastEditor = useMemo(() => mostRecentEditor(people), [people]);
 
-  function submitPin() {
-    if (pinInput === MAINTENANCE_PIN) {
-      setUnlocked(true);
-      setPinError(false);
-    } else {
-      setPinError(true);
-    }
-  }
+  const visibleClusters = clusters
+    .filter((c) => c.interestedCount > 0)
+    .filter((c, idx) => unlocked || c.interestedCount >= CLUSTER_THRESHOLDS.publicMinInterest || idx < CLUSTER_THRESHOLDS.publicTop);
 
   return (
     <div className="space-y-8" data-testid="view-dashboard">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-semibold">Group dashboard</h2>
-          {isDemo && <Badge variant="secondary" className="mt-1">Showing demo data</Badge>}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => exportAvailabilityCsv(people, activities)} data-testid="button-export">
-            <Download className="mr-1 h-4 w-4" /> Export CSV
-          </Button>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Respondent info" data-testid="maintenance-icon">
-                <Info className="h-4 w-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="text-sm">
-              {people.length} of an expected 62 classmates have shared their availability so far.
-            </PopoverContent>
-          </Popover>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Settings" data-testid="button-settings">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-72 space-y-4">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="toggle-pills">Interest pills</Label>
-                <Switch id="toggle-pills" checked={showPills} onCheckedChange={setShowPills} data-testid="settings-pills-switch" />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="toggle-maintenance">Maintenance</Label>
-                {unlocked ? (
-                  <Switch id="toggle-maintenance" checked={unlocked} onCheckedChange={setUnlocked} data-testid="settings-maintenance-switch" />
-                ) : (
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" data-testid="button-open-maintenance-pin">
-                        Unlock
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent data-testid="maintenance-pin-dialog">
-                      <DialogHeader>
-                        <DialogTitle>Enter maintenance PIN</DialogTitle>
-                      </DialogHeader>
-                      <div className="flex flex-col items-center gap-3 py-2">
-                        <InputOTP maxLength={4} value={pinInput} onChange={setPinInput} data-testid="maintenance-pin-input">
-                          <InputOTPGroup>
-                            <InputOTPSlot index={0} />
-                            <InputOTPSlot index={1} />
-                            <InputOTPSlot index={2} />
-                            <InputOTPSlot index={3} />
-                          </InputOTPGroup>
-                        </InputOTP>
-                        {pinError && (
-                          <p className="text-sm text-destructive" data-testid="maintenance-pin-error">
-                            Incorrect PIN.
-                          </p>
-                        )}
-                      </div>
-                      <DialogFooter>
-                        <Button onClick={submitPin} data-testid="maintenance-pin-submit">
-                          Unlock
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-      </div>
-
-      <p className="text-sm text-muted-foreground" data-testid="text-dashboard-hint">
-        Filter by interest anytime — hover the left edge of the screen (or the filter button on mobile), or enable
-        the pills here via Settings in the top-right.
-      </p>
+      {isDemo && <Badge variant="secondary">Showing demo data</Badge>}
 
       <CollapsibleSection
         icon={<Flame className="h-5 w-5" />}
         title="Best windows for the group"
-        subcopy="Best days for the group — bar shades show how free each morning, afternoon and evening are (hover for detail)."
+        subcopy="Best days for the group, ranked — percentage shows how much of the group in town is free that morning, afternoon or evening."
         testId="section-best-windows"
       >
-        <div className="grid gap-2 sm:grid-cols-5">
-          {windows.map((w) => (
-            <div key={`${w.iso}-${w.period}`} className="rounded-md border p-3 text-center" data-testid={`window-${w.iso}-${w.period}`}>
-              <p className="text-sm font-medium">{w.day.short}</p>
-              <p className="text-xs text-muted-foreground">{PERIOD_LABEL[w.period]}</p>
-              <p className="mt-1 text-lg font-semibold text-primary">{w.available}/{w.total}</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {rankedWindows.map((row) => (
+            <div key={row.day.iso} className="rounded-md border p-3" data-testid={`window-row-${row.day.iso}`}>
+              <p className="text-sm font-medium">{row.day.short}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {PERIODS.map((period) => {
+                  const cell = row.periods[period];
+                  return (
+                    <span
+                      key={period}
+                      className="rounded-full px-2.5 py-1 text-xs font-semibold"
+                      style={cell ? { color: pctScaleColor(cell.pct), backgroundColor: pctScaleBg(cell.pct) } : { color: "var(--muted-foreground)" }}
+                      title={cell ? `${cell.available} of ${cell.total} free` : "Yacht Club Dinner/Dance — everyone's there"}
+                      data-testid={`window-${row.day.iso}-${period}`}
+                    >
+                      {PERIOD_LABEL[period]} {cell ? `${cell.pct}%` : "—"}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
           ))}
-          {windows.length === 0 && <p className="text-sm text-muted-foreground">No responses yet.</p>}
+          {rankedWindows.length === 0 && <p className="text-sm text-muted-foreground">No responses yet.</p>}
         </div>
       </CollapsibleSection>
 
@@ -257,7 +189,7 @@ export default function Dashboard({
         testId="section-interest-clusters"
       >
         <div className="space-y-4">
-          {clusters.filter((c) => c.interestedCount > 0).map((cluster) => {
+          {visibleClusters.map((cluster) => {
             const plan = eventPlans.find((p) => p.activity_id === cluster.activity.id);
             const lead = clusterLeads.find((l) => l.activity_id === cluster.activity.id);
             const resources = [
@@ -265,13 +197,14 @@ export default function Dashboard({
               ...clusterResources.filter((r) => r.activity_id === cluster.activity.id).map((r) => ({ label: r.label, url: r.url })),
             ];
             const topWindows = bestWindowsForActivity(people, cluster.activity.id, 3);
+            const spotsLeft = plan && typeof plan.max_size === "number" ? Math.max(plan.max_size - cluster.interestedCount, 0) : null;
             return (
               <div key={cluster.activity.id} className="rounded-md border p-4" data-testid={`cluster-${cluster.activity.id}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{cluster.activity.label}</span>
                     <Badge variant="secondary">{cluster.interestedCount} interested</Badge>
-                    {cluster.tier !== "none" && <Badge>{cluster.tier}</Badge>}
+                    <Badge variant="outline" data-testid={`badge-stage-${cluster.activity.id}`}>{clusterStage(cluster.interestedCount)}</Badge>
                   </div>
                 </div>
 
@@ -308,25 +241,41 @@ export default function Dashboard({
                   </div>
                 )}
 
-                <div className="mt-3 rounded-md bg-muted/50 p-3">
-                  {plan ? (
-                    <div className="text-sm">
-                      <p className="font-medium">Group's plan — {EVENT_PLAN_STATUS_LABEL[plan.status]}</p>
-                      <p className="text-muted-foreground">
-                        {plan.event_date && formatDateRange(plan.event_date, plan.event_date)} {plan.start_time && `at ${plan.start_time}`}
-                        {plan.venue && ` · ${plan.venue}`}
-                        {typeof plan.max_size === "number" && ` · ${plan.max_size} spots`}
+                <div className="mt-3 space-y-2">
+                  {lead ? (
+                    <p className="text-sm text-muted-foreground">
+                      Event Organizer: {lead.lead_name} — the interest group will be notified and a group chat will follow.
+                    </p>
+                  ) : (
+                    <VolunteerLeadForm
+                      activityId={cluster.activity.id}
+                      myPerson={myPerson}
+                      sessionEmail={sessionEmail}
+                      onVolunteer={onVolunteerLead}
+                    />
+                  )}
+
+                  {plan && (
+                    <div className="rounded-md border bg-muted/50 p-3 text-sm" data-testid={`plan-box-${cluster.activity.id}`}>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Group's plan</p>
+                        <Badge variant={plan.status === "open" ? "default" : "secondary"}>{EVENT_PLAN_STATUS_LABEL[plan.status]}</Badge>
+                      </div>
+                      <p className="mt-1 font-medium">
+                        {plan.event_date && formatDateRange(plan.event_date, plan.event_date)}
+                        {plan.start_time && ` · starts ${plan.start_time}`}
                       </p>
-                      {lead && <p className="mt-1 text-muted-foreground">Event Organizer: {lead.lead_name} — the interest group will be notified and a group chat will follow.</p>}
-                      <p className="mt-1 text-xs text-muted-foreground">It's also reflected on your schedule in "Mark your time slots."</p>
+                      {plan.venue && <p className="text-muted-foreground">Meet at {plan.venue}</p>}
+                      {spotsLeft !== null && (
+                        <p className="mt-1 text-muted-foreground">
+                          Max group size {plan.max_size} · {cluster.interestedCount} interested · {spotsLeft} spots left
+                        </p>
+                      )}
+                      <p className="mt-2 text-xs text-muted-foreground">It's also reflected on your schedule in "Mark your time slots."</p>
                       {unlocked && (
                         <EventPlanEditor activityId={cluster.activity.id} initial={plan} onSave={onSaveEventPlan} sessionEmail={sessionEmail} />
                       )}
                     </div>
-                  ) : lead ? (
-                    <p className="text-sm text-muted-foreground">No plan yet — Event Organizer: {lead.lead_name} — the interest group will be notified and a group chat will follow.</p>
-                  ) : (
-                    <VolunteerLeadForm activityId={cluster.activity.id} onVolunteer={onVolunteerLead} />
                   )}
                 </div>
 
@@ -334,10 +283,14 @@ export default function Dashboard({
               </div>
             );
           })}
-          {clusters.every((c) => c.interestedCount === 0) && (
+          {visibleClusters.length === 0 && (
             <p className="text-sm text-muted-foreground">No interests marked yet.</p>
           )}
-          <p className="pt-1 text-xs text-muted-foreground">More clusters appear here as interest grows.</p>
+          <p className="pt-1 text-xs text-muted-foreground">
+            {unlocked
+              ? "Maintenance mode: every cluster with at least one interested classmate is shown."
+              : "More clusters appear here publicly once they reach 6 interested classmates (or are one of the top 2 most popular)."}
+          </p>
         </div>
       </CollapsibleSection>
 
@@ -347,7 +300,7 @@ export default function Dashboard({
         subcopy="Greener = more of the group can make it. Tap any cell for the full breakdown."
         testId="section-heatmap"
       >
-        <AvailabilityHeatmap people={people} />
+        <AvailabilityHeatmap people={people} onBackToAvailability={onBackToAvailability} />
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -362,19 +315,63 @@ export default function Dashboard({
               <tr className="border-b text-left text-muted-foreground">
                 <th className="py-2 pr-4">Name</th>
                 <th className="py-2 pr-4">In town</th>
-                <th className="py-2">Interests</th>
+                <th className="py-2 pr-4">Interested in</th>
+                <th className="py-2 pr-4">MiEvento</th>
+                <th className="py-2">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {people.map((p) => (
-                <tr key={p.name} className="border-b last:border-0" data-testid={`row-person-${p.name}`}>
-                  <td className="py-2 pr-4 font-medium">{p.name}</td>
-                  <td className="py-2 pr-4 text-muted-foreground">{formatDateRange(p.arrival, p.departure)}</td>
-                  <td className="py-2 text-muted-foreground">{p.interests.length}</td>
-                </tr>
-              ))}
+              {people.map((p) => {
+                const interestLabels = p.interests
+                  .map((id) => activities.find((a) => a.id === id)?.label)
+                  .filter((l): l is string => !!l);
+                const mieventoLabels = new Set<string>();
+                for (const day of Object.values(p.slots ?? {})) {
+                  for (const slot of Object.values(day ?? {})) {
+                    if (slot?.s === "busy" && slot.t && slot.t !== "yacht-club") {
+                      mieventoLabels.add(labelForTag(slot.t, activities));
+                    }
+                  }
+                }
+                return (
+                  <tr key={p.name} className="border-b align-top last:border-0" data-testid={`row-person-${p.name}`}>
+                    <td className="py-2 pr-4 font-medium">{p.name}</td>
+                    <td className="py-2 pr-4 text-muted-foreground">{formatDateRange(p.arrival, p.departure)}</td>
+                    <td className="py-2 pr-4">
+                      <div className="flex flex-wrap gap-1">
+                        {interestLabels.length > 0 ? (
+                          interestLabels.map((label) => (
+                            <span key={label} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{label}</span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-4">
+                      <div className="flex flex-wrap gap-1">
+                        {mieventoLabels.size > 0 ? (
+                          Array.from(mieventoLabels).map((label) => (
+                            <span key={label} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{label}</span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2">
+                      <Badge variant="secondary" className="gap-1">
+                        <Lock className="h-3 w-3" /> Protected
+                      </Badge>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          <p className="mt-3 text-xs text-muted-foreground" data-testid="text-who-is-in-town-footnote">
+            "Private / unavailable" blocks time on the heatmap without ever showing the reason.
+          </p>
         </div>
       </CollapsibleSection>
 
@@ -385,9 +382,9 @@ export default function Dashboard({
         testId="section-shared-commitments"
       >
         {commitments.length > 0 ? (
-          <ul className="space-y-2 text-sm">
+          <ul className="grid gap-2 sm:grid-cols-2">
             {commitments.map(({ event, count }) => (
-              <li key={event.id} className="flex items-center justify-between rounded-md border p-2" data-testid={`commitment-${event.id}`}>
+              <li key={event.id} className="flex items-center justify-between rounded-md border p-2 text-sm" data-testid={`commitment-${event.id}`}>
                 <div>
                   <p className="font-medium">{event.label}</p>
                   {event.note && <p className="text-xs text-muted-foreground">{event.note}</p>}
@@ -401,29 +398,50 @@ export default function Dashboard({
         )}
       </CollapsibleSection>
 
-      <p className="pt-4 text-center text-sm text-muted-foreground">
-        CZR BHS87 Reunion · Jan 9 – 30, 2027 · Mark once, meet more.
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => exportAvailabilityCsv(people, activities)} data-testid="button-export">
+            <Download className="mr-1 h-4 w-4" /> Export CSV
+          </Button>
+          <Button variant="ghost" size="icon" aria-label="Respondents" disabled data-testid="icon-community">
+            <Users className="h-4 w-4" />
+          </Button>
+        </div>
+        {unlocked && (
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Respondent info" data-testid="maintenance-icon">
+                  <Info className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="text-sm">
+                {people.length} of an expected 62 classmates have shared their availability so far.
+              </PopoverContent>
+            </Popover>
+            {lastEditor && (
+              <span data-testid="text-last-editor">
+                Last edited by {lastEditor.name} · {new Date(lastEditor.updated_at).toLocaleString()}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function heatColor(ratio: number, inTown: number): string {
-  if (inTown === 0) return "hsl(220 8% 90%)";
-  const alpha = 0.12 + ratio * 0.78;
-  return `hsl(152 40% 32% / ${alpha.toFixed(2)})`;
-}
-
-function AvailabilityHeatmap({ people }: { people: Person[] }) {
+function AvailabilityHeatmap({ people, onBackToAvailability }: { people: Person[]; onBackToAvailability: () => void }) {
   const rows = useMemo(
     () =>
       DAYS.map((day) => ({
         day,
         cells: PERIODS.map((period) => {
+          const locked = isYachtLockSlot(day.iso, period);
           const tally = tallyWindow(people, day.iso, period);
           const inTown = people.length - tally.out.length;
-          const ratio = inTown > 0 ? tally.ok.length / inTown : 0;
-          return { period, tally, inTown, ratio };
+          const pct = inTown > 0 ? Math.round((tally.ok.length / inTown) * 100) : 0;
+          return { period, tally, inTown, pct, locked };
         }),
       })),
     [people],
@@ -434,54 +452,84 @@ function AvailabilityHeatmap({ people }: { people: Person[] }) {
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-separate border-spacing-1 text-xs" data-testid="heatmap-grid">
-        <thead>
-          <tr>
-            <th className="text-left text-muted-foreground">Day</th>
-            {PERIODS.map((p) => (
-              <th key={p} className="px-2 text-muted-foreground">{PERIOD_LABEL[p]}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ day, cells }) => (
-            <tr key={day.iso}>
-              <td className="pr-2 text-right font-medium text-muted-foreground">{day.short}</td>
-              {cells.map(({ period, tally, inTown, ratio }) => (
-                <td key={period}>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="h-8 w-16 rounded-sm border border-card-border text-[10px] font-medium"
-                        style={{ backgroundColor: heatColor(ratio, inTown) }}
-                        data-testid={`heatmap-cell-${day.iso}-${period}`}
-                      >
-                        {inTown > 0 ? `${tally.ok.length}/${inTown}` : "—"}
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-64 text-sm">
-                      <p className="font-medium">{day.label} — {PERIOD_LABEL[period]}</p>
-                      <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                        <li>{STATUS_LABEL.ok}: {tally.ok.length}</li>
-                        <li>{STATUS_LABEL.maybe}: {tally.maybe.length}</li>
-                        <li>{STATUS_LABEL.busy}: {tally.busy.length}</li>
-                        <li>{STATUS_LABEL.private}: {tally.private.length}</li>
-                        <li>{STATUS_LABEL["pool-day"]}: {tally["pool-day"].length}</li>
-                        <li>Out of town: {tally.out.length}</li>
-                      </ul>
-                      {tally.ok.length > 0 && (
-                        <p className="mt-2 text-xs">Available: {tally.ok.join(", ")}</p>
-                      )}
-                    </PopoverContent>
-                  </Popover>
-                </td>
+    <div className="space-y-3">
+      <div className="overflow-x-auto">
+        <table className="w-full border-separate border-spacing-1 text-xs" data-testid="heatmap-grid">
+          <thead>
+            <tr>
+              <th className="text-left text-muted-foreground">Day</th>
+              {PERIODS.map((p) => (
+                <th key={p} className="px-2 text-muted-foreground">{PERIOD_LABEL[p]}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map(({ day, cells }) => (
+              <tr key={day.iso}>
+                <td className="pr-2 text-right font-medium text-muted-foreground">{day.short}</td>
+                {cells.map(({ period, tally, inTown, pct, locked }) => {
+                  if (locked) {
+                    return (
+                      <td key={period}>
+                        <div
+                          className="h-8 w-20 rounded-sm border-2 border-card-border bg-muted"
+                          data-testid={`heatmap-cell-${day.iso}-${period}`}
+                          title="Yacht Club 87 Dinner/Dance — everyone's there"
+                        />
+                      </td>
+                    );
+                  }
+                  return (
+                    <td key={period}>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="h-8 w-20 rounded-sm border border-card-border text-[10px] font-bold"
+                            style={{ backgroundColor: pctScaleBg(pct), color: pctScaleColor(pct) }}
+                            data-testid={`heatmap-cell-${day.iso}-${period}`}
+                          >
+                            {inTown > 0 ? `${tally.ok.length}/${inTown} \u00b7 ${pct}%` : "—"}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 text-sm">
+                          <p className="font-medium">{day.label} — {PERIOD_LABEL[period]}</p>
+                          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                            <li>{STATUS_LABEL.ok}: {tally.ok.length}</li>
+                            <li>{STATUS_LABEL.maybe}: {tally.maybe.length}</li>
+                            <li>{STATUS_LABEL.busy}: {tally.busy.length}</li>
+                            <li>{STATUS_LABEL.private}: {tally.private.length}</li>
+                            <li>{STATUS_LABEL["pool-day"]}: {tally["pool-day"].length}</li>
+                            <li>Out of town: {tally.out.length}</li>
+                          </ul>
+                          {tally.ok.length > 0 && (
+                            <p className="mt-2 text-xs">Available: {tally.ok.join(", ")}</p>
+                          )}
+                        </PopoverContent>
+                      </Popover>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center gap-3 text-xs text-muted-foreground" data-testid="heatmap-legend">
+        <span>Fewer free</span>
+        <span
+          className="h-3 flex-1 rounded-full"
+          style={{ background: `linear-gradient(90deg, ${pctScaleBg(0)}, ${pctScaleBg(100)})` }}
+        />
+        <span>More free</span>
+      </div>
+
+      <div className="flex justify-center">
+        <Button variant="outline" size="sm" onClick={onBackToAvailability} data-testid="button-back-to-availability">
+          <ArrowLeft className="mr-1 h-4 w-4" /> Back to my availability
+        </Button>
+      </div>
     </div>
   );
 }
@@ -567,31 +615,54 @@ function RollCallCard({ people, isDemo, sessionEmail, myPerson, onSendSignInLink
   );
 }
 
-function VolunteerLeadForm({ activityId, onVolunteer }: { activityId: string; onVolunteer: (lead: ClusterLead) => Promise<void> }) {
-  const [name, setName] = useState("");
+function VolunteerLeadForm({
+  activityId,
+  myPerson,
+  sessionEmail,
+  onVolunteer,
+}: {
+  activityId: string;
+  myPerson: Person | null;
+  sessionEmail: string | null;
+  onVolunteer: (lead: ClusterLead) => Promise<void>;
+}) {
   const [submitting, setSubmitting] = useState(false);
+  const [selected, setSelected] = useState(false);
+  const signedIn = !!sessionEmail && !!myPerson;
 
   async function submit() {
-    if (!name.trim()) return;
+    if (!myPerson) return;
     setSubmitting(true);
     try {
-      await onVolunteer({ activity_id: activityId, lead_name: name.trim() });
-      setName("");
+      await onVolunteer({ activity_id: activityId, lead_name: myPerson.name, lead_email: myPerson.email ?? sessionEmail });
+      setSelected(true);
     } finally {
       setSubmitting(false);
     }
   }
 
+  if (!signedIn) {
+    return (
+      <p className="text-sm text-muted-foreground" data-testid={`text-volunteer-signin-${activityId}`}>
+        Sign in from the Roll call card above to volunteer as this event's Organizer.
+      </p>
+    );
+  }
+
   return (
-    <div className="flex flex-wrap items-end gap-2">
-      <div className="flex-1 min-w-[180px] space-y-1">
-        <Label className="text-xs">Be the first to volunteer as Event Organizer</Label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" data-testid={`input-volunteer-lead-${activityId}`} />
-      </div>
-      <Button size="sm" variant="secondary" onClick={submit} disabled={submitting} data-testid={`button-volunteer-lead-${activityId}`}>
-        <ShieldCheck className="mr-1 h-4 w-4" /> Volunteer
-      </Button>
-    </div>
+    <label className="flex items-center gap-2 text-sm hover-elevate active-elevate-2 rounded-md p-1">
+      <input
+        type="radio"
+        checked={selected}
+        onChange={submit}
+        disabled={submitting}
+        className="h-4 w-4"
+        data-testid={`radio-volunteer-lead-${activityId}`}
+      />
+      <span className="flex items-center gap-1">
+        <ShieldCheck className="h-4 w-4 text-muted-foreground" /> Be the first to volunteer as Event Organizer for this event
+      </span>
+    </label>
   );
 }
 
@@ -611,7 +682,7 @@ function SuggestResourceForm({ activityId, onSuggest }: { activityId: string; on
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="mt-2" data-testid={`button-suggest-resource-${activityId}`}>
+        <Button variant="ghost" size="sm" className="mt-2 underline underline-offset-2" data-testid={`button-suggest-resource-${activityId}`}>
           + Suggest a resource or tool
         </Button>
       </PopoverTrigger>

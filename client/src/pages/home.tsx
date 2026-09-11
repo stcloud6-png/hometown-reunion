@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Moon, Sun } from "lucide-react";
 import EntryForm from "@/components/entry-form";
 import Dashboard from "@/components/dashboard";
+import SettingsPopover from "@/components/settings-popover";
 import { useReunionData } from "@/lib/use-reunion-data";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { formatDateRange, START_DATE, END_DATE } from "@/lib/reunion";
@@ -13,10 +14,12 @@ export default function Home() {
   const [tab, setTab] = useState<"entry" | "dashboard">("entry");
   const { dark, toggle } = useDarkMode();
   const data = useReunionData({ stub: STUB });
+  const [showPills, setShowPills] = useState(true);
+  const [unlocked, setUnlocked] = useState(false);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b">
+      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4">
           <div className="flex items-center gap-3">
             <img src={`${import.meta.env.BASE_URL}reunion-logo.jpg`} alt="CZR BHS87 Reunion" className="h-10 w-10 rounded-full object-cover" />
@@ -32,6 +35,12 @@ export default function Home() {
             <Button variant={tab === "dashboard" ? "default" : "ghost"} size="sm" onClick={() => setTab("dashboard")} data-testid="nav-dashboard">
               Group dashboard
             </Button>
+            <SettingsPopover
+              showPills={showPills}
+              onShowPillsChange={setShowPills}
+              unlocked={unlocked}
+              onUnlockedChange={setUnlocked}
+            />
             <Button variant="ghost" size="icon" aria-label="Toggle dark mode" onClick={toggle} data-testid="button-dark-mode">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
@@ -61,6 +70,7 @@ export default function Home() {
               eventPlans={data.eventPlans}
               onSave={data.savePerson}
               onSuggestActivity={data.suggestActivity}
+              onGoToDashboard={() => setTab("dashboard")}
             />
           </>
         ) : (
@@ -73,12 +83,15 @@ export default function Home() {
             isDemo={data.isDemo}
             sessionEmail={data.sessionEmail}
             myPerson={data.myPerson(data.sessionEmail)}
+            showPills={showPills}
+            unlocked={unlocked}
             onSuggestResource={data.suggestResource}
             onVolunteerLead={data.volunteerLead}
             onSaveEventPlan={data.saveEventPlan}
             onSendSignInLink={data.sendSignInLink}
             onConfirmYachtPaid={(paid) => data.updateMyPerson({ yacht_paid: paid })}
             onSaveMieventoIntents={(intents) => data.updateMyPerson({ mievento_intents: intents })}
+            onBackToAvailability={() => setTab("entry")}
           />
         )}
       </main>

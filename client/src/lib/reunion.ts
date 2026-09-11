@@ -171,6 +171,15 @@ export const BASE_ACTIVITIES: Activity[] = [
   { id: "shopping", label: "Shopping" },
   { id: "karaoke", label: "Karaoke" },
   { id: "bay-cruise-87", label: "Bay Cruise Exclusive for 87" },
+  { id: "golf", label: "Another Golf Day exclusive for 87" },
+  { id: "bowling", label: "Bowling" },
+  { id: "chicken-coup", label: "Chicken coup" },
+  { id: "pin-ding", label: "Exclusive 87 Ping Ding" },
+  { id: "poolside-87", label: "Exclusive Poolside for 87" },
+  { id: "jog-amador-causeway", label: "Jog Amador Causeway" },
+  { id: "pickleball", label: "Pickleball" },
+  { id: "rooftop-dinner-casco", label: "Rooftop dinner casco" },
+  { id: "tennis-doubles", label: "Tennis doubles" },
 ];
 
 /** Typical time-of-day for an activity, used to auto-slot a group-planned sub-event. */
@@ -195,6 +204,9 @@ const ACTIVITY_TIME_OF_DAY: Record<string, "evening" | "day" | "any"> = {
   golf: "day",
   bowling: "any",
   "escape-room": "any",
+  "chicken-coup": "any",
+  "poolside-87": "any",
+  pickleball: "day",
 };
 
 function activityTimeOfDay(activityId: string): "evening" | "day" | "any" {
@@ -421,12 +433,45 @@ export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], 
     });
 }
 
-/** Initializes a fresh person's slots as all-Available across the whole trip, with the Yacht Club lock applied. */
+/**
+ * Default per-date overrides applied to every fresh entry — the known-event
+ * defaults the live site pre-fills so a new respondent sees a realistic
+ * starting schedule instead of a blank green grid. Days/periods not listed
+ * here default to "ok" (Available). Un-tagged "busy" entries render as an
+ * unresolved "Which event?" prompt until the person picks one.
+ */
+const DEFAULT_SLOT_OVERRIDES: Partial<Record<string, { period: Period; status: SlotStatus; tag?: string }[]>> = {
+  "2027-01-13": [{ period: "e", status: "busy", tag: "czr-napoli" }],
+  "2027-01-17": [
+    { period: "m", status: "busy" },
+    { period: "a", status: "busy" },
+  ],
+  "2027-01-19": [{ period: "e", status: "busy", tag: "coffee-house-19" }],
+  "2027-01-21": [{ period: "e", status: "busy", tag: "chicken-21" }],
+  "2027-01-22": [
+    { period: "m", status: "busy", tag: "railway-22" },
+    { period: "a", status: "busy", tag: "railway-22" },
+    { period: "e", status: "busy", tag: "pin-ding-22" },
+  ],
+  "2027-01-23": [{ period: "e", status: "busy", tag: "mega-cruise-23" }],
+  "2027-01-24": [
+    { period: "m", status: "busy" },
+    { period: "a", status: "busy" },
+  ],
+};
+
+/** Initializes a fresh person's slots as Available across the whole trip, with the known-event defaults and the Yacht Club lock applied. */
 export function initSlots(arrival: string, departure: string): PersonSlots {
   const slots: PersonSlots = {};
   let cursor = arrival;
   while (cursor <= departure) {
     slots[cursor] = { m: { s: "ok" }, a: { s: "ok" }, e: { s: "ok" } };
+    const overrides = DEFAULT_SLOT_OVERRIDES[cursor];
+    if (overrides) {
+      for (const o of overrides) {
+        slots[cursor][o.period] = o.tag ? { s: o.status, t: o.tag } : { s: o.status };
+      }
+    }
     cursor = addDays(cursor, 1);
   }
   if (slots[YACHT_LOCK.iso]) {
@@ -480,11 +525,71 @@ export function bestWindows(people: Person[], limit = 5): { iso: string; period:
   return rows.sort((a, b) => b.available - a.available).slice(0, limit);
 }
 
+/** Ranked "best windows for the group" row: percentage available per period, per day. Yacht-locked evening (Wed 20) is excluded (null) since it's mandatory for everyone. */
+export interface RankedWindowRow {
+  day: DayInfo;
+  periods: Partial<Record<Period, { available: number; total: number; pct: number } | null>>;
+}
+
+/** Group-wide best windows, ranked by average availability across periods, in a 2-column/N-row shape for the dashboard's percentage-badge layout. */
+export function bestWindowsRanked(people: Person[], limit = 6): RankedWindowRow[] {
+  const scored: (RankedWindowRow & { avg: number })[] = [];
+  for (const day of DAYS) {
+    const periods: RankedWindowRow["periods"] = {};
+    let sum = 0;
+    let count = 0;
+    for (const period of PERIODS) {
+      if (isYachtLockSlot(day.iso, period)) {
+        periods[period] = null;
+        continue;
+      }
+      const tally = tallyWindow(people, day.iso, period);
+      const inTown = people.length - tally.out.length;
+      if (inTown === 0) {
+        periods[period] = null;
+        continue;
+      }
+      const pct = Math.round((tally.ok.length / inTown) * 100);
+      periods[period] = { available: tally.ok.length, total: inTown, pct };
+      sum += pct;
+      count++;
+    }
+    if (count === 0) continue;
+    scored.push({ day, periods, avg: sum / count });
+  }
+  return scored.sort((a, b) => b.avg - a.avg).slice(0, limit).map(({ avg, ...row }) => row);
+}
+
+/** Green (high) → olive (low) text/badge color for a 0–100 availability percentage. */
+export function pctScaleColor(pct: number): string {
+  const hue = 45 + ((152 - 45) * Math.min(Math.max(pct, 0), 100)) / 100;
+  return `hsl(${hue.toFixed(0)} 48% 30%)`;
+}
+export function pctScaleBg(pct: number): string {
+  const hue = 45 + ((152 - 45) * Math.min(Math.max(pct, 0), 100)) / 100;
+  return `hsl(${hue.toFixed(0)} 48% 92%)`;
+}
+
+/** Who most recently saved/updated their entry — for the maintenance-only "last edited by" indicator. */
+export function mostRecentEditor(people: Person[]): { name: string; updated_at: string } | null {
+  const withTimestamps = people.filter((p) => p.updated_at);
+  if (withTimestamps.length === 0) return null;
+  const latest = withTimestamps.reduce((a, b) => ((a.updated_at! > b.updated_at!) ? a : b));
+  return { name: latest.name, updated_at: latest.updated_at! };
+}
+
 export interface ClusterSummary {
   activity: Activity;
   interestedCount: number;
   interestedNames: string[];
   tier: "none" | "public" | "candidate" | "spinoff";
+}
+
+/** Interest-cluster stage label shown on each cluster card, per the group's published legend. */
+export function clusterStage(count: number): "Gathering" | "Sub-event candidate" | "Spin-off" {
+  if (count >= CLUSTER_THRESHOLDS.spinoffAt) return "Spin-off";
+  if (count >= CLUSTER_THRESHOLDS.candidateAt) return "Sub-event candidate";
+  return "Gathering";
 }
 
 /** Best windows scoped to the people interested in one activity — "Day, Period — X of Y free" lines for a cluster card. */
