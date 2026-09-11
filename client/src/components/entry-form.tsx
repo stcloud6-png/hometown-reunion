@@ -14,6 +14,7 @@ import {
 import { CalendarRange, CheckCircle2, Sparkles, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import VolunteerPromptDialog from "@/components/volunteer-prompt-dialog";
+import { useToast } from "@/hooks/use-toast";
 import {
   type Activity,
   type EventPlan,
@@ -29,7 +30,10 @@ import {
   START_DATE,
   STATUS_LABEL,
   STATUS_SHORT,
+  arriveOptions,
+  departOptions,
   eventsForDate,
+  writeMyIdentity,
   groupPlannedEventsForDate,
   initSlots,
   isYachtLockSlot,
@@ -45,11 +49,6 @@ interface EntryFormProps {
   onSave: (person: Person) => Promise<void>;
   onSuggestActivity: (id: string, label: string, suggestedBy: string) => Promise<void>;
   onGoToDashboard?: () => void;
-}
-
-function toMDY(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return `${m}/${d}/${y}`;
 }
 
 function slugify(label: string): string {
@@ -77,6 +76,7 @@ const LEGEND_ITEMS: { status: SlotStatus; label: string; hint: string }[] = [
 ];
 
 export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard }: EntryFormProps) {
+  const { toast } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
   const [arrival, setArrival] = useState(initial?.arrival ?? START_DATE);
@@ -114,6 +114,32 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
       ...prev,
       [iso]: { ...prev[iso], [period]: status === "busy" ? { s: status, t: tag } : { s: status } },
     }));
+  }
+
+  /** Selecting a specific sub-event: applies it to every period the event spans that same day
+   * (e.g. an all-morning-and-afternoon tour), and lets the person know via a toast so a single
+   * click covers the whole event instead of requiring two separate slot edits. */
+  function selectEvent(iso: string, period: Period, event: { id: string; label: string; autoSlots?: Period[] }) {
+    const span = event.autoSlots && event.autoSlots.includes(period) ? event.autoSlots : [period];
+    setSlots((prev) => {
+      const next = { ...prev, [iso]: { ...prev[iso] } };
+      for (const p of span) {
+        if (isYachtLockSlot(iso, p)) continue;
+        next[iso][p] = { s: "busy" as SlotStatus, t: event.id };
+      }
+      return next;
+    });
+    if (span.length > 1) {
+      const day = DAYS.find((d) => d.iso === iso);
+      const dayLabel = day?.label ?? iso;
+      const spanPhrase =
+        span.length === 3 ? "all day" : span.map((p) => PERIOD_LABEL[p].toLowerCase()).join(" & ");
+      const markedPhrase = span.length === 3 ? "morning, afternoon and evening are marked for you" : `${spanPhrase} are marked for you`;
+      toast({
+        title: "Time slots marked",
+        description: `${event.label} runs ${dayLabel} ${spanPhrase} \u2014 ${markedPhrase}.`,
+      });
+    }
   }
 
   function toggleInterest(id: string) {
@@ -171,6 +197,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
         volunteer_support: volunteerSupport,
         volunteer_lead: volunteerLead,
       });
+      writeMyIdentity({ name: name.trim(), email: email.trim() });
       setSaved(true);
     } finally {
       setSaving(false);
@@ -215,19 +242,17 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
       <Card>
         <CardHeader>
           <CardTitle>Your name</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            First and last name so the group knows which entry is yours, plus your email so we can send you a
-            private link to view and update it whenever you return.
-          </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alex Morgan" data-testid="input-name" required />
+            <p className="text-sm text-muted-foreground">First and last name so the group knows which entry is yours.</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email address</Label>
             <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" data-testid="input-email" required />
+            <p className="text-sm text-muted-foreground">Required. We'll email you a private link to view and update your entry whenever you return.</p>
           </div>
         </CardContent>
       </Card>
@@ -245,33 +270,33 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="arrival">Arrive</Label>
-            <Input
-              id="arrival"
-              type="date"
-              min={START_DATE}
-              max={departure}
-              value={arrival}
-              onChange={(e) => updateRange(e.target.value, departure)}
-              data-testid="input-arrival"
-            />
-            <p className="text-xs text-muted-foreground" data-testid="text-arrival-phrase">
-              {toMDY(arrival)} or earlier
-            </p>
+            <Select value={arrival} onValueChange={(value) => updateRange(value, value > departure ? value : departure)}>
+              <SelectTrigger id="arrival" data-testid="input-arrival">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {arriveOptions().map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} disabled={opt.value > departure}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="departure">Depart</Label>
-            <Input
-              id="departure"
-              type="date"
-              min={arrival}
-              max={END_DATE}
-              value={departure}
-              onChange={(e) => updateRange(arrival, e.target.value)}
-              data-testid="input-departure"
-            />
-            <p className="text-xs text-muted-foreground" data-testid="text-departure-phrase">
-              {toMDY(departure)} or later
-            </p>
+            <Select value={departure} onValueChange={(value) => updateRange(value < arrival ? value : arrival, value)}>
+              <SelectTrigger id="departure" data-testid="input-departure">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {departOptions().map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} disabled={opt.value < arrival}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -326,15 +351,19 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
       <Card>
         <CardHeader>
           <CardTitle>Mark your time slots</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Everything starts as <strong>Available</strong>. Change any slot where you already have plans — choose{" "}
-            <strong>MiEvento</strong> and pick from what's scheduled that day. The <em>Yacht Club 87 Dinner/Dance</em>{" "}
-            on Wed 20 evening is already set for everyone.
-          </p>
-          <p className="text-sm italic text-muted-foreground">
-            Go through each block — a blank canvas of green reads as "free and ready to join," and the organizers
-            will plan accordingly.
-          </p>
+          <div className="text-sm text-muted-foreground space-y-1.5">
+            <p>
+              Everything starts as <span className="font-medium text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]">Available</span>.{" "}
+              <span className="underline underline-offset-2">
+                Change any slot where you already have plans — choose <strong className="font-bold">MiEvento</strong> and pick from what's scheduled that day.
+              </span>{" "}
+              The <em>Yacht Club 87 Dinner/Dance</em> on Wed 20 evening is already set for everyone.
+            </p>
+            <p className="italic text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]">
+              Go through each block — a blank canvas of green reads as "free and ready to join," and the organizers
+              will plan accordingly.
+            </p>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="overflow-x-auto rounded-md border">
@@ -356,7 +385,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                       const current = slots[day.iso]?.[period] ?? { s: "ok" as SlotStatus };
                       const statusOptions = statusesForSlot(day.iso, period);
                       const options = [
-                        ...eventsForDate(day.iso).map((e) => ({ id: e.id, label: e.label })),
+                        ...eventsForDate(day.iso).map((e) => ({ id: e.id, label: e.label, autoSlots: e.autoSlots })),
                         ...groupPlannedEventsForDate(day.iso, eventPlans, activities),
                       ];
                       return (
@@ -387,7 +416,10 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                                 : options.length > 0 && (
                                   <Select
                                     value=""
-                                    onValueChange={(value) => setSlotStatus(day.iso, period, "busy", value)}
+                                    onValueChange={(value) => {
+                                      const event = options.find((o) => o.id === value);
+                                      if (event) selectEvent(day.iso, period, event);
+                                    }}
                                   >
                                     <SelectTrigger className={cn("h-8 border-destructive/50 text-xs text-destructive")} data-testid={`select-event-${day.iso}-${period}`}>
                                       <SelectValue placeholder="Which event?" />

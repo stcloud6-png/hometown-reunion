@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Info, Download, ShieldCheck, Anchor, ClipboardCheck, CalendarHeart, Lock, ArrowLeft,
-  ChevronDown, Flame, Users, Grid3x3, CalendarClock,
+  ChevronDown, Flame, Users, Grid3x3, CalendarClock, X, Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import YachtPaymentDialog from "@/components/yacht-payment-dialog";
@@ -20,12 +20,14 @@ import {
   type ClusterResource,
   type EventPlan,
   type EventPlanStatus,
+  type MyIdentity,
   type Period,
   type Person,
   CLUSTER_RESOURCE_LINKS,
   CLUSTER_THRESHOLDS,
   DAYS,
   EVENT_PLAN_STATUS_LABEL,
+  EXPECTED_HEADCOUNT,
   MIEVENTO_INTENT_LABEL,
   PERIODS,
   PERIOD_LABEL,
@@ -36,15 +38,20 @@ import {
   clusterSummaries,
   exportAvailabilityCsv,
   formatDateRange,
+  interestPillCounts,
   isYachtLockSlot,
   labelForTag,
   mieventoDays,
   mostRecentEditor,
   pctScaleBg,
   pctScaleColor,
+  scopeByInterest,
   sharedCommitments,
   tallyWindow,
+  tallyWindowDetailed,
 } from "@/lib/reunion";
+
+const PERIOD_SHORT_LABEL: Record<Period, string> = { m: "AM", a: "PM", e: "EVE" };
 
 interface DashboardProps {
   people: Person[];
@@ -55,6 +62,7 @@ interface DashboardProps {
   isDemo: boolean;
   sessionEmail: string | null;
   myPerson: Person | null;
+  myIdentity: MyIdentity | null;
   showPills: boolean;
   unlocked: boolean;
   onSuggestResource: (resource: ClusterResource) => Promise<void>;
@@ -117,6 +125,7 @@ export default function Dashboard({
   isDemo,
   sessionEmail,
   myPerson,
+  myIdentity,
   showPills,
   unlocked,
   onSuggestResource,
@@ -127,8 +136,13 @@ export default function Dashboard({
   onSaveMieventoIntents,
   onBackToAvailability,
 }: DashboardProps) {
-  const rankedWindows = useMemo(() => bestWindowsRanked(people, 6), [people]);
-  const clusters = useMemo(() => clusterSummaries(people, activities), [people, activities]);
+  const [interestFilter, setInterestFilter] = useState<string | null>(null);
+  const [curtainOpen, setCurtainOpen] = useState(false);
+  const pillCounts = useMemo(() => interestPillCounts(people, activities), [people, activities]);
+  const filteredPeople = useMemo(() => scopeByInterest(people, interestFilter), [people, interestFilter]);
+
+  const rankedWindows = useMemo(() => bestWindowsRanked(filteredPeople, 6), [filteredPeople]);
+  const clusters = useMemo(() => clusterSummaries(filteredPeople, activities), [filteredPeople, activities]);
   const commitments = useMemo(() => sharedCommitments(people), [people]);
   const lastEditor = useMemo(() => mostRecentEditor(people), [people]);
 
@@ -140,29 +154,68 @@ export default function Dashboard({
     <div className="space-y-8" data-testid="view-dashboard">
       {isDemo && <Badge variant="secondary">Showing demo data</Badge>}
 
+      <InterestCurtain
+        pillCounts={pillCounts}
+        activeFilter={interestFilter}
+        onSelect={setInterestFilter}
+        open={curtainOpen}
+        onOpenChange={setCurtainOpen}
+        showPills={showPills}
+      />
+
+      <p className="text-xs text-muted-foreground" data-testid="text-filter-hint">
+        Filter by interest anytime — hover the left edge of the screen (or the filter button on mobile), or enable the pills here via Settings ⚙ in the top-right.
+      </p>
+
       <CollapsibleSection
         icon={<Flame className="h-5 w-5" />}
         title="Best windows for the group"
-        subcopy="Best days for the group, ranked — percentage shows how much of the group in town is free that morning, afternoon or evening."
+        subcopy="Best days for the group — bar shades show how free each morning, afternoon and evening are (hover for detail)."
         testId="section-best-windows"
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          {rankedWindows.map((row) => (
+          {rankedWindows.map((row, idx) => (
             <div key={row.day.iso} className="rounded-md border p-3" data-testid={`window-row-${row.day.iso}`}>
-              <p className="text-sm font-medium">{row.day.short}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[hsl(150_45%_32%)] text-xs font-bold text-white" data-testid={`window-rank-${row.day.iso}`}>
+                  {idx + 1}
+                </span>
+                <p className="text-sm font-medium">{row.day.short}</p>
+              </div>
+              <div className="mt-2 grid grid-cols-[2.5rem_1fr] items-center gap-x-2 gap-y-1.5">
                 {PERIODS.map((period) => {
                   const cell = row.periods[period];
+                  const locked = !cell && isYachtLockSlot(row.day.iso, period);
                   return (
-                    <span
-                      key={period}
-                      className="rounded-full px-2.5 py-1 text-xs font-semibold"
-                      style={cell ? { color: pctScaleColor(cell.pct), backgroundColor: pctScaleBg(cell.pct) } : { color: "var(--muted-foreground)" }}
-                      title={cell ? `${cell.available} of ${cell.total} free` : "Yacht Club Dinner/Dance — everyone's there"}
-                      data-testid={`window-${row.day.iso}-${period}`}
-                    >
-                      {PERIOD_LABEL[period]} {cell ? `${cell.pct}%` : "—"}
-                    </span>
+                    <Fragment key={period}>
+                      <span className="text-[10px] font-semibold uppercase text-muted-foreground">{PERIOD_SHORT_LABEL[period]}</span>
+                      {locked ? (
+                        <div
+                          className="h-5 w-full rounded-full bg-[hsl(220_10%_15%)]"
+                          title="Yacht Club 87 Dinner/Dance — everyone's there"
+                          data-testid={`window-${row.day.iso}-${period}`}
+                        />
+                      ) : cell ? (
+                        <div
+                          className="relative h-5 w-full overflow-hidden rounded-full bg-muted"
+                          title={`${cell.available} of ${cell.total} free`}
+                          data-testid={`window-${row.day.iso}-${period}`}
+                        >
+                          <div
+                            className="flex h-full items-center justify-center rounded-full text-[10px] font-bold"
+                            style={{
+                              width: `${Math.max(cell.pct, 18)}%`,
+                              backgroundColor: cell.pct < 20 ? "hsl(35 35% 78%)" : pctScaleBg(cell.pct),
+                              color: cell.pct < 20 ? "hsl(35 40% 25%)" : pctScaleColor(cell.pct),
+                            }}
+                          >
+                            {cell.pct}%
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </Fragment>
                   );
                 })}
               </div>
@@ -202,11 +255,18 @@ export default function Dashboard({
               <div key={cluster.activity.id} className="rounded-md border p-4" data-testid={`cluster-${cluster.activity.id}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{cluster.activity.label}</span>
+                    <span className="font-bold text-[hsl(43_65%_38%)] underline underline-offset-2 dark:text-[hsl(43_75%_65%)]">{cluster.activity.label}</span>
                     <Badge variant="secondary">{cluster.interestedCount} interested</Badge>
                     <Badge variant="outline" data-testid={`badge-stage-${cluster.activity.id}`}>{clusterStage(cluster.interestedCount)}</Badge>
                   </div>
                 </div>
+
+                {unlocked && (
+                  <div className="mt-2 space-y-1 rounded-md border border-dashed bg-muted/40 p-2 text-xs text-muted-foreground" data-testid={`maintenance-note-${cluster.activity.id}`}>
+                    <p>Maintenance view — every interest shared by 2+ classmates. Tune the stage thresholds from the popup that appears when you turn Maintenance on.</p>
+                    <p>Ticket-check: 5 of 9 counted in · 8% of expected {EXPECTED_HEADCOUNT} — date-locking opens at 50%</p>
+                  </div>
+                )}
 
                 {cluster.interestedNames.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -229,15 +289,15 @@ export default function Dashboard({
                 {resources.length > 0 && (
                   <div className="mt-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resources &amp; tools</p>
-                    <ul className="mt-1 list-inside list-disc text-sm">
+                    <div className="mt-1 space-y-1 text-sm">
                       {resources.map((r) => (
-                        <li key={r.url}>
+                        <p key={r.url}>
                           <a href={r.url} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
                             {r.label}
                           </a>
-                        </li>
+                        </p>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
 
@@ -249,8 +309,7 @@ export default function Dashboard({
                   ) : (
                     <VolunteerLeadForm
                       activityId={cluster.activity.id}
-                      myPerson={myPerson}
-                      sessionEmail={sessionEmail}
+                      myIdentity={myIdentity}
                       onVolunteer={onVolunteerLead}
                     />
                   )}
@@ -286,10 +345,8 @@ export default function Dashboard({
           {visibleClusters.length === 0 && (
             <p className="text-sm text-muted-foreground">No interests marked yet.</p>
           )}
-          <p className="pt-1 text-xs text-muted-foreground">
-            {unlocked
-              ? "Maintenance mode: every cluster with at least one interested classmate is shown."
-              : "More clusters appear here publicly once they reach 6 interested classmates (or are one of the top 2 most popular)."}
+          <p className="pt-1 text-xs text-muted-foreground" data-testid="text-cluster-footnote">
+            Gathering = under 10 interested · Sub-event candidate = 10+, ready to propose dates · Spin-off = 20+, plan a second session. Group sees the top 2 clusters (plus any over 6 interested). Date-locking opens on Sub-event candidates once Count-me-in passes half of the expected {EXPECTED_HEADCOUNT}.
           </p>
         </div>
       </CollapsibleSection>
@@ -300,7 +357,7 @@ export default function Dashboard({
         subcopy="Greener = more of the group can make it. Tap any cell for the full breakdown."
         testId="section-heatmap"
       >
-        <AvailabilityHeatmap people={people} onBackToAvailability={onBackToAvailability} />
+        <AvailabilityHeatmap people={filteredPeople} activities={activities} onBackToAvailability={onBackToAvailability} />
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -321,7 +378,7 @@ export default function Dashboard({
               </tr>
             </thead>
             <tbody>
-              {people.map((p) => {
+              {filteredPeople.map((p) => {
                 const interestLabels = p.interests
                   .map((id) => activities.find((a) => a.id === id)?.label)
                   .filter((l): l is string => !!l);
@@ -383,13 +440,11 @@ export default function Dashboard({
       >
         {commitments.length > 0 ? (
           <ul className="grid gap-2 sm:grid-cols-2">
-            {commitments.map(({ event, count }) => (
-              <li key={event.id} className="flex items-center justify-between rounded-md border p-2 text-sm" data-testid={`commitment-${event.id}`}>
-                <div>
-                  <p className="font-medium">{event.label}</p>
-                  {event.note && <p className="text-xs text-muted-foreground">{event.note}</p>}
-                </div>
-                <Badge variant="secondary">{count} on schedule</Badge>
+            {commitments.map(({ event, count, dates }) => (
+              <li key={event.id} className="rounded-md border p-2 text-sm" data-testid={`commitment-${event.id}`}>
+                <p className="font-medium">{event.label}</p>
+                {event.note && <p className="text-xs text-muted-foreground">{event.note}</p>}
+                <p className="mt-1 text-xs text-muted-foreground">{count} block{count === 1 ? "" : "s"} · {dates.join(", ")}</p>
               </li>
             ))}
           </ul>
@@ -431,7 +486,38 @@ export default function Dashboard({
   );
 }
 
-function AvailabilityHeatmap({ people, onBackToAvailability }: { people: Person[]; onBackToAvailability: () => void }) {
+/** Dark teal-green (100%) → medium green (75-89%) → light yellow-green (43-56%) → tan/beige (low%) heatmap fill scale. */
+function heatmapCellColor(pct: number): { bg: string; fg: string } {
+  const stops: [number, string, string][] = [
+    [0, "hsl(35 32% 80%)", "hsl(35 45% 25%)"],
+    [43, "hsl(76 42% 62%)", "hsl(90 40% 18%)"],
+    [57, "hsl(100 40% 52%)", "white"],
+    [75, "hsl(140 42% 40%)", "white"],
+    [90, "hsl(174 55% 28%)", "white"],
+    [100, "hsl(174 60% 20%)", "white"],
+  ];
+  const clamped = Math.min(Math.max(pct, 0), 100);
+  let lo = stops[0];
+  let hi = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (clamped >= stops[i][0] && clamped <= stops[i + 1][0]) {
+      lo = stops[i];
+      hi = stops[i + 1];
+      break;
+    }
+  }
+  return { bg: clamped <= lo[0] + (hi[0] - lo[0]) / 2 ? lo[1] : hi[1], fg: clamped <= lo[0] + (hi[0] - lo[0]) / 2 ? lo[2] : hi[2] };
+}
+
+function AvailabilityHeatmap({
+  people,
+  activities,
+  onBackToAvailability,
+}: {
+  people: Person[];
+  activities: Activity[];
+  onBackToAvailability: () => void;
+}) {
   const rows = useMemo(
     () =>
       DAYS.map((day) => ({
@@ -439,12 +525,13 @@ function AvailabilityHeatmap({ people, onBackToAvailability }: { people: Person[
         cells: PERIODS.map((period) => {
           const locked = isYachtLockSlot(day.iso, period);
           const tally = tallyWindow(people, day.iso, period);
+          const detailed = tallyWindowDetailed(people, day.iso, period, activities);
           const inTown = people.length - tally.out.length;
           const pct = inTown > 0 ? Math.round((tally.ok.length / inTown) * 100) : 0;
-          return { period, tally, inTown, pct, locked };
+          return { period, tally, detailed, inTown, pct, locked };
         }),
       })),
-    [people],
+    [people, activities],
   );
 
   if (people.length === 0) {
@@ -454,7 +541,7 @@ function AvailabilityHeatmap({ people, onBackToAvailability }: { people: Person[
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto">
-        <table className="w-full border-separate border-spacing-1 text-xs" data-testid="heatmap-grid">
+        <table className="w-full border-separate border-spacing-y-1 text-xs" data-testid="heatmap-grid">
           <thead>
             <tr>
               <th className="text-left text-muted-foreground">Day</th>
@@ -464,47 +551,54 @@ function AvailabilityHeatmap({ people, onBackToAvailability }: { people: Person[
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ day, cells }) => (
-              <tr key={day.iso}>
-                <td className="pr-2 text-right font-medium text-muted-foreground">{day.short}</td>
-                {cells.map(({ period, tally, inTown, pct, locked }) => {
+            {rows.map(({ day, cells }, rowIdx) => (
+              <tr key={day.iso} className={rowIdx % 2 === 1 ? "bg-muted/40" : undefined}>
+                <td className="whitespace-nowrap py-1 pr-2 text-right font-medium text-muted-foreground">
+                  <div className="leading-tight">
+                    <div>{day.weekday}</div>
+                    <div className="text-[10px] text-muted-foreground/80">{day.short.replace(`${day.weekday} `, "")}</div>
+                  </div>
+                </td>
+                {cells.map(({ period, tally, detailed, inTown, pct, locked }) => {
                   if (locked) {
                     return (
-                      <td key={period}>
+                      <td key={period} className="px-1 py-1">
                         <div
-                          className="h-8 w-20 rounded-sm border-2 border-card-border bg-muted"
+                          className="h-9 min-w-24 rounded-sm border-2 border-card-border bg-[hsl(220_10%_10%)]"
                           data-testid={`heatmap-cell-${day.iso}-${period}`}
                           title="Yacht Club 87 Dinner/Dance — everyone's there"
                         />
                       </td>
                     );
                   }
+                  const { bg, fg } = heatmapCellColor(pct);
                   return (
-                    <td key={period}>
+                    <td key={period} className="px-1 py-1">
                       <Popover>
                         <PopoverTrigger asChild>
                           <button
                             type="button"
-                            className="h-8 w-20 rounded-sm border border-card-border text-[10px] font-bold"
-                            style={{ backgroundColor: pctScaleBg(pct), color: pctScaleColor(pct) }}
+                            className="h-9 min-w-24 rounded-sm border border-card-border text-[10px] font-bold"
+                            style={{ backgroundColor: bg, color: fg }}
                             data-testid={`heatmap-cell-${day.iso}-${period}`}
                           >
                             {inTown > 0 ? `${tally.ok.length}/${inTown} \u00b7 ${pct}%` : "—"}
                           </button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-64 text-sm">
-                          <p className="font-medium">{day.label} — {PERIOD_LABEL[period]}</p>
-                          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                            <li>{STATUS_LABEL.ok}: {tally.ok.length}</li>
-                            <li>{STATUS_LABEL.maybe}: {tally.maybe.length}</li>
-                            <li>{STATUS_LABEL.busy}: {tally.busy.length}</li>
-                            <li>{STATUS_LABEL.private}: {tally.private.length}</li>
-                            <li>{STATUS_LABEL["pool-day"]}: {tally["pool-day"].length}</li>
-                            <li>Out of town: {tally.out.length}</li>
-                          </ul>
-                          {tally.ok.length > 0 && (
-                            <p className="mt-2 text-xs">Available: {tally.ok.join(", ")}</p>
-                          )}
+                        <PopoverContent className="w-72 text-sm">
+                          <p className="font-medium">{day.label} · {PERIOD_LABEL[period]}</p>
+                          <div className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+                            <p>{detailed.ok.length} available{detailed.ok.length > 0 ? `: ${detailed.ok.join(", ")}` : ""}</p>
+                            <p>{detailed.maybe.length} possibly{detailed.maybe.length > 0 ? `: ${detailed.maybe.join(", ")}` : ""}</p>
+                            <p>
+                              {detailed.busy.length} busy
+                              {detailed.busy.length > 0
+                                ? `: ${detailed.busy.map((b) => `${b.name} (${b.label})`).join(", ")}`
+                                : ""}
+                            </p>
+                            <p>{detailed.private.length} private{detailed.private.length > 0 ? `: ${detailed.private.join(", ")}` : ""}</p>
+                            <p>{detailed.out.length} out of town{detailed.out.length > 0 ? `: ${detailed.out.join(", ")}` : ""}</p>
+                          </div>
                         </PopoverContent>
                       </Popover>
                     </td>
@@ -520,7 +614,7 @@ function AvailabilityHeatmap({ people, onBackToAvailability }: { people: Person[
         <span>Fewer free</span>
         <span
           className="h-3 flex-1 rounded-full"
-          style={{ background: `linear-gradient(90deg, ${pctScaleBg(0)}, ${pctScaleBg(100)})` }}
+          style={{ background: `linear-gradient(90deg, ${heatmapCellColor(0).bg}, ${heatmapCellColor(43).bg}, ${heatmapCellColor(75).bg}, ${heatmapCellColor(100).bg})` }}
         />
         <span>More free</span>
       </div>
@@ -617,34 +711,31 @@ function RollCallCard({ people, isDemo, sessionEmail, myPerson, onSendSignInLink
 
 function VolunteerLeadForm({
   activityId,
-  myPerson,
-  sessionEmail,
+  myIdentity,
   onVolunteer,
 }: {
   activityId: string;
-  myPerson: Person | null;
-  sessionEmail: string | null;
+  myIdentity: MyIdentity | null;
   onVolunteer: (lead: ClusterLead) => Promise<void>;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [selected, setSelected] = useState(false);
-  const signedIn = !!sessionEmail && !!myPerson;
 
   async function submit() {
-    if (!myPerson) return;
+    if (!myIdentity) return;
     setSubmitting(true);
     try {
-      await onVolunteer({ activity_id: activityId, lead_name: myPerson.name, lead_email: myPerson.email ?? sessionEmail });
+      await onVolunteer({ activity_id: activityId, lead_name: myIdentity.name, lead_email: myIdentity.email });
       setSelected(true);
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (!signedIn) {
+  if (!myIdentity) {
     return (
       <p className="text-sm text-muted-foreground" data-testid={`text-volunteer-signin-${activityId}`}>
-        Sign in from the Roll call card above to volunteer as this event's Organizer.
+        Fill out your name and email in My Availability to volunteer as this event's Organizer.
       </p>
     );
   }
@@ -748,5 +839,115 @@ function EventPlanEditor({
         Save plan
       </Button>
     </div>
+  );
+}
+
+interface InterestCurtainProps {
+  pillCounts: { id: string; label: string; count: number }[];
+  activeFilter: string | null;
+  onSelect: (id: string | null) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  showPills: boolean;
+}
+
+/** Left-edge "Interests" curtain filter — hover-open on desktop, button-triggered on mobile. Instantly re-scopes the heatmap, best days and roster. */
+function InterestCurtain({ pillCounts, activeFilter, onSelect, open, onOpenChange, showPills }: InterestCurtainProps) {
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    };
+  }, []);
+
+  if (!showPills) return null;
+
+  function scheduleClose() {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => onOpenChange(false), 250);
+  }
+  function cancelClose() {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  }
+
+  return (
+    <>
+      {/* Desktop hover zone along the left edge of the viewport */}
+      <div
+        className="fixed left-0 top-0 z-40 hidden h-full w-4 md:block"
+        onMouseEnter={() => {
+          cancelClose();
+          onOpenChange(true);
+        }}
+        data-testid="curtain-hover-zone"
+      />
+
+      {/* Mobile trigger button — wrapped in a plain fixed-position div because the
+          Button component's hover-elevate utility sets position:relative with higher
+          CSS specificity than a "fixed" utility class on the Button itself would have. */}
+      <div className="fixed bottom-4 left-4 z-40 md:hidden">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 shadow-md"
+          onClick={() => onOpenChange(true)}
+          data-testid="button-curtain-mobile"
+        >
+          <Filter className="h-4 w-4" /> Filter
+        </Button>
+      </div>
+
+      {open && (
+        <div
+          className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r bg-card shadow-xl"
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+          data-testid="curtain-panel"
+        >
+          <div className="flex items-center justify-between border-b p-4">
+            <h3 className="font-semibold">Interests</h3>
+            <Button variant="ghost" size="icon" aria-label="Close" onClick={() => onOpenChange(false)} data-testid="button-curtain-close">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex-1 space-y-1 overflow-y-auto p-4">
+            <p className="mb-3 text-xs text-muted-foreground">
+              Toggle a filter — the heatmap, best days and roster update instantly.
+            </p>
+            <button
+              type="button"
+              onClick={() => onSelect(null)}
+              className={cn(
+                "block w-full rounded-full px-3 py-1.5 text-left text-sm font-medium transition-colors",
+                activeFilter === null ? "bg-foreground text-background" : "hover-elevate active-elevate-2 border",
+              )}
+              data-testid="pill-everyone"
+            >
+              Everyone
+            </button>
+            {pillCounts.map((pill) => (
+              <button
+                key={pill.id}
+                type="button"
+                onClick={() => onSelect(pill.id)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-full px-3 py-1.5 text-left text-sm font-medium transition-colors",
+                  activeFilter === pill.id ? "bg-foreground text-background" : "hover-elevate active-elevate-2 border",
+                )}
+                data-testid={`pill-${pill.id}`}
+              >
+                <span>{pill.label}</span>
+                {pill.count > 0 && (
+                  <span className={cn("ml-2 text-xs font-bold", activeFilter === pill.id ? "text-background" : "text-destructive")}>
+                    {pill.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

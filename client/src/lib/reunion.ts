@@ -316,6 +316,29 @@ function toISO(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+const dropdownDateFmt = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+
+export interface DateOption {
+  value: string;
+  label: string;
+}
+
+/** Arrive dropdown options: plain dates Jan 9–30, with "or earlier" suffix on the first (boundary) option only. */
+export function arriveOptions(): DateOption[] {
+  return DAYS.map((d, i) => ({
+    value: d.iso,
+    label: i === 0 ? `${dropdownDateFmt.format(parseISO(d.iso))} or earlier` : dropdownDateFmt.format(parseISO(d.iso)),
+  }));
+}
+
+/** Depart dropdown options: plain dates Jan 9–30, with "or later" suffix on the last (boundary) option only. */
+export function departOptions(): DateOption[] {
+  return DAYS.map((d, i) => ({
+    value: d.iso,
+    label: i === DAYS.length - 1 ? `${dropdownDateFmt.format(parseISO(d.iso))} or later` : dropdownDateFmt.format(parseISO(d.iso)),
+  }));
+}
+
 export function addDays(iso: string, n: number): string {
   const d = parseISO(iso);
   d.setUTCDate(d.getUTCDate() + n);
@@ -511,6 +534,51 @@ export function tallyWindow(people: Person[], iso: string, period: Period, activ
   return tally;
 }
 
+export interface DetailedWindowTally {
+  ok: string[];
+  maybe: string[];
+  busy: { name: string; label: string }[];
+  private: string[];
+  out: string[];
+}
+
+/** Like tallyWindow, but busy entries carry the event label (for the heatmap's per-cell breakdown popover). */
+export function tallyWindowDetailed(people: Person[], iso: string, period: Period, activities: Activity[]): DetailedWindowTally {
+  const out: DetailedWindowTally = { ok: [], maybe: [], busy: [], private: [], out: [] };
+  for (const person of people) {
+    const status = statusFor(person, iso, period);
+    if (status === "ok" || status === "pool-day") out.ok.push(person.name);
+    else if (status === "maybe") out.maybe.push(person.name);
+    else if (status === "private") out.private.push(person.name);
+    else if (status === "out") out.out.push(person.name);
+    else if (status === "busy") {
+      if (isYachtLockSlot(iso, period)) {
+        out.busy.push({ name: person.name, label: "Yacht Club 87 Dinner/Dance" });
+      } else {
+        const tag = person.slots?.[iso]?.[period]?.t;
+        out.busy.push({ name: person.name, label: tag ? labelForTag(tag, activities) : "Existing event" });
+      }
+    }
+  }
+  return out;
+}
+
+/** Interest pills in the same left-to-right/top-to-bottom order shown on the entry form, each with how many respondents picked it — for the dashboard's left-edge curtain filter. */
+export function interestPillCounts(people: Person[], activities: Activity[]): { id: string; label: string; count: number }[] {
+  const all = [...BASE_ACTIVITIES, ...activities.filter((a) => !BASE_ACTIVITIES.some((b) => b.id === a.id))];
+  return all.map((activity) => ({
+    id: activity.id,
+    label: activity.label,
+    count: people.filter((p) => p.interests?.includes(activity.id)).length,
+  }));
+}
+
+/** Scopes a people list to those interested in `activityId`; passing null/undefined returns everyone. */
+export function scopeByInterest(people: Person[], activityId: string | null | undefined): Person[] {
+  if (!activityId) return people;
+  return people.filter((p) => p.interests?.includes(activityId));
+}
+
 /** Best windows for the whole group: every day+period ranked by number available ("ok"), highest first. */
 export function bestWindows(people: Person[], limit = 5): { iso: string; period: Period; day: DayInfo; available: number; total: number }[] {
   const rows: { iso: string; period: Period; day: DayInfo; available: number; total: number }[] = [];
@@ -623,23 +691,42 @@ export function clusterSummaries(people: Person[], activities: Activity[]): Clus
 export interface SharedCommitment {
   event: ScheduledEvent;
   count: number;
+  /** Distinct dates (short label, e.g. "Tue Jan 12") this event is marked on someone's schedule. */
+  dates: string[];
 }
 
 /** Tallies how many respondents currently have each known scheduled event (Yacht Club, MiEvento week bookings, tours, pool day, ...) marked on their schedule — "times blocked by existing events the group already knows about." */
 export function sharedCommitments(people: Person[]): SharedCommitment[] {
   const counts: Record<string, number> = {};
+  const dateSets: Record<string, Set<string>> = {};
+  function markDate(eventId: string, iso: string) {
+    if (!dateSets[eventId]) dateSets[eventId] = new Set();
+    dateSets[eventId].add(iso);
+  }
   for (const person of people) {
     const seen = new Set<string>();
-    for (const day of Object.values(person.slots ?? {})) {
+    for (const [iso, day] of Object.entries(person.slots ?? {})) {
       for (const slot of Object.values(day ?? {})) {
-        if ((slot?.s === "busy" || slot?.s === "pool-day") && slot.t && !isGroupPlannedId(slot.t)) seen.add(slot.t);
+        if ((slot?.s === "busy" || slot?.s === "pool-day") && slot.t && !isGroupPlannedId(slot.t)) {
+          seen.add(slot.t);
+          markDate(slot.t, iso);
+        }
       }
     }
-    if (person.arrival <= YACHT_LOCK.iso && person.departure >= YACHT_LOCK.iso) seen.add(YACHT_LOCK.tag);
+    if (person.arrival <= YACHT_LOCK.iso && person.departure >= YACHT_LOCK.iso) {
+      seen.add(YACHT_LOCK.tag);
+      markDate(YACHT_LOCK.tag, YACHT_LOCK.iso);
+    }
     for (const id of Array.from(seen)) counts[id] = (counts[id] ?? 0) + 1;
   }
   return SCHEDULED_EVENTS.filter((e) => e.id !== "other" && counts[e.id])
-    .map((event) => ({ event, count: counts[event.id] }))
+    .map((event) => ({
+      event,
+      count: counts[event.id],
+      dates: Array.from(dateSets[event.id] ?? [])
+        .sort()
+        .map((iso) => DAYS.find((d) => d.iso === iso)?.short ?? iso),
+    }))
     .sort((a, b) => b.count - a.count);
 }
 
@@ -750,7 +837,15 @@ const STORAGE_KEYS = {
   accessToken: "hr-access-token",
   refreshToken: "hr-refresh-token",
   clusterThresholds: "cluster-thresholds",
+  /** Name + email captured on the My Availability tab — used to identify "me" for
+   * volunteer sign-up, independent of the Roll Call magic-link auth session. */
+  myIdentity: "hr-my-identity",
 } as const;
+
+export interface MyIdentity {
+  name: string;
+  email: string;
+}
 
 // ---------------------------------------------------------------------------
 // Supabase REST client (hand-rolled fetch, matching the live site — no supabase-js)
@@ -857,6 +952,17 @@ export async function supabaseRest<T = unknown>(
 }
 
 export { STORAGE_KEYS };
+
+/** Reads the name+email captured on the My Availability tab, if any. */
+export function readMyIdentity(): MyIdentity | null {
+  return storage.get<MyIdentity>(STORAGE_KEYS.myIdentity);
+}
+
+/** Persists the name+email captured on the My Availability tab so volunteer
+ * sign-up can identify "me" without requiring the Roll Call magic-link sign-in. */
+export function writeMyIdentity(identity: MyIdentity): void {
+  storage.set(STORAGE_KEYS.myIdentity, identity);
+}
 
 // ---------------------------------------------------------------------------
 // Demo/seed data — used only for local QA against stubbed routes, never

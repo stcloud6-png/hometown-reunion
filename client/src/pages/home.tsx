@@ -6,7 +6,7 @@ import Dashboard from "@/components/dashboard";
 import SettingsPopover from "@/components/settings-popover";
 import { useReunionData } from "@/lib/use-reunion-data";
 import { useDarkMode } from "@/hooks/use-dark-mode";
-import { formatDateRange, START_DATE, END_DATE } from "@/lib/reunion";
+import { formatDateRange, START_DATE, END_DATE, readMyIdentity, type MyIdentity } from "@/lib/reunion";
 
 const STUB = import.meta.env.VITE_STUB_DATA === "true";
 
@@ -16,6 +16,7 @@ export default function Home() {
   const data = useReunionData({ stub: STUB });
   const [showPills, setShowPills] = useState(true);
   const [unlocked, setUnlocked] = useState(false);
+  const [myIdentity, setMyIdentity] = useState<MyIdentity | null>(() => readMyIdentity());
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -68,7 +69,10 @@ export default function Home() {
             <EntryForm
               activities={data.activities}
               eventPlans={data.eventPlans}
-              onSave={data.savePerson}
+              onSave={async (person) => {
+                await data.savePerson(person);
+                setMyIdentity({ name: person.name, email: person.email ?? "" });
+              }}
               onSuggestActivity={data.suggestActivity}
               onGoToDashboard={() => setTab("dashboard")}
             />
@@ -83,6 +87,7 @@ export default function Home() {
             isDemo={data.isDemo}
             sessionEmail={data.sessionEmail}
             myPerson={data.myPerson(data.sessionEmail)}
+            myIdentity={myIdentity}
             showPills={showPills}
             unlocked={unlocked}
             onSuggestResource={data.suggestResource}
