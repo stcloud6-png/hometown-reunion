@@ -1,7 +1,6 @@
 import { Anchor, CalendarHeart, ClipboardCheck, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import YachtPaymentDialog from "@/components/yacht-payment-dialog";
-import MieventoDialog from "@/components/mievento-dialog";
 import MieventoTicketDialog from "@/components/mievento-ticket-dialog";
 import {
   MIEVENTO_INTENT_LABEL,
@@ -19,7 +18,6 @@ interface RollCallBarProps {
   myPerson: Person | null;
   onSendSignInLink: (email: string) => Promise<void>;
   onConfirmYachtPaid: (paid: boolean) => Promise<void>;
-  onSaveMieventoIntents: (intents: Record<string, string>) => Promise<void>;
   onSaveMieventoTicketStatus: (status: Record<string, MieventoTicketEntry>) => Promise<void>;
   /** "header" sits directly under the main site header on the Group Dashboard.
    * "footer" is the compact duplicate shown on the My Application tab after sign-in + save. */
@@ -39,7 +37,6 @@ export default function RollCallBar({
   myPerson,
   onSendSignInLink,
   onConfirmYachtPaid,
-  onSaveMieventoIntents,
   onSaveMieventoTicketStatus,
   variant = "header",
 }: RollCallBarProps) {
@@ -64,13 +61,11 @@ export default function RollCallBar({
 
   const signedIn = Boolean(sessionEmail);
   const alreadyPaidYacht = Boolean(myPerson?.yacht_paid);
-  const alreadyResponded = Boolean(myPerson?.mievento_intents && Object.keys(myPerson.mievento_intents).length > 0);
   const alreadyTicketed = Boolean(
     myPerson?.mievento_ticket_status && Object.keys(myPerson.mievento_ticket_status).length > 0,
   );
 
   const showYachtButton = signedIn && !alreadyPaidYacht;
-  const showMieventoButton = signedIn && !alreadyResponded;
   const showTicketButton = signedIn && !alreadyTicketed;
 
   return (
@@ -128,15 +123,6 @@ export default function RollCallBar({
             <span className="text-muted-foreground">
               MiEvento responses <span className="text-[10px]">({veryCount} "{MIEVENTO_INTENT_LABEL.very.toLowerCase()}" picks)</span>
             </span>
-            {showMieventoButton && (
-              <MieventoDialog
-                isDemo={isDemo}
-                sessionEmail={sessionEmail}
-                myPerson={myPerson}
-                onSendSignInLink={onSendSignInLink}
-                onSaveIntents={onSaveMieventoIntents}
-              />
-            )}
           </div>
 
           <div className="flex flex-wrap items-start gap-1.5">

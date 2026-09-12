@@ -670,9 +670,25 @@ export function tallyWindowDetailed(people: Person[], iso: string, period: Perio
   return out;
 }
 
+/**
+ * Merges the built-in seed activities with any classmate-suggested rows from the
+ * `activities` table, keeping exactly one entry per id — BASE_ACTIVITIES wins ties.
+ *
+ * A classmate suggesting a "new" activity that slugifies to an id already in
+ * BASE_ACTIVITIES (e.g. typing "Golf" → id "golf", which already exists) inserts a
+ * second `activities` row with the same id. Every function that renders or counts
+ * activities MUST merge through this helper instead of concatenating the raw arrays
+ * — otherwise that same activity renders twice (this caused the Interest Clusters
+ * duplicate-pill bug in Maintenance mode, since `clusterSummaries` mapped the raw,
+ * un-deduped list while `interestPillCounts` already deduped).
+ */
+export function mergeActivities(activities: Activity[]): Activity[] {
+  return [...BASE_ACTIVITIES, ...activities.filter((a) => !BASE_ACTIVITIES.some((b) => b.id === a.id))];
+}
+
 /** Interest pills in the same left-to-right/top-to-bottom order shown on the entry form, each with how many respondents picked it — for the dashboard's left-edge curtain filter. */
 export function interestPillCounts(people: Person[], activities: Activity[]): { id: string; label: string; count: number }[] {
-  const all = [...BASE_ACTIVITIES, ...activities.filter((a) => !BASE_ACTIVITIES.some((b) => b.id === a.id))];
+  const all = mergeActivities(activities);
   return all.map((activity) => ({
     id: activity.id,
     label: activity.label,
@@ -795,7 +811,7 @@ export function bestWindowsForActivity(people: Person[], activityId: string, lim
 
 /** Buckets each activity's interest level against CLUSTER_THRESHOLDS. */
 export function clusterSummaries(people: Person[], activities: Activity[]): ClusterSummary[] {
-  return activities.map((activity) => {
+  return mergeActivities(activities).map((activity) => {
     const interestedNames = people.filter((p) => p.interests?.includes(activity.id)).map((p) => p.name);
     const count = interestedNames.length;
     let tier: ClusterSummary["tier"] = "none";

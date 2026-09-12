@@ -8,6 +8,7 @@ import {
   type Person,
   BASE_ACTIVITIES,
   CLUSTER_THRESHOLDS,
+  mergeActivities,
   DEMO_PEOPLE,
   STORAGE_KEYS,
   storage,
@@ -79,7 +80,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     try {
       if (stub) {
         setPeople(DEMO_PEOPLE);
-        setActivities([...BASE_ACTIVITIES, ...stubActivities.current]);
+        setActivities(mergeActivities(stubActivities.current));
         setClusterResources([]);
         setClusterLeads([{ activity_id: "napoli", lead_name: "Demo Organizer" }]);
         setEventPlans([{ activity_id: "napoli", status: "open", event_date: "2027-01-13", start_time: "11:30am", venue: "Napoli", max_size: 50 }]);
@@ -96,7 +97,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         supabaseRest<AppSettingsRow[]>("/app_settings?select=*&id=eq.default", { accessToken: token }).catch(() => []),
       ]);
       setPeople(peopleRes);
-      setActivities([...BASE_ACTIVITIES, ...activitiesRes]);
+      setActivities(mergeActivities(activitiesRes));
       setClusterResources(resourcesRes);
       setClusterLeads(leadsRes);
       setEventPlans(plansRes);
@@ -187,7 +188,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     async (id: string, label: string, suggestedBy: string) => {
       if (stub) {
         stubActivities.current = [...stubActivities.current, { id, label, suggested_by: suggestedBy }];
-        setActivities([...BASE_ACTIVITIES, ...stubActivities.current]);
+        setActivities(mergeActivities(stubActivities.current));
         return;
       }
       await supabaseRest("/activities", {

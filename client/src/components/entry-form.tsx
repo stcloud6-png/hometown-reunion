@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import VolunteerPromptDialog from "@/components/volunteer-prompt-dialog";
 import YachtPaymentDialog from "@/components/yacht-payment-dialog";
 import MieventoTicketDialog from "@/components/mievento-ticket-dialog";
+import MieventoDialog from "@/components/mievento-dialog";
 import EventPickerField from "@/components/event-picker-field";
 import RollCallBar from "@/components/roll-call-bar";
 import { useToast } from "@/hooks/use-toast";
@@ -27,7 +28,6 @@ import {
   type Period,
   type Person,
   type SlotStatus,
-  BASE_ACTIVITIES,
   DAYS,
   EMAIL_PATTERN,
   END_DATE,
@@ -41,6 +41,7 @@ import {
   arriveOptions,
   departOptions,
   eventsForDate,
+  mergeActivities,
   writeMyIdentity,
   groupPlannedEventsForDate,
   initSlots,
@@ -285,6 +286,20 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     const label = newActivityLabel.trim();
     if (!label) return;
     const id = slugify(label);
+    // Guard against re-creating an activity that already exists (built-in or
+    // previously suggested) under the same slug — this is what caused the
+    // Interest Clusters duplicate-pill bug. Just mark interest in the existing
+    // one instead of inserting a second row with the same id.
+    const existing = mergeActivities(activities).find((a) => a.id === id);
+    if (existing) {
+      toast({
+        title: "Already on the list",
+        description: `"${existing.label}" is already one of the interest pills above \u2014 marked you as interested in it instead of adding a duplicate.`,
+      });
+      setInterests((prev) => (prev.includes(existing.id) ? prev : [...prev, existing.id]));
+      setNewActivityLabel("");
+      return;
+    }
     await onSuggestActivity(id, label, name.trim() || "someone");
     setInterests((prev) => [...prev, id]);
     setNewActivityLabel("");
@@ -410,13 +425,24 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                   );
                 })}
               </div>
-              <MieventoTicketDialog
-                isDemo={Boolean(isDemo)}
-                sessionEmail={sessionEmail ?? null}
-                myPerson={myPersonRow}
-                onSendSignInLink={onSendSignInLink}
-                onSaveTicketStatus={onSaveMieventoTicketStatus}
-              />
+              <div className="flex flex-wrap gap-2">
+                <MieventoTicketDialog
+                  isDemo={Boolean(isDemo)}
+                  sessionEmail={sessionEmail ?? null}
+                  myPerson={myPersonRow}
+                  onSendSignInLink={onSendSignInLink}
+                  onSaveTicketStatus={onSaveMieventoTicketStatus}
+                />
+                {onSaveMieventoIntents && (
+                  <MieventoDialog
+                    isDemo={Boolean(isDemo)}
+                    sessionEmail={sessionEmail ?? null}
+                    myPerson={myPersonRow}
+                    onSendSignInLink={onSendSignInLink}
+                    onSaveIntents={onSaveMieventoIntents}
+                  />
+                )}
+              </div>
             </div>
           )}
 
@@ -429,7 +455,6 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                 myPerson={myPersonRow}
                 onSendSignInLink={onSendSignInLink}
                 onConfirmYachtPaid={onConfirmYachtPaid ?? (async () => {})}
-                onSaveMieventoIntents={onSaveMieventoIntents ?? (async () => {})}
                 onSaveMieventoTicketStatus={onSaveMieventoTicketStatus ?? (async () => {})}
                 variant="footer"
               />
@@ -585,7 +610,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            {[...BASE_ACTIVITIES, ...activities.filter((a) => !BASE_ACTIVITIES.some((b) => b.id === a.id))].map((activity) => {
+            {mergeActivities(activities).map((activity) => {
               const active = interests.includes(activity.id);
               return (
                 <button
