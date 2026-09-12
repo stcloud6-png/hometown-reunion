@@ -38,7 +38,17 @@ export interface Person {
   volunteer_lead?: boolean | null;
   yacht_paid?: boolean | null;
   mievento_intents?: Record<string, string> | null;
+  /** Per sub-event ticket status for the 4 "tickets coming soon" MiEvento events (keyed by ScheduledEvent id), e.g. `{ "mega-cruise-23": { status: "purchased" } }`. */
+  mievento_ticket_status?: Record<string, MieventoTicketEntry> | null;
   updated_at?: string;
+}
+
+export type MieventoTicketStatusValue = "not_registered" | "researching" | "purchased";
+
+export interface MieventoTicketEntry {
+  status: MieventoTicketStatusValue;
+  /** Optional free text: "is there any other info that would help you decide to go?" */
+  note?: string;
 }
 
 export interface Activity {
@@ -309,6 +319,35 @@ export const MIEVENTO_INTENT_LABEL: Record<MieventoIntent, string> = {
 /** The core MiEvento window as a list of DayInfo, for the interest triage dialog. */
 export function mieventoDays(): DayInfo[] {
   return DAYS.filter((d) => d.iso >= MIEVENTO_START && d.iso <= MIEVENTO_END);
+}
+
+/** Where classmates go to actually buy MiEvento tickets. */
+export const MIEVENTO_TICKET_URL = "https://www.mieventos.com/event-multiple-detail/czr-2027";
+
+export const MIEVENTO_TICKET_STATUSES: MieventoTicketStatusValue[] = ["not_registered", "researching", "purchased"];
+export const MIEVENTO_TICKET_STATUS_LABEL: Record<MieventoTicketStatusValue, string> = {
+  not_registered: "Haven't registered yet",
+  researching: "Looking into it",
+  purchased: "Purchased my tickets",
+};
+
+/**
+ * The MiEvento sub-events flagged "tickets coming soon" in the schedule —
+ * these are the ones that make up the MiEvento shopping list, since they're
+ * the events classmates still need to go register/pay for externally.
+ */
+export function mieventoShoppingEvents(): ScheduledEvent[] {
+  return SCHEDULED_EVENTS.filter((e) => e.soon);
+}
+
+/** Tallies each ticket status across everyone, for one MiEvento sub-event id. */
+export function mieventoTicketTally(people: Person[], eventId: string): Record<MieventoTicketStatusValue, number> {
+  const tally: Record<MieventoTicketStatusValue, number> = { not_registered: 0, researching: 0, purchased: 0 };
+  for (const p of people) {
+    const entry = p.mievento_ticket_status?.[eventId];
+    if (entry?.status) tally[entry.status] += 1;
+  }
+  return tally;
 }
 
 export const MAINTENANCE_PIN = "3817";
@@ -1074,10 +1113,18 @@ export const DEMO_PEOPLE: Person[] = [
     [12, "m", "busy", "golf-21"],
     [12, "a", "busy", "golf-21"],
     [13, "m", "busy", "railway-22"],
-  ], ["railway-87", "deep-sea-fishing", "cruise-87"], { email: "marcus.demo@example.com", yacht_paid: true }),
+  ], ["railway-87", "deep-sea-fishing", "cruise-87"], {
+    email: "marcus.demo@example.com",
+    yacht_paid: true,
+    mievento_ticket_status: { "railway-22": { status: "purchased" }, "mega-cruise-23": { status: "researching" } },
+  }),
   buildDemoPerson("Danny Whitfield", 4, 10, [
     [8, "m", "busy", "transit-17"],
     [8, "a", "busy", "transit-17"],
-  ], ["napoli", "coronado", "casino"], { email: "danny.demo@example.com", mievento_intents: { "2027-01-17": "very", "2027-01-18": "somewhat" } }),
+  ], ["napoli", "coronado", "casino"], {
+    email: "danny.demo@example.com",
+    mievento_intents: { "2027-01-17": "very", "2027-01-18": "somewhat" },
+    mievento_ticket_status: { "coffee-house-19": { status: "not_registered", note: "Waiting to see who else is going first." } },
+  }),
   buildDemoPerson("Jerry Pankow", 0, 21, [], ["napoli", "hiking", "escape-room"]),
 ];

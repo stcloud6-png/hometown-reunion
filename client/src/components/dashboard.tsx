@@ -10,11 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Info, Download, ShieldCheck, Anchor, ClipboardCheck, CalendarHeart, Lock, ArrowLeft,
-  ChevronDown, Flame, Users, Grid3x3, CalendarClock, X, Clock,
+  ChevronDown, Flame, Users, Grid3x3, CalendarClock, X, Clock, Ticket, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import YachtPaymentDialog from "@/components/yacht-payment-dialog";
 import MieventoDialog from "@/components/mievento-dialog";
+import MieventoTicketDialog from "@/components/mievento-ticket-dialog";
 import {
   type Activity,
   type ClusterLead,
@@ -22,6 +23,7 @@ import {
   type ClusterThresholds,
   type EventPlan,
   type EventPlanStatus,
+  type MieventoTicketEntry,
   type MyIdentity,
   type Period,
   type Person,
@@ -31,6 +33,8 @@ import {
   EVENT_PLAN_STATUS_LABEL,
   EXPECTED_HEADCOUNT,
   MIEVENTO_INTENT_LABEL,
+  MIEVENTO_TICKET_STATUS_LABEL,
+  MIEVENTO_TICKET_URL,
   PERIODS,
   PERIOD_LABEL,
   STATUS_LABEL,
@@ -47,6 +51,8 @@ import {
   mostRecentEditor,
   pctScaleBg,
   pctScaleColor,
+  mieventoShoppingEvents,
+  mieventoTicketTally,
   recentEditors,
   scopeByInterest,
   sharedCommitments,
@@ -93,6 +99,7 @@ interface DashboardProps {
   onSendSignInLink: (email: string) => Promise<void>;
   onConfirmYachtPaid: (paid: boolean) => Promise<void>;
   onSaveMieventoIntents: (intents: Record<string, string>) => Promise<void>;
+  onSaveMieventoTicketStatus: (status: Record<string, MieventoTicketEntry>) => Promise<void>;
   onBackToAvailability: () => void;
 }
 
@@ -159,6 +166,7 @@ export default function Dashboard({
   onSendSignInLink,
   onConfirmYachtPaid,
   onSaveMieventoIntents,
+  onSaveMieventoTicketStatus,
   onBackToAvailability,
 }: DashboardProps) {
   const [interestFilter, setInterestFilter] = useState<string | null>(null);
@@ -270,6 +278,7 @@ export default function Dashboard({
           onSendSignInLink={onSendSignInLink}
           onConfirmYachtPaid={onConfirmYachtPaid}
           onSaveMieventoIntents={onSaveMieventoIntents}
+          onSaveMieventoTicketStatus={onSaveMieventoTicketStatus}
         />
       )}
 
@@ -386,6 +395,44 @@ export default function Dashboard({
           <p className="pt-1 text-xs text-muted-foreground lg:col-span-2" data-testid="text-cluster-footnote">
             Gathering = under {thresholds.candidateAt} interested · Sub-event candidate = {thresholds.candidateAt}+, ready to propose dates · Spin-off = {thresholds.spinoffAt}+, plan a second session. Group sees the top {thresholds.publicTop} clusters (plus any over {thresholds.publicMinInterest} interested). Date-locking opens on Sub-event candidates once Count-me-in passes half of the expected {EXPECTED_HEADCOUNT}.
           </p>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        icon={<Ticket className="h-5 w-5" />}
+        title="MiEvento tickets"
+        subcopy="These MiEvento sub-events need tickets bought directly through MiEvento — see where the group stands and register when you're ready."
+        testId="section-mievento-tickets"
+      >
+        <div className="space-y-4">
+          <Button asChild size="sm" data-testid="link-mievento-buy-tickets">
+            <a href={MIEVENTO_TICKET_URL} target="_blank" rel="noreferrer">
+              <ExternalLink className="mr-1 h-4 w-4" /> Buy MiEvento tickets
+            </a>
+          </Button>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {mieventoShoppingEvents().map((event) => {
+              const tally = mieventoTicketTally(people, event.id);
+              return (
+                <div key={event.id} className="rounded-md border p-3" data-testid={`ticket-shopping-${event.id}`}>
+                  <p className="text-sm font-medium">{event.label}</p>
+                  {event.note && <p className="text-xs text-muted-foreground">{event.note}</p>}
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    <span>{tally.purchased} purchased</span>
+                    <span>{tally.researching} looking into it</span>
+                    <span>{tally.not_registered} not registered yet</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <MieventoTicketDialog
+            isDemo={isDemo}
+            sessionEmail={sessionEmail}
+            myPerson={myPerson}
+            onSendSignInLink={onSendSignInLink}
+            onSaveTicketStatus={onSaveMieventoTicketStatus}
+          />
         </div>
       </CollapsibleSection>
 
@@ -702,9 +749,10 @@ interface RollCallCardProps {
   onSendSignInLink: (email: string) => Promise<void>;
   onConfirmYachtPaid: (paid: boolean) => Promise<void>;
   onSaveMieventoIntents: (intents: Record<string, string>) => Promise<void>;
+  onSaveMieventoTicketStatus: (status: Record<string, MieventoTicketEntry>) => Promise<void>;
 }
 
-function RollCallCard({ people, isDemo, sessionEmail, myPerson, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents }: RollCallCardProps) {
+function RollCallCard({ people, isDemo, sessionEmail, myPerson, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus }: RollCallCardProps) {
   const attending = people.filter((p) => p.attending === true);
   const notSure = people.filter((p) => p.attending === false);
   const unanswered = people.filter((p) => p.attending == null);
@@ -715,6 +763,11 @@ function RollCallCard({ people, isDemo, sessionEmail, myPerson, onSendSignInLink
   const days = mieventoDays();
   const responded = people.filter((p) => p.mievento_intents && Object.keys(p.mievento_intents).length > 0);
   const veryCount = people.reduce((sum, p) => sum + days.filter((d) => p.mievento_intents?.[d.iso] === "very").length, 0);
+
+  const ticketEvents = mieventoShoppingEvents();
+  const ticketTallies = ticketEvents.map((e) => mieventoTicketTally(people, e.id));
+  const ticketsPurchased = ticketTallies.reduce((sum, t) => sum + t.purchased, 0);
+  const ticketsResearching = ticketTallies.reduce((sum, t) => sum + t.researching, 0);
 
   return (
     <Card data-testid="card-roll-call">
@@ -727,7 +780,7 @@ function RollCallCard({ people, isDemo, sessionEmail, myPerson, onSendSignInLink
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="rounded-md border p-3">
             <p className="text-2xl font-semibold text-primary">{attending.length}</p>
             <p className="text-sm text-muted-foreground">Count me in</p>
@@ -766,6 +819,23 @@ function RollCallCard({ people, isDemo, sessionEmail, myPerson, onSendSignInLink
                 myPerson={myPerson}
                 onSendSignInLink={onSendSignInLink}
                 onSaveIntents={onSaveMieventoIntents}
+              />
+            </div>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="flex items-center gap-1 text-2xl font-semibold text-primary">
+              <Ticket className="h-5 w-5" /> {ticketsPurchased}
+            </p>
+            <p className="text-sm text-muted-foreground">Tickets purchased</p>
+            <p className="text-xs text-muted-foreground">{ticketsResearching} looking into it</p>
+            <div className="mt-2">
+              <MieventoTicketDialog
+                isDemo={isDemo}
+                sessionEmail={sessionEmail}
+                myPerson={myPerson}
+                onSendSignInLink={onSendSignInLink}
+                onSaveTicketStatus={onSaveMieventoTicketStatus}
+                compact
               />
             </div>
           </div>

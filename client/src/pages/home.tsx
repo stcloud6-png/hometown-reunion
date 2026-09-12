@@ -124,6 +124,7 @@ export default function Home() {
             onSendSignInLink={data.sendSignInLink}
             onConfirmYachtPaid={(paid) => data.updateMyPerson({ yacht_paid: paid })}
             onSaveMieventoIntents={(intents) => data.updateMyPerson({ mievento_intents: intents })}
+            onSaveMieventoTicketStatus={(status) => data.updateMyPerson({ mievento_ticket_status: status })}
             onBackToAvailability={() => setTab("entry")}
           />
         )}
