@@ -36,8 +36,10 @@ import {
   writeMyIdentity,
   groupPlannedEventsForDate,
   initSlots,
+  isGroupPlannedId,
   isYachtLockSlot,
   labelForTag,
+  eventCategoryClass,
   mieventoOrEventLabel,
   statusesForSlot,
 } from "@/lib/reunion";
@@ -385,7 +387,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                       const current = slots[day.iso]?.[period] ?? { s: "ok" as SlotStatus };
                       const statusOptions = statusesForSlot(day.iso, period);
                       const options = [
-                        ...eventsForDate(day.iso).map((e) => ({ id: e.id, label: e.label, autoSlots: e.autoSlots })),
+                        ...eventsForDate(day.iso).map((e) => ({ id: e.id, label: e.label, note: e.note, autoSlots: e.autoSlots })),
                         ...groupPlannedEventsForDate(day.iso, eventPlans, activities),
                       ];
                       return (
@@ -411,28 +413,37 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                                   ))}
                                 </SelectContent>
                               </Select>
-                              {current.s === "busy" && (current.t
+                              {current.s === "busy" && (current.t && isGroupPlannedId(current.t)
                                 ? <p className={cn("rounded-md px-2 py-1 text-xs", STATUS_COLOR.busy)}>{labelForTag(current.t, activities)}</p>
-                                : options.length > 0 && (
-                                  <Select
-                                    value=""
-                                    onValueChange={(value) => {
-                                      const event = options.find((o) => o.id === value);
-                                      if (event) selectEvent(day.iso, period, event);
-                                    }}
-                                  >
-                                    <SelectTrigger className={cn("h-8 border-destructive/50 text-xs text-destructive")} data-testid={`select-event-${day.iso}-${period}`}>
-                                      <SelectValue placeholder="Which event?" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {options.map((o) => (
-                                        <SelectItem key={o.id} value={o.id}>
-                                          {o.label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                ))}
+                                : options.length > 0 && (() => {
+                                  const category = current.t ? eventCategoryClass(current.t) : undefined;
+                                  return (
+                                    <Select
+                                      value={current.t ?? ""}
+                                      onValueChange={(value) => {
+                                        const event = options.find((o) => o.id === value);
+                                        if (event) selectEvent(day.iso, period, event);
+                                      }}
+                                    >
+                                      <SelectTrigger
+                                        className={cn(
+                                          "h-8 text-xs",
+                                          current.t ? cn("border-border/60 bg-card", category) : "tag-unanswered",
+                                        )}
+                                        data-testid={`select-event-${day.iso}-${period}`}
+                                      >
+                                        <SelectValue placeholder="Which event?" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {options.map((o) => (
+                                          <SelectItem key={o.id} value={o.id} className={eventCategoryClass(o.id)}>
+                                            {o.note ? `${o.label} (${o.note})` : o.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  );
+                                })())}
                             </div>
                           )}
                         </td>

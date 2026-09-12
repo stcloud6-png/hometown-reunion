@@ -360,4 +360,34 @@
     background-color: var(--status-pool-bg);
     color: var(--status-pool-fg);
   }
+
+  /* Jan 17–24 MiEvento sub-event resolution colors (matched to live reference site) */
+  .text-blue-event, .text-blue-event-option {
+    color: #1147bb;
+    font-weight: 700;
+  }
+  .dark .text-blue-event, .dark .text-blue-event-option {
+    color: #70aefb;
+  }
+  .text-soon-event, .text-soon-event-option {
+    color: #6c819d;
+  }
+  .dark .text-soon-event, .dark .text-soon-event-option {
+    color: #99a7b8;
+  }
+  .text-soft-event, .text-soft-event-option {
+    color: #a3a3a3;
+  }
+  .dark .text-soft-event, .dark .text-soft-event-option {
+    color: #949494;
+  }
+  .tag-unanswered {
+    color: #b42222;
+    font-weight: 700;
+    border-color: #b4222273;
+  }
+  .dark .tag-unanswered {
+    color: #e87373;
+    border-color: #e8737373;
+  }
 }

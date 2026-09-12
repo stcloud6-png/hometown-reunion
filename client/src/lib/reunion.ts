@@ -442,8 +442,37 @@ export function labelForTag(tag: string, activities: Activity[]): string {
   return EVENT_LABEL_BY_ID[tag] ?? tag;
 }
 
+const SCHEDULED_EVENT_BY_ID: Record<string, ScheduledEvent> = Object.fromEntries(
+  SCHEDULED_EVENTS.map((e) => [e.id, e]),
+);
+
+/** Label including the parenthetical timing/ticket note, e.g. "Railway (Fri 22 morning &
+ * afternoon \u2014 tickets coming soon)" \u2014 used only for the live Jan 17\u201324 sub-event picker,
+ * where retaining that context (timeframe / ticket status) matters. Other surfaces (roster,
+ * heatmap tooltips) keep using the plain `labelForTag` label. */
+export function labelWithNoteForTag(tag: string, activities: Activity[]): string {
+  if (isGroupPlannedId(tag)) return labelForTag(tag, activities);
+  const event = SCHEDULED_EVENT_BY_ID[tag];
+  if (!event) return labelForTag(tag, activities);
+  return event.note ? `${event.label} (${event.note})` : event.label;
+}
+
+/** Color/weight category for a resolved MiEvento sub-event tag, matched to the live reference
+ * site: "blue" for headline picks, "soon" for tickets-pending, "soft" for optional add-ons,
+ * else muted. Group-planned (czr-) tags are handled by their own cluster styling and return
+ * undefined here so callers leave that path untouched. */
+export function eventCategoryClass(tag: string | undefined): string | undefined {
+  if (!tag || isGroupPlannedId(tag)) return undefined;
+  const event = SCHEDULED_EVENT_BY_ID[tag];
+  if (!event) return undefined;
+  if (event.blue) return "text-blue-event";
+  if (event.soon) return "text-soon-event";
+  if (event.soft) return "text-soft-event";
+  return "text-muted-foreground";
+}
+
 /** Synthetic selectable sub-events generated from open event plans landing on this date. */
-export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], activities: Activity[]): { id: string; label: string; autoSlots: Period[] }[] {
+export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], activities: Activity[]): { id: string; label: string; note?: string; autoSlots: Period[] }[] {
   return eventPlans
     .filter((p) => p.status === "open" && p.event_date === iso)
     .map((p) => {
