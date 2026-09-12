@@ -275,7 +275,7 @@ export default function Dashboard({
         defaultOpen
         testId="section-interest-clusters"
       >
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {visibleClusters.map((cluster) => {
             const plan = eventPlans.find((p) => p.activity_id === cluster.activity.id);
             const lead = clusterLeads.find((l) => l.activity_id === cluster.activity.id);
@@ -377,9 +377,9 @@ export default function Dashboard({
             );
           })}
           {visibleClusters.length === 0 && (
-            <p className="text-sm text-muted-foreground">No interests marked yet.</p>
+            <p className="text-sm text-muted-foreground lg:col-span-2">No interests marked yet.</p>
           )}
-          <p className="pt-1 text-xs text-muted-foreground" data-testid="text-cluster-footnote">
+          <p className="pt-1 text-xs text-muted-foreground lg:col-span-2" data-testid="text-cluster-footnote">
             Gathering = under {thresholds.candidateAt} interested · Sub-event candidate = {thresholds.candidateAt}+, ready to propose dates · Spin-off = {thresholds.spinoffAt}+, plan a second session. Group sees the top {thresholds.publicTop} clusters (plus any over {thresholds.publicMinInterest} interested). Date-locking opens on Sub-event candidates once Count-me-in passes half of the expected {EXPECTED_HEADCOUNT}.
           </p>
         </div>
