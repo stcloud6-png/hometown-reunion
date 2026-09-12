@@ -467,12 +467,12 @@ export function fromGroupPlannedId(id: string): string {
   return id.slice(4);
 }
 
-/** Human label for any busy-slot tag id, prefixing "(group-planned)" for czr- ids. */
+/** Human label for any busy-slot tag id, prefixing "(BHS87 event)" for czr- ids. */
 export function labelForTag(tag: string, activities: Activity[]): string {
   if (isGroupPlannedId(tag)) {
     const activityId = fromGroupPlannedId(tag);
     const base = activities.find((a) => a.id === activityId)?.label ?? BASE_ACTIVITIES.find((a) => a.id === activityId)?.label ?? activityId;
-    return `${base} (group-planned)`;
+    return `${base} (BHS87 event)`;
   }
   return EVENT_LABEL_BY_ID[tag] ?? tag;
 }
@@ -517,7 +517,7 @@ export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], 
       const base = activities.find((a) => a.id === p.activity_id) ?? BASE_ACTIVITIES.find((a) => a.id === p.activity_id);
       return {
         id: toGroupPlannedId(p.activity_id),
-        label: `${base?.label ?? p.activity_id} (group-planned)`,
+        label: `${base?.label ?? p.activity_id} (BHS87 event)`,
         autoSlots: autoSlotsForTimeOfDay(activityTimeOfDay(p.activity_id)),
       };
     })

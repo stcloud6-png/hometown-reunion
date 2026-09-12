@@ -12,6 +12,10 @@ interface YachtPaymentDialogProps {
   myPerson: Person | null;
   onSendSignInLink: (email: string) => Promise<void>;
   onConfirmPaid: (paid: boolean) => Promise<void>;
+  /** Open the dialog immediately on mount — used to auto-prompt right after someone saves their availability. Still renders the normal trigger button underneath so it can be reopened later. */
+  autoOpen?: boolean;
+  /** Prefills the email field when there's no session yet — e.g. the email just typed on the availability form. */
+  defaultEmail?: string;
 }
 
 /**
@@ -21,9 +25,9 @@ interface YachtPaymentDialogProps {
  * gates the confirm step behind the same magic-link sign-in used by the
  * Event Organizer invite flow, rather than allowing anonymous writes.
  */
-export default function YachtPaymentDialog({ isDemo, sessionEmail, myPerson, onSendSignInLink, onConfirmPaid }: YachtPaymentDialogProps) {
-  const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState(sessionEmail ?? "");
+export default function YachtPaymentDialog({ isDemo, sessionEmail, myPerson, onSendSignInLink, onConfirmPaid, autoOpen, defaultEmail }: YachtPaymentDialogProps) {
+  const [open, setOpen] = useState(Boolean(autoOpen));
+  const [email, setEmail] = useState(sessionEmail ?? defaultEmail ?? "");
   const [linkSent, setLinkSent] = useState(false);
   const [sending, setSending] = useState(false);
   const [confirming, setConfirming] = useState(false);

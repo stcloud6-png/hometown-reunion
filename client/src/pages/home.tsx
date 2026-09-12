@@ -4,9 +4,10 @@ import { Filter, Moon, Sun } from "lucide-react";
 import EntryForm from "@/components/entry-form";
 import Dashboard from "@/components/dashboard";
 import SettingsPopover from "@/components/settings-popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReunionData } from "@/lib/use-reunion-data";
 import { useDarkMode } from "@/hooks/use-dark-mode";
-import { formatDateRange, START_DATE, END_DATE, readMyIdentity, type MyIdentity } from "@/lib/reunion";
+import { readMyIdentity, type MyIdentity } from "@/lib/reunion";
 
 const STUB = import.meta.env.VITE_STUB_DATA === "true";
 
@@ -27,7 +28,7 @@ export default function Home() {
             <img src={`${import.meta.env.BASE_URL}reunion-logo.jpg`} alt="CZR BHS87 Reunion" className="h-10 w-10 rounded-full object-cover" />
             <div>
               <p className="text-sm font-semibold leading-tight">CZR BHS87 Reunion</p>
-              <p className="text-xs text-muted-foreground">{formatDateRange(START_DATE, END_DATE)}, 2027</p>
+              <p className="text-xs text-muted-foreground">Jan 17 – 24, 2027</p>
             </div>
           </div>
           <nav className="flex items-center gap-2">
@@ -38,9 +39,16 @@ export default function Home() {
               Group dashboard
             </Button>
             {tab === "dashboard" && showPills && (
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCurtainOpen(true)} data-testid="button-curtain-header">
-                <Filter className="h-4 w-4" /> Filter
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCurtainOpen(true)} data-testid="button-curtain-header">
+                    <Filter className="h-4 w-4" /> Filter
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[220px] text-xs">
+                  Filter by interest anytime — use Filter button or hover the left edge of the screen.
+                </TooltipContent>
+              </Tooltip>
             )}
             <SettingsPopover
               showPills={showPills}
@@ -65,7 +73,7 @@ export default function Home() {
               <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">CZR BHS87</h1>
               <p className="font-serif text-lg italic text-muted-foreground">The Meetup &amp; Planning Organizer</p>
               <p className="max-w-xl text-muted-foreground">
-                Panama &middot; January 9&ndash;30, 2027. Tell the group when you're around and what you're up for
+                CZR January 17&ndash;24, 2027. Tell the group when you're around and what you're up for
                 &mdash; we'll find the times that work for the most of us.
               </p>
               <Button asChild size="lg" className="mt-2 rounded-full px-8" data-testid="button-mark-availability">
@@ -83,6 +91,11 @@ export default function Home() {
               }}
               onSuggestActivity={data.suggestActivity}
               onGoToDashboard={() => setTab("dashboard")}
+              people={data.people}
+              isDemo={data.isDemo}
+              sessionEmail={data.sessionEmail}
+              onSendSignInLink={data.sendSignInLink}
+              onConfirmYachtPaid={(paid) => data.updateMyPerson({ yacht_paid: paid })}
             />
           </>
         ) : (

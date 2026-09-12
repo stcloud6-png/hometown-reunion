@@ -159,16 +159,20 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const savePerson = useCallback(
     async (person: Person) => {
       if (stub) {
+        // Merge onto the existing row (matching production's PostgREST
+        // merge-duplicates upsert, which only touches columns present in
+        // the payload) so fields the form doesn't send — yacht_paid,
+        // mievento_intents — survive a re-save during local/stub QA.
         setPeople((prev) => {
           const idx = prev.findIndex((p) => p.name === person.name);
           if (idx === -1) return [...prev, person];
           const next = [...prev];
-          next[idx] = person;
+          next[idx] = { ...next[idx], ...person };
           return next;
         });
         return;
       }
-      await supabaseRest("/people", {
+      await supabaseRest("/people?on_conflict=name", {
         method: "POST",
         accessToken: session?.accessToken,
         prefer: "resolution=merge-duplicates,return=minimal",
@@ -313,7 +317,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         setPeople((prev) => prev.map((p) => ((p.email ?? "").trim().toLowerCase() === target ? { ...p, ...patch } : p)));
         return;
       }
-      await supabaseRest("/people", {
+      await supabaseRest("/people?on_conflict=name", {
         method: "POST",
         accessToken: session.accessToken,
         prefer: "resolution=merge-duplicates,return=minimal",

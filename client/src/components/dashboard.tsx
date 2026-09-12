@@ -62,6 +62,14 @@ function isRalphFurlong(myIdentity: MyIdentity | null, myPerson: Person | null):
   return candidates.some((n) => n?.trim().toLowerCase() === RALPH_FURLONG);
 }
 
+/** True when the signed-in person's email matches the cluster lead's email, case-insensitively. */
+function isClusterLead(lead: ClusterLead | undefined, sessionEmail: string | null, myIdentity: MyIdentity | null): boolean {
+  if (!lead?.lead_email) return false;
+  const myEmail = sessionEmail ?? myIdentity?.email ?? null;
+  if (!myEmail) return false;
+  return myEmail.trim().toLowerCase() === lead.lead_email.trim().toLowerCase();
+}
+
 const PERIOD_SHORT_LABEL: Record<Period, string> = { m: "AM", a: "PM", e: "EVE" };
 
 interface DashboardProps {
@@ -180,10 +188,6 @@ export default function Dashboard({
         onOpenChange={onCurtainOpenChange}
         showPills={showPills}
       />
-
-      <p className="text-xs text-muted-foreground" data-testid="text-filter-hint">
-        Filter by interest anytime — hover the left edge of the screen, or use the Filter button in the header, or enable the pills here via Settings ⚙ in the top-right.
-      </p>
 
       <CollapsibleSection
         icon={<Flame className="h-5 w-5" />}
@@ -365,7 +369,7 @@ export default function Dashboard({
                         </p>
                       )}
                       <p className="mt-2 text-xs text-muted-foreground">It's also reflected on your schedule in "Mark your time slots."</p>
-                      {unlocked && (
+                      {(unlocked || isClusterLead(lead, sessionEmail, myIdentity)) && (
                         <EventPlanEditor activityId={cluster.activity.id} initial={plan} onSave={onSaveEventPlan} sessionEmail={sessionEmail} />
                       )}
                     </div>
@@ -489,9 +493,11 @@ export default function Dashboard({
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => exportAvailabilityCsv(people, activities)} data-testid="button-export">
-            <Download className="mr-1 h-4 w-4" /> Export CSV
-          </Button>
+          {unlocked && (
+            <Button variant="outline" size="sm" onClick={() => exportAvailabilityCsv(people, activities)} data-testid="button-export">
+              <Download className="mr-1 h-4 w-4" /> Export CSV
+            </Button>
+          )}
           {unlocked && (
             <Tooltip>
               <TooltipTrigger asChild>

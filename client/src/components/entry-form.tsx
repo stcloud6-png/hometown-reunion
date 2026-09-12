@@ -14,6 +14,7 @@ import {
 import { CalendarRange, CheckCircle2, Lock, Sparkles, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import VolunteerPromptDialog from "@/components/volunteer-prompt-dialog";
+import YachtPaymentDialog from "@/components/yacht-payment-dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   type Activity,
@@ -51,6 +52,12 @@ interface EntryFormProps {
   onSave: (person: Person) => Promise<void>;
   onSuggestActivity: (id: string, label: string, suggestedBy: string) => Promise<void>;
   onGoToDashboard?: () => void;
+  /** Needed to auto-prompt the Yacht Club payment reminder right after a fresh save. */
+  people?: Person[];
+  isDemo?: boolean;
+  sessionEmail?: string | null;
+  onSendSignInLink?: (email: string) => Promise<void>;
+  onConfirmYachtPaid?: (paid: boolean) => Promise<void>;
 }
 
 function slugify(label: string): string {
@@ -77,7 +84,7 @@ const LEGEND_ITEMS: { status: SlotStatus; label: string; hint: string }[] = [
   { status: "private", label: "Private", hint: "Private / unavailable" },
 ];
 
-export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard }: EntryFormProps) {
+export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid }: EntryFormProps) {
   const { toast } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
@@ -186,6 +193,10 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
       setValidationError("Your arrival date must be before your departure date.");
       return;
     }
+    if (attending === null) {
+      setValidationError("Please choose Count me in or Not sure yet in the Ticket-check section below.");
+      return;
+    }
     setSaving(true);
     try {
       await onSave({
@@ -207,6 +218,11 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   }
 
   if (saved) {
+    const savedEmail = email.trim().toLowerCase();
+    const myPersonRow = savedEmail
+      ? people?.find((p) => (p.email ?? "").trim().toLowerCase() === savedEmail) ?? null
+      : null;
+    const alreadyPaidYacht = Boolean(myPersonRow?.yacht_paid);
     return (
       <Card className="max-w-xl mx-auto" data-testid="card-confirmation">
         <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
@@ -231,6 +247,17 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
             >
               Click here for Group Dashboard
             </button>
+          )}
+          {onSendSignInLink && onConfirmYachtPaid && (
+            <YachtPaymentDialog
+              isDemo={Boolean(isDemo)}
+              sessionEmail={sessionEmail ?? null}
+              myPerson={myPersonRow}
+              onSendSignInLink={onSendSignInLink}
+              onConfirmPaid={onConfirmYachtPaid}
+              autoOpen={!alreadyPaidYacht}
+              defaultEmail={email}
+            />
           )}
         </CardContent>
       </Card>
@@ -265,8 +292,8 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
             <CalendarRange className="h-5 w-5" /> When are you in the area?
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            You'll only mark the days you're here — everyone else is handled automatically. We track Jan 9–30;
-            earlier arrivals and later departures count from the 9th / through the 30th.
+            You'll only mark the days you're here — We track Jan 9–30 - this includes CZR events and the shoulder
+            days before and after; earlier arrivals and later departures count from the 9th / through the 30th.
           </p>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -476,7 +503,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Ticket className="h-5 w-5" /> Ticket-check
+            <Ticket className="h-5 w-5" /> Ticket-check <span className="text-xs font-normal text-destructive">(required)</span>
           </CardTitle>
           <p className="text-sm text-muted-foreground">Interest pills are just interest — this is the "I want in" confirmation.</p>
         </CardHeader>
