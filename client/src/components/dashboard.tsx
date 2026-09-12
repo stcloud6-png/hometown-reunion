@@ -310,9 +310,17 @@ export default function Dashboard({
 
                 <div className="mt-3 space-y-2">
                   {lead ? (
-                    <p className="text-sm text-muted-foreground">
-                      <span className="font-bold text-foreground">Event Organizer: {lead.lead_name}</span> — the interest group will be notified and a group chat will follow.
-                    </p>
+                    <div className="text-sm text-muted-foreground">
+                      <p>
+                        <span className="font-bold text-foreground">Event Organizer: {lead.lead_name}</span> — the interest group will be notified and a group chat will follow.
+                      </p>
+                      <ChatLinkEditor
+                        activityId={cluster.activity.id}
+                        lead={lead}
+                        canEdit={unlocked || isClusterLead(lead, sessionEmail, myIdentity)}
+                        onSave={onVolunteerLead}
+                      />
+                    </div>
                   ) : (
                     <VolunteerLeadForm
                       activityId={cluster.activity.id}
@@ -712,6 +720,100 @@ function VolunteerLeadForm({
         <ShieldCheck className="h-4 w-4 text-muted-foreground" /> Be the first to volunteer as Event Organizer for this event
       </span>
     </label>
+  );
+}
+
+/** Editable-by-organizer link to the group's chat (e.g. WhatsApp). Everyone sees
+ * it as a clickable link once set; only the cluster lead (or Maintenance mode)
+ * gets the input to add or change it. */
+function ChatLinkEditor({
+  activityId,
+  lead,
+  canEdit,
+  onSave,
+}: {
+  activityId: string;
+  lead: ClusterLead;
+  canEdit: boolean;
+  onSave: (lead: ClusterLead) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(lead.chat_link ?? "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setValue(lead.chat_link ?? "");
+  }, [lead.chat_link]);
+
+  async function submit() {
+    const trimmed = value.trim();
+    const normalized = trimmed && !/^https?:\/\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
+    setSaving(true);
+    try {
+      await onSave({ ...lead, chat_link: normalized || null });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const linkNode = lead.chat_link ? (
+    <a
+      href={lead.chat_link}
+      target="_blank"
+      rel="noreferrer"
+      className="text-primary underline underline-offset-2"
+      data-testid={`link-chat-${activityId}`}
+    >
+      Join the group chat
+    </a>
+  ) : null;
+
+  if (!canEdit) {
+    return linkNode ? <p className="mt-1">{linkNode}</p> : null;
+  }
+
+  if (!editing) {
+    return (
+      <div className="mt-1 flex items-center gap-2">
+        {linkNode ?? <span>No group chat link yet.</span>}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-auto p-0 text-xs underline underline-offset-2"
+          onClick={() => setEditing(true)}
+          data-testid={`button-edit-chat-link-${activityId}`}
+        >
+          {lead.chat_link ? "Edit link" : "Add link"}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2" data-testid={`chat-link-editor-${activityId}`}>
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="https://chat.whatsapp.com/…"
+        className="h-8 max-w-xs text-sm"
+        data-testid={`input-chat-link-${activityId}`}
+      />
+      <Button size="sm" onClick={submit} disabled={saving} data-testid={`button-save-chat-link-${activityId}`}>
+        Save
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          setEditing(false);
+          setValue(lead.chat_link ?? "");
+        }}
+        data-testid={`button-cancel-chat-link-${activityId}`}
+      >
+        Cancel
+      </Button>
+    </div>
   );
 }
 

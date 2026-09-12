@@ -82,6 +82,7 @@ export interface ClusterLead {
   activity_id: string;
   lead_name: string;
   lead_email?: string | null;
+  chat_link?: string | null;
   created_at?: string;
 }
 
