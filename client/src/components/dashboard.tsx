@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Info, Download, ShieldCheck, Anchor, ClipboardCheck, CalendarHeart, Lock, ArrowLeft,
-  ChevronDown, Flame, Users, Grid3x3, CalendarClock, X,
+  ChevronDown, Flame, Users, Grid3x3, CalendarClock, X, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import YachtPaymentDialog from "@/components/yacht-payment-dialog";
@@ -191,54 +191,68 @@ export default function Dashboard({
         subcopy="Best days for the group — bar shades show how free each morning, afternoon and evening are (hover for detail)."
         testId="section-best-windows"
       >
-        <div className="grid gap-3 sm:grid-cols-2">
-          {rankedWindows.map((row, idx) => (
-            <div key={row.day.iso} className="rounded-md border p-3" data-testid={`window-row-${row.day.iso}`}>
-              <div className="flex items-center gap-2">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[hsl(150_45%_32%)] text-xs font-bold text-white" data-testid={`window-rank-${row.day.iso}`}>
-                  {idx + 1}
-                </span>
-                <p className="text-sm font-medium">{row.day.short}</p>
-              </div>
-              <div className="mt-2 grid grid-cols-[2.5rem_1fr] items-center gap-x-2 gap-y-1.5">
-                {PERIODS.map((period) => {
-                  const cell = row.periods[period];
-                  const locked = !cell && isYachtLockSlot(row.day.iso, period);
-                  return (
-                    <Fragment key={period}>
-                      <span className="text-[10px] font-semibold uppercase text-muted-foreground">{PERIOD_SHORT_LABEL[period]}</span>
-                      {locked ? (
-                        <div
-                          className="h-5 w-full rounded-full bg-[hsl(220_10%_15%)]"
-                          title="Yacht Club 87 Dinner/Dance — everyone's there"
-                          data-testid={`window-${row.day.iso}-${period}`}
-                        />
-                      ) : cell ? (
-                        <div
-                          className="relative h-5 w-full overflow-hidden rounded-full bg-muted"
-                          title={`${cell.available} of ${cell.total} free`}
-                          data-testid={`window-${row.day.iso}-${period}`}
-                        >
+        <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+          {[0, 1].map((colIdx) => {
+            const colRows = rankedWindows
+              .map((row, idx) => ({ row, rank: idx + 1 }))
+              .filter((_, i) => i % 2 === colIdx);
+            if (colRows.length === 0) return null;
+            return (
+              <div key={colIdx} className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="h-6 w-6 shrink-0" />
+                  <span className="w-[92px] shrink-0" />
+                  <div className="grid flex-1 grid-cols-3 gap-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {PERIODS.map((period) => (
+                      <span key={period}>{PERIOD_SHORT_LABEL[period]}</span>
+                    ))}
+                  </div>
+                </div>
+                {colRows.map(({ row, rank }) => (
+                  <div key={row.day.iso} className="flex items-center gap-2" data-testid={`window-row-${row.day.iso}`}>
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[hsl(150_45%_32%)] text-xs font-bold text-white" data-testid={`window-rank-${row.day.iso}`}>
+                      {rank}
+                    </span>
+                    <p className="w-[92px] shrink-0 truncate text-sm font-medium">{row.day.short}</p>
+                    <div className="grid flex-1 grid-cols-3 gap-1.5">
+                      {PERIODS.map((period) => {
+                        const cell = row.periods[period];
+                        const locked = !cell && isYachtLockSlot(row.day.iso, period);
+                        return locked ? (
                           <div
-                            className="flex h-full items-center justify-center rounded-full text-[10px] font-bold"
-                            style={{
-                              width: `${Math.max(cell.pct, 18)}%`,
-                              backgroundColor: cell.pct < 20 ? "hsl(35 35% 78%)" : pctScaleBg(cell.pct),
-                              color: cell.pct < 20 ? "hsl(35 40% 25%)" : pctScaleColor(cell.pct),
-                            }}
+                            key={period}
+                            className="h-6 w-full rounded-full bg-[hsl(220_10%_15%)]"
+                            title="Yacht Club 87 Dinner/Dance — everyone's there"
+                            data-testid={`window-${row.day.iso}-${period}`}
+                          />
+                        ) : cell ? (
+                          <div
+                            key={period}
+                            className="relative h-6 w-full overflow-hidden rounded-full bg-muted"
+                            title={`${cell.available} of ${cell.total} free`}
+                            data-testid={`window-${row.day.iso}-${period}`}
                           >
-                            {cell.pct}%
+                            <div
+                              className="flex h-full items-center justify-center rounded-full text-[10px] font-bold"
+                              style={{
+                                width: `${Math.max(cell.pct, 30)}%`,
+                                backgroundColor: cell.pct < 20 ? "hsl(35 35% 78%)" : pctScaleBg(cell.pct),
+                                color: cell.pct < 20 ? "hsl(35 40% 25%)" : pctScaleColor(cell.pct),
+                              }}
+                            >
+                              {cell.pct}%
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </Fragment>
-                  );
-                })}
+                        ) : (
+                          <span key={period} className="flex h-6 items-center justify-center text-xs text-muted-foreground">—</span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-          ))}
+            );
+          })}
           {rankedWindows.length === 0 && <p className="text-sm text-muted-foreground">No responses yet.</p>}
         </div>
       </CollapsibleSection>
@@ -775,7 +789,7 @@ function VolunteerLeadForm({
   if (!myIdentity) {
     return (
       <p className="text-sm text-muted-foreground" data-testid={`text-volunteer-signin-${activityId}`}>
-        Fill out your name and email in My Availability to volunteer as this event's Organizer.
+        Fill out your name and email in My Availability to see more.
       </p>
     );
   }
@@ -858,23 +872,48 @@ function EventPlanEditor({
   }
 
   return (
-    <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2" data-testid={`event-plan-editor-${activityId}`}>
-      <Input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Venue" data-testid={`input-plan-venue-${activityId}`} />
-      <Input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} data-testid={`input-plan-date-${activityId}`} />
-      <Input value={startTime} onChange={(e) => setStartTime(e.target.value)} placeholder="Start time (e.g. 11:30am)" data-testid={`input-plan-time-${activityId}`} />
-      <Input type="number" value={maxSize} onChange={(e) => setMaxSize(e.target.value)} placeholder="Max size" data-testid={`input-plan-maxsize-${activityId}`} />
-      <Select value={status} onValueChange={(v) => setStatus(v as EventPlanStatus)}>
-        <SelectTrigger data-testid={`select-plan-status-${activityId}`}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {(Object.keys(EVENT_PLAN_STATUS_LABEL) as EventPlanStatus[]).map((s) => (
-            <SelectItem key={s} value={s}>
-              {EVENT_PLAN_STATUS_LABEL[s]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <div className="mt-3 grid gap-3 border-t pt-3 sm:grid-cols-2" data-testid={`event-plan-editor-${activityId}`}>
+      <div className="space-y-1">
+        <Label htmlFor={`input-plan-venue-${activityId}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Venue</Label>
+        <Input id={`input-plan-venue-${activityId}`} value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Venue" data-testid={`input-plan-venue-${activityId}`} />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`input-plan-date-${activityId}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date</Label>
+        <Input id={`input-plan-date-${activityId}`} type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} data-testid={`input-plan-date-${activityId}`} />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`input-plan-time-${activityId}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Time</Label>
+        <div className="relative">
+          <Clock className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            id={`input-plan-time-${activityId}`}
+            value={startTime}
+            onChange={(e) => setStartTime(e.target.value)}
+            placeholder="e.g. 11:30am"
+            className="pl-8"
+            data-testid={`input-plan-time-${activityId}`}
+          />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`input-plan-maxsize-${activityId}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Max group size</Label>
+        <Input id={`input-plan-maxsize-${activityId}`} type="number" value={maxSize} onChange={(e) => setMaxSize(e.target.value)} placeholder="Max size" data-testid={`input-plan-maxsize-${activityId}`} />
+      </div>
+      <div className="space-y-1 sm:col-span-2">
+        <Label htmlFor={`select-plan-status-${activityId}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</Label>
+        <Select value={status} onValueChange={(v) => setStatus(v as EventPlanStatus)}>
+          <SelectTrigger id={`select-plan-status-${activityId}`} data-testid={`select-plan-status-${activityId}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(EVENT_PLAN_STATUS_LABEL) as EventPlanStatus[]).map((s) => (
+              <SelectItem key={s} value={s}>
+                {EVENT_PLAN_STATUS_LABEL[s]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <Button size="sm" onClick={submit} className="sm:col-span-2" data-testid={`button-save-plan-${activityId}`}>
         Save plan
       </Button>

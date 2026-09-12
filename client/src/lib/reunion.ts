@@ -413,22 +413,18 @@ export function eventAppliesToDate(eventId: string, iso: string): boolean {
  * pool-day — that's now its own standalone status, see statusesForSlot()).
  *
  * When `period` is given, also restricts to events that can actually happen in that
- * time-of-day slot, matching the live site: an evening-only event (autoSlots === ["e"])
- * never appears under Morning/Afternoon, and an event with a defined autoSlots list that
- * excludes "e" never appears under Evening. Events with no autoSlots restriction (spans
- * the whole day, or no fixed time) are always offered.
+ * exact time-of-day slot: an event's `autoSlots` list is its full set of valid periods
+ * (e.g. ["m"] for a morning-only tour, ["a"] for an afternoon-only tour, ["m","a"] for one
+ * that spans the day, ["e"] for evening-only). A period not in that list is never offered —
+ * so a morning-only tour never leaks into the afternoon dropdown and vice versa. Events with
+ * no autoSlots restriction (no fixed time) are always offered.
  */
 export function eventsForDate(iso: string, period?: Period): ScheduledEvent[] {
   return SCHEDULED_EVENTS.filter((e) => {
     if (e.id === "yacht-club" || e.id === "pool-day") return false;
     if (!eventAppliesToDate(e.id, iso)) return false;
-    if (!period) return true;
-    if (period === "e") {
-      if (e.autoSlots && !e.autoSlots.includes("e")) return false;
-    } else if (e.autoSlots && e.autoSlots.length === 1 && e.autoSlots[0] === "e") {
-      return false;
-    }
-    return true;
+    if (!period || !e.autoSlots) return true;
+    return e.autoSlots.includes(period);
   });
 }
 
@@ -525,11 +521,7 @@ export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], 
         autoSlots: autoSlotsForTimeOfDay(activityTimeOfDay(p.activity_id)),
       };
     })
-    .filter((e) => {
-      if (!period) return true;
-      if (period === "e") return e.autoSlots.includes("e");
-      return !(e.autoSlots.length === 1 && e.autoSlots[0] === "e");
-    });
+    .filter((e) => (period ? e.autoSlots.includes(period) : true));
 }
 
 /**
