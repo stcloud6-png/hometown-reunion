@@ -372,20 +372,36 @@ export interface DateOption {
   label: string;
 }
 
-/** Arrive dropdown options: plain dates Jan 9–30, with "or earlier" suffix on the first (boundary) option only. */
-export function arriveOptions(): DateOption[] {
-  return DAYS.map((d, i) => ({
-    value: d.iso,
-    label: i === 0 ? `${dropdownDateFmt.format(parseISO(d.iso))} or earlier` : dropdownDateFmt.format(parseISO(d.iso)),
-  }));
+/**
+ * Milestone suffixes shown in the Arrive/Depart dropdowns next to specific dates,
+ * matching the style of the "or earlier"/"or later" boundary suffixes below
+ * (plain date label + a space + this text — no extra punctuation).
+ */
+const MILESTONE_LABELS: Record<string, string> = {
+  "2027-01-17": "CZR Begins",
+  "2027-01-20": "BHS87 Yacht Club Dinner",
+  "2027-01-24": "CZR Ends",
+};
+
+function withMilestone(iso: string, base: string): string {
+  const milestone = MILESTONE_LABELS[iso];
+  return milestone ? `${base} ${milestone}` : base;
 }
 
-/** Depart dropdown options: plain dates Jan 9–30, with "or later" suffix on the last (boundary) option only. */
+/** Arrive dropdown options: plain dates Jan 9–30, with "or earlier" suffix on the first (boundary) option, and milestone suffixes (CZR Begins/Ends, Yacht Club Dinner) on their dates. */
+export function arriveOptions(): DateOption[] {
+  return DAYS.map((d, i) => {
+    const base = i === 0 ? `${dropdownDateFmt.format(parseISO(d.iso))} or earlier` : dropdownDateFmt.format(parseISO(d.iso));
+    return { value: d.iso, label: withMilestone(d.iso, base) };
+  });
+}
+
+/** Depart dropdown options: plain dates Jan 9–30, with "or later" suffix on the last (boundary) option, and milestone suffixes (CZR Begins/Ends, Yacht Club Dinner) on their dates. */
 export function departOptions(): DateOption[] {
-  return DAYS.map((d, i) => ({
-    value: d.iso,
-    label: i === DAYS.length - 1 ? `${dropdownDateFmt.format(parseISO(d.iso))} or later` : dropdownDateFmt.format(parseISO(d.iso)),
-  }));
+  return DAYS.map((d, i) => {
+    const base = i === DAYS.length - 1 ? `${dropdownDateFmt.format(parseISO(d.iso))} or later` : dropdownDateFmt.format(parseISO(d.iso));
+    return { value: d.iso, label: withMilestone(d.iso, base) };
+  });
 }
 
 export function addDays(iso: string, n: number): string {
