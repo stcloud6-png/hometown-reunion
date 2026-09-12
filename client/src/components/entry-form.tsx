@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CalendarRange, CheckCircle2, Sparkles, Ticket } from "lucide-react";
+import { CalendarRange, CheckCircle2, Lock, Sparkles, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import VolunteerPromptDialog from "@/components/volunteer-prompt-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -368,6 +368,18 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-3 rounded-md border bg-muted/40 p-3 text-xs" data-testid="slot-legend">
+            {LEGEND_ITEMS.map((item, i) => (
+              <span key={`${item.status}-${i}`} className="flex items-center gap-1.5">
+                <span className={cn("inline-block h-3 w-3 rounded-sm", STATUS_COLOR[item.status])} />
+                <span title={item.hint}>{item.label}</span>
+              </span>
+            ))}
+            <span className="flex items-center gap-1.5">
+              <span className={cn("inline-block h-3 w-3 rounded-sm", STATUS_COLOR["pool-day"])} />
+              <span title={STATUS_LABEL["pool-day"]}>{STATUS_LABEL["pool-day"]}</span>
+            </span>
+          </div>
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full min-w-[640px] border-collapse text-sm" data-testid="table-time-slots">
               <thead>
@@ -385,16 +397,20 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                     {PERIODS.map((period) => {
                       const locked = isYachtLockSlot(day.iso, period);
                       const current = slots[day.iso]?.[period] ?? { s: "ok" as SlotStatus };
-                      const statusOptions = statusesForSlot(day.iso, period);
+                      const statusOptions = statusesForSlot(day.iso, period, current.s);
                       const options = [
-                        ...eventsForDate(day.iso).map((e) => ({ id: e.id, label: e.label, note: e.note, autoSlots: e.autoSlots })),
-                        ...groupPlannedEventsForDate(day.iso, eventPlans, activities),
+                        ...eventsForDate(day.iso, period).map((e) => ({ id: e.id, label: e.label, note: e.note, autoSlots: e.autoSlots })),
+                        ...groupPlannedEventsForDate(day.iso, eventPlans, activities, period),
                       ];
                       return (
                         <td key={period} className="px-3 py-3">
                           {locked ? (
-                            <div className={cn("rounded-md border px-3 py-2 text-sm text-muted-foreground", "bg-muted")} data-testid={`slot-locked-${day.iso}-${period}`}>
-                              Yacht Club 87 Dinner/Dance
+                            <div
+                              className={cn("flex items-start gap-1 rounded-md border px-3 py-2 text-sm text-muted-foreground", "bg-muted")}
+                              data-testid={`slot-locked-${day.iso}-${period}`}
+                            >
+                              <Lock className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                              <span>Yacht Club 87 Dinner/Dance</span>
                             </div>
                           ) : (
                             <div className="space-y-1">
@@ -453,18 +469,6 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                 ))}
               </tbody>
             </table>
-          </div>
-          <div className="flex flex-wrap gap-3 rounded-md border bg-muted/40 p-3 text-xs" data-testid="slot-legend">
-            {LEGEND_ITEMS.map((item, i) => (
-              <span key={`${item.status}-${i}`} className="flex items-center gap-1.5">
-                <span className={cn("inline-block h-3 w-3 rounded-sm", STATUS_COLOR[item.status])} />
-                <span title={item.hint}>{item.label}</span>
-              </span>
-            ))}
-            <span className="flex items-center gap-1.5">
-              <span className={cn("inline-block h-3 w-3 rounded-sm", STATUS_COLOR["pool-day"])} />
-              <span title={STATUS_LABEL["pool-day"]}>{STATUS_LABEL["pool-day"]}</span>
-            </span>
           </div>
         </CardContent>
       </Card>

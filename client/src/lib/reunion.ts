@@ -149,7 +149,15 @@ const POOL_DAY_DATES: string[] = [
 /** The Yacht Club dinner/dance is locked onto every new entry: Wed Jan 20, evening. */
 const YACHT_LOCK = { iso: "2027-01-20", slot: "e" as Period, tag: "yacht-club" };
 
-export const CLUSTER_THRESHOLDS = {
+export interface ClusterThresholds {
+  publicTop: number;
+  publicMinInterest: number;
+  candidateAt: number;
+  spinoffAt: number;
+}
+
+/** Fallback defaults, used until the shared `app_settings` row loads (or when stubbed). */
+export const CLUSTER_THRESHOLDS: ClusterThresholds = {
   publicTop: 2,
   publicMinInterest: 6,
   candidateAt: 10,
@@ -251,7 +259,9 @@ export const SCHEDULED_EVENTS: ScheduledEvent[] = [
   { id: "coronado-25", label: "Coronado Beach", days: SHOULDER_END },
   { id: "el-valle-26", label: "El Valle", days: SHOULDER_END },
   { id: "pool-day", label: "Drinking All Day at the Pool", days: POOL_DAY_DATES },
-  { id: "other", label: "Other commitment", note: "", days: [] },
+  // Applies to every shoulder date (both ends of the trip) but never during the
+  // core Jan 17–24 MiEvento window — see the period filter in eventsForDate().
+  { id: "other", label: "Other commitment", note: "", days: [...SHOULDER_START, ...SHOULDER_END] },
 ];
 
 const EVENT_LABEL_BY_ID: Record<string, string> = Object.fromEntries(
@@ -398,27 +408,56 @@ export function eventAppliesToDate(eventId: string, iso: string): boolean {
   return !!event?.days.includes(iso);
 }
 
-/** The events selectable as a "busy" reason for a given date (excludes yacht-club; excludes pool-day — that's now its own standalone status, see statusesForSlot()). */
-export function eventsForDate(iso: string): ScheduledEvent[] {
-  return SCHEDULED_EVENTS.filter(
-    (e) => e.id !== "yacht-club" && e.id !== "pool-day" && eventAppliesToDate(e.id, iso),
-  );
+/**
+ * The events selectable as a "busy" reason for a given date (excludes yacht-club; excludes
+ * pool-day — that's now its own standalone status, see statusesForSlot()).
+ *
+ * When `period` is given, also restricts to events that can actually happen in that
+ * time-of-day slot, matching the live site: an evening-only event (autoSlots === ["e"])
+ * never appears under Morning/Afternoon, and an event with a defined autoSlots list that
+ * excludes "e" never appears under Evening. Events with no autoSlots restriction (spans
+ * the whole day, or no fixed time) are always offered.
+ */
+export function eventsForDate(iso: string, period?: Period): ScheduledEvent[] {
+  return SCHEDULED_EVENTS.filter((e) => {
+    if (e.id === "yacht-club" || e.id === "pool-day") return false;
+    if (!eventAppliesToDate(e.id, iso)) return false;
+    if (!period) return true;
+    if (period === "e") {
+      if (e.autoSlots && !e.autoSlots.includes("e")) return false;
+    } else if (e.autoSlots && e.autoSlots.length === 1 && e.autoSlots[0] === "e") {
+      return false;
+    }
+    return true;
+  });
 }
 
 export function isPoolDayEligible(iso: string): boolean {
   return POOL_DAY_DATES.includes(iso);
 }
 
+/** Evening slots on these dates never offer "busy"/MiEvento as a status — those
+ * evenings are exclusively Available/Maybe/Private — unless the slot is *already*
+ * set to busy (so an existing pick doesn't silently disappear from the list). */
+const BUSY_HIDDEN_EVENING_DATES: string[] = ["2027-01-17", "2027-01-18", "2027-01-24"];
+
 /**
  * The selectable statuses for a given day+period slot, in the exact order the
  * live site presents them. "Drinking All Day at the Pool" is a 5th, standalone
  * status (not a "busy" reason) offered only on Morning/Afternoon slots within
  * the pool-day-eligible date range (Jan 13–27) — Evening slots never offer it.
+ *
+ * `currentStatus` lets an evening slot that's already "busy" keep showing that
+ * option even on a BUSY_HIDDEN_EVENING_DATES date, so an existing choice never
+ * vanishes out from under the person who made it.
  */
-export function statusesForSlot(iso: string, period: Period): SlotStatus[] {
+export function statusesForSlot(iso: string, period: Period, currentStatus?: SlotStatus): SlotStatus[] {
   const base: SlotStatus[] = ["ok", "maybe", "busy", "private"];
-  if (period !== "e" && isPoolDayEligible(iso)) return [...base, "pool-day"];
-  return base;
+  const withPool = period !== "e" && isPoolDayEligible(iso) ? [...base, "pool-day" as SlotStatus] : base;
+  if (period === "e" && BUSY_HIDDEN_EVENING_DATES.includes(iso) && currentStatus !== "busy") {
+    return withPool.filter((s) => s !== "busy");
+  }
+  return withPool;
 }
 
 /** Group-planned sub-event ids are prefixed "czr-" + the base activity id. */
@@ -471,8 +510,11 @@ export function eventCategoryClass(tag: string | undefined): string | undefined 
   return "text-muted-foreground";
 }
 
-/** Synthetic selectable sub-events generated from open event plans landing on this date. */
-export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], activities: Activity[]): { id: string; label: string; note?: string; autoSlots: Period[] }[] {
+/** Synthetic selectable sub-events generated from open event plans landing on this date.
+ * When `period` is given, applies the same evening-only/day-only restriction as
+ * `eventsForDate()` so a group-planned evening activity doesn't leak into Morning/Afternoon
+ * (and vice versa). */
+export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], activities: Activity[], period?: Period): { id: string; label: string; note?: string; autoSlots: Period[] }[] {
   return eventPlans
     .filter((p) => p.status === "open" && p.event_date === iso)
     .map((p) => {
@@ -482,6 +524,11 @@ export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], 
         label: `${base?.label ?? p.activity_id} (group-planned)`,
         autoSlots: autoSlotsForTimeOfDay(activityTimeOfDay(p.activity_id)),
       };
+    })
+    .filter((e) => {
+      if (!period) return true;
+      if (period === "e") return e.autoSlots.includes("e");
+      return !(e.autoSlots.length === 1 && e.autoSlots[0] === "e");
     });
 }
 
@@ -675,6 +722,17 @@ export function mostRecentEditor(people: Person[]): { name: string; updated_at: 
   return { name: latest.name, updated_at: latest.updated_at! };
 }
 
+/** The most recent `limit` people to have saved/edited their availability, newest first.
+ * Uses the existing `people.updated_at` save timestamp — not a separate page-visit log. */
+export function recentEditors(people: Person[], limit = 5): { name: string; updated_at: string }[] {
+  return people
+    .filter((p) => p.updated_at)
+    .slice()
+    .sort((a, b) => (b.updated_at! > a.updated_at! ? 1 : b.updated_at! < a.updated_at! ? -1 : 0))
+    .slice(0, limit)
+    .map((p) => ({ name: p.name, updated_at: p.updated_at! }));
+}
+
 export interface ClusterSummary {
   activity: Activity;
   interestedCount: number;
@@ -683,9 +741,9 @@ export interface ClusterSummary {
 }
 
 /** Interest-cluster stage label shown on each cluster card, per the group's published legend. */
-export function clusterStage(count: number): "Gathering" | "Sub-event candidate" | "Spin-off" {
-  if (count >= CLUSTER_THRESHOLDS.spinoffAt) return "Spin-off";
-  if (count >= CLUSTER_THRESHOLDS.candidateAt) return "Sub-event candidate";
+export function clusterStage(count: number, thresholds: ClusterThresholds = CLUSTER_THRESHOLDS): "Gathering" | "Sub-event candidate" | "Spin-off" {
+  if (count >= thresholds.spinoffAt) return "Spin-off";
+  if (count >= thresholds.candidateAt) return "Sub-event candidate";
   return "Gathering";
 }
 

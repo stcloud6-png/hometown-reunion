@@ -3,9 +3,11 @@ import {
   type Activity,
   type ClusterLead,
   type ClusterResource,
+  type ClusterThresholds,
   type EventPlan,
   type Person,
   BASE_ACTIVITIES,
+  CLUSTER_THRESHOLDS,
   DEMO_PEOPLE,
   STORAGE_KEYS,
   storage,
@@ -13,6 +15,24 @@ import {
   supabaseRest,
   parseAuthHashFragment,
 } from "./reunion";
+
+/** Row shape of the shared `app_settings` table — one global row, id "default". */
+interface AppSettingsRow {
+  id: string;
+  public_top: number;
+  public_min_interest: number;
+  candidate_at: number;
+  spinoff_at: number;
+}
+
+function rowToThresholds(row: AppSettingsRow): ClusterThresholds {
+  return {
+    publicTop: row.public_top,
+    publicMinInterest: row.public_min_interest,
+    candidateAt: row.candidate_at,
+    spinoffAt: row.spinoff_at,
+  };
+}
 
 interface Session {
   accessToken: string;
@@ -48,6 +68,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDemo, setIsDemo] = useState(false);
+  const [appSettings, setAppSettings] = useState<ClusterThresholds>(CLUSTER_THRESHOLDS);
   const [session, setSession] = useState<Session | null>(() => (stub ? null : loadStoredSession()));
   const [linkError, setLinkError] = useState<string | null>(null);
   const stubActivities = useRef<Activity[]>([]);
@@ -66,18 +87,20 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         return;
       }
       const token = session?.accessToken ?? null;
-      const [peopleRes, activitiesRes, resourcesRes, leadsRes, plansRes] = await Promise.all([
+      const [peopleRes, activitiesRes, resourcesRes, leadsRes, plansRes, settingsRes] = await Promise.all([
         supabaseRest<Person[]>("/people?select=*&order=name.asc", { accessToken: token }),
         supabaseRest<Activity[]>("/activities?select=*&order=id.asc", { accessToken: token }),
         supabaseRest<ClusterResource[]>("/cluster_resources?select=*&order=created_at.asc", { accessToken: token }),
         supabaseRest<ClusterLead[]>("/cluster_leads?select=*", { accessToken: token }),
         supabaseRest<EventPlan[]>("/event_plans?select=*", { accessToken: token }),
+        supabaseRest<AppSettingsRow[]>("/app_settings?select=*&id=eq.default", { accessToken: token }).catch(() => []),
       ]);
       setPeople(peopleRes);
       setActivities([...BASE_ACTIVITIES, ...activitiesRes]);
       setClusterResources(resourcesRes);
       setClusterLeads(leadsRes);
       setEventPlans(plansRes);
+      if (settingsRes[0]) setAppSettings(rowToThresholds(settingsRes[0]));
       setIsDemo(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load reunion data.");
@@ -225,6 +248,36 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     [session, stub, load],
   );
 
+  /**
+   * Update the shared Maintenance-mode cluster thresholds. Applies immediately
+   * for every visitor since it's read from the shared `app_settings` table,
+   * not per-browser localStorage. No auth required (matches the other
+   * anon+authenticated open-write tables such as event_plans/cluster_leads).
+   */
+  const updateAppSettings = useCallback(
+    async (next: ClusterThresholds) => {
+      if (stub) {
+        setAppSettings(next);
+        return;
+      }
+      await supabaseRest("/app_settings", {
+        method: "POST",
+        accessToken: session?.accessToken,
+        prefer: "resolution=merge-duplicates,return=minimal",
+        body: {
+          id: "default",
+          public_top: next.publicTop,
+          public_min_interest: next.publicMinInterest,
+          candidate_at: next.candidateAt,
+          spinoff_at: next.spinoffAt,
+          updated_at: new Date().toISOString(),
+        },
+      });
+      setAppSettings(next);
+    },
+    [session, stub],
+  );
+
   const signOut = useCallback(() => {
     persistSession(null);
   }, [persistSession]);
@@ -277,6 +330,8 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     clusterResources,
     clusterLeads,
     eventPlans,
+    appSettings,
+    updateAppSettings,
     loading,
     error,
     isDemo,

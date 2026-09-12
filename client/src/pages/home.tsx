@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun } from "lucide-react";
+import { Filter, Moon, Sun } from "lucide-react";
 import EntryForm from "@/components/entry-form";
 import Dashboard from "@/components/dashboard";
 import SettingsPopover from "@/components/settings-popover";
@@ -16,6 +16,7 @@ export default function Home() {
   const data = useReunionData({ stub: STUB });
   const [showPills, setShowPills] = useState(true);
   const [unlocked, setUnlocked] = useState(false);
+  const [curtainOpen, setCurtainOpen] = useState(false);
   const [myIdentity, setMyIdentity] = useState<MyIdentity | null>(() => readMyIdentity());
 
   return (
@@ -36,11 +37,18 @@ export default function Home() {
             <Button variant={tab === "dashboard" ? "default" : "ghost"} size="sm" onClick={() => setTab("dashboard")} data-testid="nav-dashboard">
               Group dashboard
             </Button>
+            {tab === "dashboard" && showPills && (
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCurtainOpen(true)} data-testid="button-curtain-header">
+                <Filter className="h-4 w-4" /> Filter
+              </Button>
+            )}
             <SettingsPopover
               showPills={showPills}
               onShowPillsChange={setShowPills}
               unlocked={unlocked}
               onUnlockedChange={setUnlocked}
+              thresholds={data.appSettings}
+              onThresholdsChange={data.updateAppSettings}
             />
             <Button variant="ghost" size="icon" aria-label="Toggle dark mode" onClick={toggle} data-testid="button-dark-mode">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -90,6 +98,9 @@ export default function Home() {
             myIdentity={myIdentity}
             showPills={showPills}
             unlocked={unlocked}
+            curtainOpen={curtainOpen}
+            onCurtainOpenChange={setCurtainOpen}
+            thresholds={data.appSettings}
             onSuggestResource={data.suggestResource}
             onVolunteerLead={data.volunteerLead}
             onSaveEventPlan={data.saveEventPlan}

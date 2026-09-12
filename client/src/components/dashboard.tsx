@@ -5,11 +5,12 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Info, Download, ShieldCheck, Anchor, ClipboardCheck, CalendarHeart, Lock, ArrowLeft,
-  ChevronDown, Flame, Users, Grid3x3, CalendarClock, X, Filter,
+  ChevronDown, Flame, Users, Grid3x3, CalendarClock, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import YachtPaymentDialog from "@/components/yacht-payment-dialog";
@@ -18,6 +19,7 @@ import {
   type Activity,
   type ClusterLead,
   type ClusterResource,
+  type ClusterThresholds,
   type EventPlan,
   type EventPlanStatus,
   type MyIdentity,
@@ -45,11 +47,20 @@ import {
   mostRecentEditor,
   pctScaleBg,
   pctScaleColor,
+  recentEditors,
   scopeByInterest,
   sharedCommitments,
   tallyWindow,
   tallyWindowDetailed,
 } from "@/lib/reunion";
+
+const RALPH_FURLONG = "ralph furlong";
+
+/** True when the signed-in person's known name matches Ralph Furlong, case-insensitively. */
+function isRalphFurlong(myIdentity: MyIdentity | null, myPerson: Person | null): boolean {
+  const candidates = [myIdentity?.name, myPerson?.name];
+  return candidates.some((n) => n?.trim().toLowerCase() === RALPH_FURLONG);
+}
 
 const PERIOD_SHORT_LABEL: Record<Period, string> = { m: "AM", a: "PM", e: "EVE" };
 
@@ -65,6 +76,9 @@ interface DashboardProps {
   myIdentity: MyIdentity | null;
   showPills: boolean;
   unlocked: boolean;
+  curtainOpen: boolean;
+  onCurtainOpenChange: (open: boolean) => void;
+  thresholds?: ClusterThresholds;
   onSuggestResource: (resource: ClusterResource) => Promise<void>;
   onVolunteerLead: (lead: ClusterLead) => Promise<void>;
   onSaveEventPlan: (plan: EventPlan) => Promise<void>;
@@ -128,6 +142,9 @@ export default function Dashboard({
   myIdentity,
   showPills,
   unlocked,
+  curtainOpen,
+  onCurtainOpenChange,
+  thresholds = CLUSTER_THRESHOLDS,
   onSuggestResource,
   onVolunteerLead,
   onSaveEventPlan,
@@ -137,7 +154,6 @@ export default function Dashboard({
   onBackToAvailability,
 }: DashboardProps) {
   const [interestFilter, setInterestFilter] = useState<string | null>(null);
-  const [curtainOpen, setCurtainOpen] = useState(false);
   const pillCounts = useMemo(() => interestPillCounts(people, activities), [people, activities]);
   const filteredPeople = useMemo(() => scopeByInterest(people, interestFilter), [people, interestFilter]);
 
@@ -145,10 +161,12 @@ export default function Dashboard({
   const clusters = useMemo(() => clusterSummaries(filteredPeople, activities), [filteredPeople, activities]);
   const commitments = useMemo(() => sharedCommitments(people), [people]);
   const lastEditor = useMemo(() => mostRecentEditor(people), [people]);
+  const lastFiveEditors = useMemo(() => recentEditors(people, 5), [people]);
+  const showRollCall = unlocked || isRalphFurlong(myIdentity, myPerson);
 
   const visibleClusters = clusters
     .filter((c) => c.interestedCount > 0)
-    .filter((c, idx) => unlocked || c.interestedCount >= CLUSTER_THRESHOLDS.publicMinInterest || idx < CLUSTER_THRESHOLDS.publicTop);
+    .filter((c, idx) => unlocked || c.interestedCount >= thresholds.publicMinInterest || idx < thresholds.publicTop);
 
   return (
     <div className="space-y-8" data-testid="view-dashboard">
@@ -159,12 +177,12 @@ export default function Dashboard({
         activeFilter={interestFilter}
         onSelect={setInterestFilter}
         open={curtainOpen}
-        onOpenChange={setCurtainOpen}
+        onOpenChange={onCurtainOpenChange}
         showPills={showPills}
       />
 
       <p className="text-xs text-muted-foreground" data-testid="text-filter-hint">
-        Filter by interest anytime — hover the left edge of the screen (or the filter button on mobile), or enable the pills here via Settings ⚙ in the top-right.
+        Filter by interest anytime — hover the left edge of the screen, or use the Filter button in the header, or enable the pills here via Settings ⚙ in the top-right.
       </p>
 
       <CollapsibleSection
@@ -225,15 +243,17 @@ export default function Dashboard({
         </div>
       </CollapsibleSection>
 
-      <RollCallCard
-        people={people}
-        isDemo={isDemo}
-        sessionEmail={sessionEmail}
-        myPerson={myPerson}
-        onSendSignInLink={onSendSignInLink}
-        onConfirmYachtPaid={onConfirmYachtPaid}
-        onSaveMieventoIntents={onSaveMieventoIntents}
-      />
+      {showRollCall && (
+        <RollCallCard
+          people={people}
+          isDemo={isDemo}
+          sessionEmail={sessionEmail}
+          myPerson={myPerson}
+          onSendSignInLink={onSendSignInLink}
+          onConfirmYachtPaid={onConfirmYachtPaid}
+          onSaveMieventoIntents={onSaveMieventoIntents}
+        />
+      )}
 
       <CollapsibleSection
         title="Interest clusters"
@@ -257,7 +277,7 @@ export default function Dashboard({
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-[hsl(43_65%_38%)] underline underline-offset-2 dark:text-[hsl(43_75%_65%)]">{cluster.activity.label}</span>
                     <Badge variant="secondary">{cluster.interestedCount} interested</Badge>
-                    <Badge variant="outline" data-testid={`badge-stage-${cluster.activity.id}`}>{clusterStage(cluster.interestedCount)}</Badge>
+                    <Badge variant="outline" data-testid={`badge-stage-${cluster.activity.id}`}>{clusterStage(cluster.interestedCount, thresholds)}</Badge>
                   </div>
                 </div>
 
@@ -346,7 +366,7 @@ export default function Dashboard({
             <p className="text-sm text-muted-foreground">No interests marked yet.</p>
           )}
           <p className="pt-1 text-xs text-muted-foreground" data-testid="text-cluster-footnote">
-            Gathering = under 10 interested · Sub-event candidate = 10+, ready to propose dates · Spin-off = 20+, plan a second session. Group sees the top 2 clusters (plus any over 6 interested). Date-locking opens on Sub-event candidates once Count-me-in passes half of the expected {EXPECTED_HEADCOUNT}.
+            Gathering = under {thresholds.candidateAt} interested · Sub-event candidate = {thresholds.candidateAt}+, ready to propose dates · Spin-off = {thresholds.spinoffAt}+, plan a second session. Group sees the top {thresholds.publicTop} clusters (plus any over {thresholds.publicMinInterest} interested). Date-locking opens on Sub-event candidates once Count-me-in passes half of the expected {EXPECTED_HEADCOUNT}.
           </p>
         </div>
       </CollapsibleSection>
@@ -458,9 +478,29 @@ export default function Dashboard({
           <Button variant="outline" size="sm" onClick={() => exportAvailabilityCsv(people, activities)} data-testid="button-export">
             <Download className="mr-1 h-4 w-4" /> Export CSV
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Respondents" disabled data-testid="icon-community">
-            <Users className="h-4 w-4" />
-          </Button>
+          {unlocked && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Respondents" data-testid="icon-community">
+                  <Users className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="text-xs">
+                {lastFiveEditors.length > 0 ? (
+                  <div className="space-y-1">
+                    <p className="font-semibold">Last 5 to save availability</p>
+                    {lastFiveEditors.map((e, i) => (
+                      <p key={`${e.name}-${i}`}>
+                        {e.name} · {new Date(e.updated_at).toLocaleString()}
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p>No one has saved their availability yet.</p>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
         {unlocked && (
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
@@ -882,21 +922,6 @@ function InterestCurtain({ pillCounts, activeFilter, onSelect, open, onOpenChang
         }}
         data-testid="curtain-hover-zone"
       />
-
-      {/* Mobile trigger button — wrapped in a plain fixed-position div because the
-          Button component's hover-elevate utility sets position:relative with higher
-          CSS specificity than a "fixed" utility class on the Button itself would have. */}
-      <div className="fixed bottom-4 left-4 z-40 md:hidden">
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5 shadow-md"
-          onClick={() => onOpenChange(true)}
-          data-testid="button-curtain-mobile"
-        >
-          <Filter className="h-4 w-4" /> Filter
-        </Button>
-      </div>
 
       {open && (
         <div
