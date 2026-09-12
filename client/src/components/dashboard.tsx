@@ -338,7 +338,7 @@ export default function Dashboard({
                 <div className="mt-3 space-y-2">
                   {lead ? (
                     <p className="text-sm text-muted-foreground">
-                      Event Organizer: {lead.lead_name} — the interest group will be notified and a group chat will follow.
+                      <span className="font-bold text-foreground">Event Organizer: {lead.lead_name}</span> — the interest group will be notified and a group chat will follow.
                     </p>
                   ) : (
                     <VolunteerLeadForm
@@ -595,22 +595,28 @@ function AvailabilityHeatmap({
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto">
-        <table className="w-full border-separate border-spacing-y-1 text-xs" data-testid="heatmap-grid">
+        <table className="w-full min-w-[560px] table-fixed border-separate border-spacing-y-1.5 text-xs" data-testid="heatmap-grid">
+          <colgroup>
+            <col className="w-20" />
+            <col />
+            <col />
+            <col />
+          </colgroup>
           <thead>
             <tr>
               <th className="text-left text-muted-foreground">Day</th>
               {PERIODS.map((p) => (
-                <th key={p} className="px-2 text-muted-foreground">{PERIOD_LABEL[p]}</th>
+                <th key={p} className="px-1 text-left font-semibold text-foreground">{PERIOD_LABEL[p]}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ day, cells }, rowIdx) => (
-              <tr key={day.iso} className={rowIdx % 2 === 1 ? "bg-muted/40" : undefined}>
-                <td className="whitespace-nowrap py-1 pr-2 text-right font-medium text-muted-foreground">
+            {rows.map(({ day, cells }) => (
+              <tr key={day.iso}>
+                <td className="whitespace-nowrap py-1 pr-3 text-right align-middle font-medium text-muted-foreground">
                   <div className="leading-tight">
                     <div>{day.weekday}</div>
-                    <div className="text-[10px] text-muted-foreground/80">{day.short.replace(`${day.weekday} `, "")}</div>
+                    <div className="text-[10px] text-muted-foreground/80">{day.iso.slice(5, 7)}/{day.iso.slice(8, 10)}</div>
                   </div>
                 </td>
                 {cells.map(({ period, tally, detailed, inTown, pct, locked }) => {
@@ -618,7 +624,7 @@ function AvailabilityHeatmap({
                     return (
                       <td key={period} className="px-1 py-1">
                         <div
-                          className="h-9 min-w-24 rounded-sm border-2 border-card-border bg-[hsl(220_10%_10%)]"
+                          className="h-10 w-full rounded-sm border border-white/15 bg-[hsl(220_10%_10%)]"
                           data-testid={`heatmap-cell-${day.iso}-${period}`}
                           title="Yacht Club 87 Dinner/Dance — everyone's there"
                         />
@@ -632,7 +638,7 @@ function AvailabilityHeatmap({
                         <PopoverTrigger asChild>
                           <button
                             type="button"
-                            className="h-9 min-w-24 rounded-sm border border-card-border text-[10px] font-bold"
+                            className="h-10 w-full rounded-sm text-[11px] font-bold"
                             style={{ backgroundColor: bg, color: fg }}
                             data-testid={`heatmap-cell-${day.iso}-${period}`}
                           >
