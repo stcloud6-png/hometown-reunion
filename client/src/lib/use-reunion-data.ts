@@ -222,10 +222,14 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const volunteerLead = useCallback(
     async (lead: ClusterLead) => {
       if (stub) {
-        setClusterLeads((prev) => [...prev.filter((l) => l.activity_id !== lead.activity_id), lead]);
+        setClusterLeads((prev) => {
+          const existing = prev.find((l) => l.activity_id === lead.activity_id);
+          const merged = { ...existing, ...lead };
+          return [...prev.filter((l) => l.activity_id !== lead.activity_id), merged];
+        });
         return;
       }
-      await supabaseRest("/cluster_leads", {
+      await supabaseRest("/cluster_leads?on_conflict=activity_id", {
         method: "POST",
         accessToken: session?.accessToken,
         prefer: "resolution=merge-duplicates,return=minimal",

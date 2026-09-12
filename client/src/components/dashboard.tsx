@@ -309,7 +309,7 @@ export default function Dashboard({
                 )}
 
                 <div className="mt-3 space-y-2">
-                  {lead ? (
+                  {lead?.lead_name ? (
                     <div className="text-sm text-muted-foreground">
                       <p>
                         <span className="font-bold text-foreground">Event Organizer: {lead.lead_name}</span> — the interest group will be notified and a group chat will follow.
@@ -322,11 +322,19 @@ export default function Dashboard({
                       />
                     </div>
                   ) : (
-                    <VolunteerLeadForm
-                      activityId={cluster.activity.id}
-                      myIdentity={myIdentity}
-                      onVolunteer={onVolunteerLead}
-                    />
+                    <div className="space-y-1">
+                      <VolunteerLeadForm
+                        activityId={cluster.activity.id}
+                        myIdentity={myIdentity}
+                        onVolunteer={onVolunteerLead}
+                      />
+                      <ChatLinkEditor
+                        activityId={cluster.activity.id}
+                        lead={lead ?? { activity_id: cluster.activity.id, lead_name: null }}
+                        canEdit={unlocked}
+                        onSave={onVolunteerLead}
+                      />
+                    </div>
                   )}
 
                   {plan && (

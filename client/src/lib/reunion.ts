@@ -80,7 +80,7 @@ export interface ClusterResource {
 export interface ClusterLead {
   id?: number;
   activity_id: string;
-  lead_name: string;
+  lead_name?: string | null;
   lead_email?: string | null;
   chat_link?: string | null;
   created_at?: string;
