@@ -337,7 +337,7 @@ export const MIEVENTO_TICKET_STATUS_LABEL: Record<MieventoTicketStatusValue, str
  * the events classmates still need to go register/pay for externally.
  */
 export function mieventoShoppingEvents(): ScheduledEvent[] {
-  return SCHEDULED_EVENTS.filter((e) => e.soon);
+  return SCHEDULED_EVENTS.filter((e) => e.blue);
 }
 
 /** Tallies each ticket status across everyone, for one MiEvento sub-event id. */

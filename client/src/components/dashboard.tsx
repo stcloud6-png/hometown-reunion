@@ -9,13 +9,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  Info, Download, ShieldCheck, Anchor, ClipboardCheck, CalendarHeart, Lock, ArrowLeft,
-  ChevronDown, Flame, Users, Grid3x3, CalendarClock, X, Clock, Ticket, ExternalLink,
+  Info, Download, ShieldCheck, Lock, ArrowLeft,
+  ChevronDown, Flame, Users, Grid3x3, CalendarClock, X, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import YachtPaymentDialog from "@/components/yacht-payment-dialog";
-import MieventoDialog from "@/components/mievento-dialog";
-import MieventoTicketDialog from "@/components/mievento-ticket-dialog";
 import {
   type Activity,
   type ClusterLead,
@@ -23,7 +20,6 @@ import {
   type ClusterThresholds,
   type EventPlan,
   type EventPlanStatus,
-  type MieventoTicketEntry,
   type MyIdentity,
   type Period,
   type Person,
@@ -32,9 +28,6 @@ import {
   DAYS,
   EVENT_PLAN_STATUS_LABEL,
   EXPECTED_HEADCOUNT,
-  MIEVENTO_INTENT_LABEL,
-  MIEVENTO_TICKET_STATUS_LABEL,
-  MIEVENTO_TICKET_URL,
   PERIODS,
   PERIOD_LABEL,
   STATUS_LABEL,
@@ -47,26 +40,15 @@ import {
   interestPillCounts,
   isYachtLockSlot,
   labelForTag,
-  mieventoDays,
   mostRecentEditor,
   pctScaleBg,
   pctScaleColor,
-  mieventoShoppingEvents,
-  mieventoTicketTally,
   recentEditors,
   scopeByInterest,
   sharedCommitments,
   tallyWindow,
   tallyWindowDetailed,
 } from "@/lib/reunion";
-
-const RALPH_FURLONG = "ralph furlong";
-
-/** True when the signed-in person's known name matches Ralph Furlong, case-insensitively. */
-function isRalphFurlong(myIdentity: MyIdentity | null, myPerson: Person | null): boolean {
-  const candidates = [myIdentity?.name, myPerson?.name];
-  return candidates.some((n) => n?.trim().toLowerCase() === RALPH_FURLONG);
-}
 
 /** True when the signed-in person's email matches the cluster lead's email, case-insensitively. */
 function isClusterLead(lead: ClusterLead | undefined, sessionEmail: string | null, myIdentity: MyIdentity | null): boolean {
@@ -96,10 +78,6 @@ interface DashboardProps {
   onSuggestResource: (resource: ClusterResource) => Promise<void>;
   onVolunteerLead: (lead: ClusterLead) => Promise<void>;
   onSaveEventPlan: (plan: EventPlan) => Promise<void>;
-  onSendSignInLink: (email: string) => Promise<void>;
-  onConfirmYachtPaid: (paid: boolean) => Promise<void>;
-  onSaveMieventoIntents: (intents: Record<string, string>) => Promise<void>;
-  onSaveMieventoTicketStatus: (status: Record<string, MieventoTicketEntry>) => Promise<void>;
   onBackToAvailability: () => void;
 }
 
@@ -163,10 +141,6 @@ export default function Dashboard({
   onSuggestResource,
   onVolunteerLead,
   onSaveEventPlan,
-  onSendSignInLink,
-  onConfirmYachtPaid,
-  onSaveMieventoIntents,
-  onSaveMieventoTicketStatus,
   onBackToAvailability,
 }: DashboardProps) {
   const [interestFilter, setInterestFilter] = useState<string | null>(null);
@@ -178,7 +152,6 @@ export default function Dashboard({
   const commitments = useMemo(() => sharedCommitments(people), [people]);
   const lastEditor = useMemo(() => mostRecentEditor(people), [people]);
   const lastFiveEditors = useMemo(() => recentEditors(people, 5), [people]);
-  const showRollCall = unlocked || isRalphFurlong(myIdentity, myPerson);
 
   const visibleClusters = clusters
     .filter((c) => c.interestedCount > 0)
@@ -268,19 +241,6 @@ export default function Dashboard({
           {rankedWindows.length === 0 && <p className="text-sm text-muted-foreground">No responses yet.</p>}
         </div>
       </CollapsibleSection>
-
-      {showRollCall && (
-        <RollCallCard
-          people={people}
-          isDemo={isDemo}
-          sessionEmail={sessionEmail}
-          myPerson={myPerson}
-          onSendSignInLink={onSendSignInLink}
-          onConfirmYachtPaid={onConfirmYachtPaid}
-          onSaveMieventoIntents={onSaveMieventoIntents}
-          onSaveMieventoTicketStatus={onSaveMieventoTicketStatus}
-        />
-      )}
 
       <CollapsibleSection
         title="Interest clusters"
@@ -395,44 +355,6 @@ export default function Dashboard({
           <p className="pt-1 text-xs text-muted-foreground lg:col-span-2" data-testid="text-cluster-footnote">
             Gathering = under {thresholds.candidateAt} interested · Sub-event candidate = {thresholds.candidateAt}+, ready to propose dates · Spin-off = {thresholds.spinoffAt}+, plan a second session. Group sees the top {thresholds.publicTop} clusters (plus any over {thresholds.publicMinInterest} interested). Date-locking opens on Sub-event candidates once Count-me-in passes half of the expected {EXPECTED_HEADCOUNT}.
           </p>
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        icon={<Ticket className="h-5 w-5" />}
-        title="MiEvento tickets"
-        subcopy="These MiEvento sub-events need tickets bought directly through MiEvento — see where the group stands and register when you're ready."
-        testId="section-mievento-tickets"
-      >
-        <div className="space-y-4">
-          <Button asChild size="sm" data-testid="link-mievento-buy-tickets">
-            <a href={MIEVENTO_TICKET_URL} target="_blank" rel="noreferrer">
-              <ExternalLink className="mr-1 h-4 w-4" /> Buy MiEvento tickets
-            </a>
-          </Button>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {mieventoShoppingEvents().map((event) => {
-              const tally = mieventoTicketTally(people, event.id);
-              return (
-                <div key={event.id} className="rounded-md border p-3" data-testid={`ticket-shopping-${event.id}`}>
-                  <p className="text-sm font-medium">{event.label}</p>
-                  {event.note && <p className="text-xs text-muted-foreground">{event.note}</p>}
-                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                    <span>{tally.purchased} purchased</span>
-                    <span>{tally.researching} looking into it</span>
-                    <span>{tally.not_registered} not registered yet</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <MieventoTicketDialog
-            isDemo={isDemo}
-            sessionEmail={sessionEmail}
-            myPerson={myPerson}
-            onSendSignInLink={onSendSignInLink}
-            onSaveTicketStatus={onSaveMieventoTicketStatus}
-          />
         </div>
       </CollapsibleSection>
 
@@ -648,9 +570,9 @@ function AvailabilityHeatmap({
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] table-fixed border-separate border-spacing-y-1.5 text-xs" data-testid="heatmap-grid">
+        <table className="w-full min-w-0 table-fixed border-separate border-spacing-y-1.5 text-xs sm:min-w-[560px]" data-testid="heatmap-grid">
           <colgroup>
-            <col className="w-20" />
+            <col className="w-12 sm:w-20" />
             <col />
             <col />
             <col />
@@ -659,14 +581,17 @@ function AvailabilityHeatmap({
             <tr>
               <th className="text-left text-muted-foreground">Day</th>
               {PERIODS.map((p) => (
-                <th key={p} className="px-1 text-left font-semibold text-foreground">{PERIOD_LABEL[p]}</th>
+                <th key={p} className="px-0.5 text-left font-semibold text-foreground sm:px-1">
+                  <span className="sm:hidden">{PERIOD_SHORT_LABEL[p]}</span>
+                  <span className="hidden sm:inline">{PERIOD_LABEL[p]}</span>
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map(({ day, cells }) => (
               <tr key={day.iso}>
-                <td className="whitespace-nowrap py-1 pr-3 text-right align-middle font-medium text-muted-foreground">
+                <td className="whitespace-nowrap py-1 pr-1 text-right align-middle font-medium text-muted-foreground sm:pr-3">
                   <div className="leading-tight">
                     <div>{day.weekday}</div>
                     <div className="text-[10px] text-muted-foreground/80">{day.iso.slice(5, 7)}/{day.iso.slice(8, 10)}</div>
@@ -675,9 +600,9 @@ function AvailabilityHeatmap({
                 {cells.map(({ period, tally, detailed, inTown, pct, locked }) => {
                   if (locked) {
                     return (
-                      <td key={period} className="px-1 py-1">
+                      <td key={period} className="px-0.5 py-1 sm:px-1">
                         <div
-                          className="h-10 w-full rounded-sm border border-white/15 bg-[hsl(220_10%_10%)]"
+                          className="h-9 w-full rounded-sm border border-white/15 bg-[hsl(220_10%_10%)] sm:h-10"
                           data-testid={`heatmap-cell-${day.iso}-${period}`}
                           title="Yacht Club 87 Dinner/Dance — everyone's there"
                         />
@@ -686,16 +611,17 @@ function AvailabilityHeatmap({
                   }
                   const { bg, fg } = heatmapCellColor(pct);
                   return (
-                    <td key={period} className="px-1 py-1">
+                    <td key={period} className="px-0.5 py-1 sm:px-1">
                       <Popover>
                         <PopoverTrigger asChild>
                           <button
                             type="button"
-                            className="h-10 w-full rounded-sm text-[11px] font-bold"
+                            className="h-9 w-full rounded-sm text-[9px] font-bold sm:h-10 sm:text-[11px]"
                             style={{ backgroundColor: bg, color: fg }}
                             data-testid={`heatmap-cell-${day.iso}-${period}`}
                           >
-                            {inTown > 0 ? `${tally.ok.length}/${inTown} \u00b7 ${pct}%` : "—"}
+                            <span className="sm:hidden">{inTown > 0 ? `${pct}%` : "—"}</span>
+                            <span className="hidden sm:inline">{inTown > 0 ? `${tally.ok.length}/${inTown} \u00b7 ${pct}%` : "—"}</span>
                           </button>
                         </PopoverTrigger>
                         <PopoverContent className="w-72 text-sm">
@@ -738,110 +664,6 @@ function AvailabilityHeatmap({
         </Button>
       </div>
     </div>
-  );
-}
-
-interface RollCallCardProps {
-  people: Person[];
-  isDemo: boolean;
-  sessionEmail: string | null;
-  myPerson: Person | null;
-  onSendSignInLink: (email: string) => Promise<void>;
-  onConfirmYachtPaid: (paid: boolean) => Promise<void>;
-  onSaveMieventoIntents: (intents: Record<string, string>) => Promise<void>;
-  onSaveMieventoTicketStatus: (status: Record<string, MieventoTicketEntry>) => Promise<void>;
-}
-
-function RollCallCard({ people, isDemo, sessionEmail, myPerson, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus }: RollCallCardProps) {
-  const attending = people.filter((p) => p.attending === true);
-  const notSure = people.filter((p) => p.attending === false);
-  const unanswered = people.filter((p) => p.attending == null);
-  const supportVolunteers = people.filter((p) => p.volunteer_support);
-  const leadVolunteers = people.filter((p) => p.volunteer_lead);
-  const yachtPaid = people.filter((p) => p.yacht_paid);
-
-  const days = mieventoDays();
-  const responded = people.filter((p) => p.mievento_intents && Object.keys(p.mievento_intents).length > 0);
-  const veryCount = people.reduce((sum, p) => sum + days.filter((d) => p.mievento_intents?.[d.iso] === "very").length, 0);
-
-  const ticketEvents = mieventoShoppingEvents();
-  const ticketTallies = ticketEvents.map((e) => mieventoTicketTally(people, e.id));
-  const ticketsPurchased = ticketTallies.reduce((sum, t) => sum + t.purchased, 0);
-  const ticketsResearching = ticketTallies.reduce((sum, t) => sum + t.researching, 0);
-
-  return (
-    <Card data-testid="card-roll-call">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ClipboardCheck className="h-5 w-5" /> Roll call
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Who's confirmed, who's helping, who's paid for the Yacht Club dinner, and MiEvento interest so far.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="rounded-md border p-3">
-            <p className="text-2xl font-semibold text-primary">{attending.length}</p>
-            <p className="text-sm text-muted-foreground">Count me in</p>
-            <p className="text-xs text-muted-foreground">{notSure.length} not sure · {unanswered.length} unanswered</p>
-          </div>
-          <div className="rounded-md border p-3">
-            <p className="text-2xl font-semibold text-primary">{leadVolunteers.length}</p>
-            <p className="text-sm text-muted-foreground">Volunteer leads</p>
-            <p className="text-xs text-muted-foreground">{supportVolunteers.length} offered to help support</p>
-          </div>
-          <div className="rounded-md border p-3">
-            <p className="flex items-center gap-1 text-2xl font-semibold text-primary">
-              <Anchor className="h-5 w-5" /> {yachtPaid.length}
-            </p>
-            <p className="text-sm text-muted-foreground">Yacht Club paid</p>
-            <div className="mt-2">
-              <YachtPaymentDialog
-                isDemo={isDemo}
-                sessionEmail={sessionEmail}
-                myPerson={myPerson}
-                onSendSignInLink={onSendSignInLink}
-                onConfirmPaid={onConfirmYachtPaid}
-              />
-            </div>
-          </div>
-          <div className="rounded-md border p-3">
-            <p className="flex items-center gap-1 text-2xl font-semibold text-primary">
-              <CalendarHeart className="h-5 w-5" /> {responded.length}
-            </p>
-            <p className="text-sm text-muted-foreground">MiEvento responses</p>
-            <p className="text-xs text-muted-foreground">{veryCount} "{MIEVENTO_INTENT_LABEL.very.toLowerCase()}" picks across the week</p>
-            <div className="mt-2">
-              <MieventoDialog
-                isDemo={isDemo}
-                sessionEmail={sessionEmail}
-                myPerson={myPerson}
-                onSendSignInLink={onSendSignInLink}
-                onSaveIntents={onSaveMieventoIntents}
-              />
-            </div>
-          </div>
-          <div className="rounded-md border p-3">
-            <p className="flex items-center gap-1 text-2xl font-semibold text-primary">
-              <Ticket className="h-5 w-5" /> {ticketsPurchased}
-            </p>
-            <p className="text-sm text-muted-foreground">Tickets purchased</p>
-            <p className="text-xs text-muted-foreground">{ticketsResearching} looking into it</p>
-            <div className="mt-2">
-              <MieventoTicketDialog
-                isDemo={isDemo}
-                sessionEmail={sessionEmail}
-                myPerson={myPerson}
-                onSendSignInLink={onSendSignInLink}
-                onSaveTicketStatus={onSaveMieventoTicketStatus}
-                compact
-              />
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 

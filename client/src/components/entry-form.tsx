@@ -11,14 +11,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CalendarRange, CheckCircle2, Lock, LogIn, Sparkles, Ticket } from "lucide-react";
+import { CalendarRange, CheckCircle2, ExternalLink, Lock, LogIn, Sparkles, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import VolunteerPromptDialog from "@/components/volunteer-prompt-dialog";
 import YachtPaymentDialog from "@/components/yacht-payment-dialog";
+import MieventoTicketDialog from "@/components/mievento-ticket-dialog";
+import EventPickerField from "@/components/event-picker-field";
+import RollCallBar from "@/components/roll-call-bar";
 import { useToast } from "@/hooks/use-toast";
 import {
   type Activity,
   type EventPlan,
+  type MieventoTicketEntry,
   type MyIdentity,
   type Period,
   type Person,
@@ -27,8 +31,10 @@ import {
   DAYS,
   EMAIL_PATTERN,
   END_DATE,
+  MIEVENTO_TICKET_URL,
   PERIODS,
   PERIOD_LABEL,
+  PERIOD_SHORT,
   START_DATE,
   STATUS_LABEL,
   STATUS_SHORT,
@@ -43,6 +49,8 @@ import {
   labelForTag,
   eventCategoryClass,
   mieventoOrEventLabel,
+  mieventoShoppingEvents,
+  mieventoTicketTally,
   statusesForSlot,
 } from "@/lib/reunion";
 
@@ -59,6 +67,8 @@ interface EntryFormProps {
   sessionEmail?: string | null;
   onSendSignInLink?: (email: string) => Promise<void>;
   onConfirmYachtPaid?: (paid: boolean) => Promise<void>;
+  onSaveMieventoIntents?: (intents: Record<string, string>) => Promise<void>;
+  onSaveMieventoTicketStatus?: (status: Record<string, MieventoTicketEntry>) => Promise<void>;
   /** Name+email remembered on this device from a prior submission, independent of sign-in. */
   myIdentity?: MyIdentity | null;
   onSignOut?: () => void;
@@ -82,6 +92,19 @@ const STATUS_COLOR: Record<SlotStatus, string> = {
   "pool-day": "status-pool",
 };
 
+/** Shorter labels for the narrow mobile status-select trigger — full labels shown on sm:+ via responsive spans. */
+const MOBILE_STATUS_SHORT: Record<SlotStatus, string> = {
+  ok: "Avail.",
+  maybe: "Maybe",
+  busy: "MiEv.",
+  private: "Private",
+  "pool-day": "Pool day",
+};
+const MOBILE_BUSY_LABEL: Record<"MiEvento" | "Event/Activity", string> = {
+  MiEvento: "MiEv.",
+  "Event/Activity": "Event",
+};
+
 const LEGEND_ITEMS: { status: SlotStatus; label: string; hint: string }[] = [
   { status: "ok", label: "Available", hint: "Open — plan around me" },
   { status: "maybe", label: "Maybe", hint: "Possibly available" },
@@ -90,7 +113,7 @@ const LEGEND_ITEMS: { status: SlotStatus; label: string; hint: string }[] = [
   { status: "private", label: "Private", hint: "Private / unavailable" },
 ];
 
-export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, myIdentity, onSignOut, linkError }: EntryFormProps) {
+export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus, myIdentity, onSignOut, linkError }: EntryFormProps) {
   const { toast } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
@@ -354,6 +377,64 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
               defaultEmail={email}
             />
           )}
+
+          {signedIn && onSendSignInLink && onSaveMieventoTicketStatus && (
+            <div className="w-full space-y-4 border-t pt-6 text-left" data-testid="section-mievento-tickets">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                  <Ticket className="h-4 w-4" /> MiEvento tickets
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  These MiEvento sub-events need tickets bought directly through MiEvento — see where the
+                  group stands and register when you're ready.
+                </p>
+              </div>
+              <Button asChild size="sm" data-testid="link-mievento-buy-tickets">
+                <a href={MIEVENTO_TICKET_URL} target="_blank" rel="noreferrer">
+                  <ExternalLink className="mr-1 h-4 w-4" /> Buy MiEvento tickets
+                </a>
+              </Button>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {mieventoShoppingEvents().map((event) => {
+                  const tally = mieventoTicketTally(people ?? [], event.id);
+                  return (
+                    <div key={event.id} className="rounded-md border p-3" data-testid={`ticket-shopping-${event.id}`}>
+                      <p className="text-sm font-medium">{event.label}</p>
+                      {event.note && <p className="text-xs text-muted-foreground">{event.note}</p>}
+                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                        <span>{tally.purchased} purchased</span>
+                        <span>{tally.researching} looking into it</span>
+                        <span>{tally.not_registered} not registered yet</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <MieventoTicketDialog
+                isDemo={Boolean(isDemo)}
+                sessionEmail={sessionEmail ?? null}
+                myPerson={myPersonRow}
+                onSendSignInLink={onSendSignInLink}
+                onSaveTicketStatus={onSaveMieventoTicketStatus}
+              />
+            </div>
+          )}
+
+          {signedIn && onSendSignInLink && (
+            <div className="w-full border-t pt-6">
+              <RollCallBar
+                people={people ?? []}
+                isDemo={Boolean(isDemo)}
+                sessionEmail={sessionEmail ?? null}
+                myPerson={myPersonRow}
+                onSendSignInLink={onSendSignInLink}
+                onConfirmYachtPaid={onConfirmYachtPaid ?? (async () => {})}
+                onSaveMieventoIntents={onSaveMieventoIntents ?? (async () => {})}
+                onSaveMieventoTicketStatus={onSaveMieventoTicketStatus ?? (async () => {})}
+                variant="footer"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -411,17 +492,23 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
           {onSendSignInLink && (signedIn || isProtected) && (
             <div className="space-y-1 border-t pt-3">
               {!signedIn && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={linkSending}
-                  onClick={handleSendSignInLink}
-                  data-testid="button-send-sign-in-link"
-                >
-                  <LogIn className="mr-1.5 h-3.5 w-3.5" />
-                  {linkSending ? "Sending\u2026" : "Email me my sign-in link"}
-                </Button>
+                <>
+                  <p className="text-xs text-muted-foreground" data-testid="text-sign-in-link-reuse">
+                    Already have a sign-in email from us? Look for it and click it to get back in — if you can't
+                    find it or it's stopped working, request a new one below.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={linkSending}
+                    onClick={handleSendSignInLink}
+                    data-testid="button-send-sign-in-link"
+                  >
+                    <LogIn className="mr-1.5 h-3.5 w-3.5" />
+                    {linkSending ? "Sending\u2026" : "Email me my sign-in link"}
+                  </Button>
+                </>
               )}
               {linkSentTo && (
                 <p className="text-sm font-medium text-primary" data-testid="text-link-sent">
@@ -565,19 +652,34 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
             </span>
           </div>
           <div className="overflow-x-auto rounded-md border">
-            <table className="w-full min-w-[640px] border-collapse text-sm" data-testid="table-time-slots">
+            <table className="w-full min-w-0 table-fixed border-collapse text-sm sm:min-w-[640px] sm:table-auto" data-testid="table-time-slots">
+              <colgroup>
+                <col className="w-16 sm:w-auto" />
+                <col />
+                <col />
+                <col />
+              </colgroup>
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-3 py-2">Day</th>
+                  <th className="px-1 py-2 sm:px-3">Day</th>
                   {PERIODS.map((period) => (
-                    <th key={period} className="px-3 py-2">{PERIOD_LABEL[period]}</th>
+                    <th key={period} className="px-1 py-2 sm:px-3">
+                      <span className="sm:hidden">{PERIOD_SHORT[period]}</span>
+                      <span className="hidden sm:inline">{PERIOD_LABEL[period]}</span>
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {days.map((day) => (
                   <tr key={day.iso} className="border-b align-top last:border-0" data-testid={`row-day-${day.iso}`}>
-                    <td className="whitespace-nowrap px-3 py-3 font-medium">{day.label}</td>
+                    <td className="px-1 py-2 text-xs font-medium sm:whitespace-nowrap sm:px-3 sm:py-3 sm:text-sm">
+                      <div className="leading-tight sm:hidden">
+                        <div>{day.weekday}</div>
+                        <div className="text-[10px] text-muted-foreground/80">{day.iso.slice(5, 7)}/{day.iso.slice(8, 10)}</div>
+                      </div>
+                      <span className="hidden sm:inline">{day.label}</span>
+                    </td>
                     {PERIODS.map((period) => {
                       const locked = isYachtLockSlot(day.iso, period);
                       const current = slots[day.iso]?.[period] ?? { s: "ok" as SlotStatus };
@@ -587,14 +689,14 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                         ...groupPlannedEventsForDate(day.iso, eventPlans, activities, period),
                       ];
                       return (
-                        <td key={period} className="px-3 py-3">
+                        <td key={period} className="px-1 py-2 sm:px-3 sm:py-3">
                           {locked ? (
                             <div
-                              className={cn("flex items-start gap-1 rounded-md border px-3 py-2 text-sm text-muted-foreground", "bg-muted")}
+                              className={cn("flex items-start gap-1 rounded-md border px-1.5 py-1.5 text-[11px] text-muted-foreground sm:px-3 sm:py-2 sm:text-sm", "bg-muted")}
                               data-testid={`slot-locked-${day.iso}-${period}`}
                             >
                               <Lock className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-                              <span>Yacht Club 87 Dinner/Dance</span>
+                              <span>Yacht Club 87</span>
                             </div>
                           ) : (
                             <div className="space-y-1">
@@ -602,13 +704,23 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                                 value={current.s}
                                 onValueChange={(value) => setSlotStatus(day.iso, period, value as SlotStatus, current.t)}
                               >
-                                <SelectTrigger className={cn("h-9", STATUS_COLOR[current.s])} data-testid={`select-status-${day.iso}-${period}`}>
+                                <SelectTrigger className={cn("h-8 px-1.5 text-[11px] sm:h-9 sm:px-3 sm:text-sm [&>svg]:h-3 [&>svg]:w-3 sm:[&>svg]:h-4 sm:[&>svg]:w-4", STATUS_COLOR[current.s])} data-testid={`select-status-${day.iso}-${period}`}>
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {statusOptions.map((s) => (
                                     <SelectItem key={s} value={s}>
-                                      {s === "busy" ? mieventoOrEventLabel(day.iso) : STATUS_SHORT[s]}
+                                      {s === "busy" ? (
+                                        <>
+                                          <span className="sm:hidden">{MOBILE_BUSY_LABEL[mieventoOrEventLabel(day.iso)]}</span>
+                                          <span className="hidden sm:inline">{mieventoOrEventLabel(day.iso)}</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span className="sm:hidden">{MOBILE_STATUS_SHORT[s]}</span>
+                                          <span className="hidden sm:inline">{STATUS_SHORT[s]}</span>
+                                        </>
+                                      )}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -618,30 +730,20 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                                 : options.length > 0 && (() => {
                                   const category = current.t ? eventCategoryClass(current.t) : undefined;
                                   return (
-                                    <Select
+                                    <EventPickerField
                                       value={current.t ?? ""}
-                                      onValueChange={(value) => {
+                                      options={options}
+                                      onSelect={(value) => {
                                         const event = options.find((o) => o.id === value);
                                         if (event) selectEvent(day.iso, period, event);
                                       }}
-                                    >
-                                      <SelectTrigger
-                                        className={cn(
-                                          "h-8 text-xs",
-                                          current.t ? cn("border-border/60 bg-card", category) : "tag-unanswered",
-                                        )}
-                                        data-testid={`select-event-${day.iso}-${period}`}
-                                      >
-                                        <SelectValue placeholder="Which event?" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {options.map((o) => (
-                                          <SelectItem key={o.id} value={o.id} className={eventCategoryClass(o.id)}>
-                                            {o.note ? `${o.label} (${o.note})` : o.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
+                                      triggerClassName={cn(
+                                        "h-8 text-xs",
+                                        current.t ? cn("border-border/60 bg-card", category) : "tag-unanswered",
+                                      )}
+                                      optionClassName={eventCategoryClass}
+                                      testId={`select-event-${day.iso}-${period}`}
+                                    />
                                   );
                                 })())}
                             </div>
@@ -712,19 +814,6 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
         </Button>
       </div>
 
-      {onGoToDashboard && (
-        <p className="pt-2 text-center text-sm">
-          Want to know what others are doing?{" "}
-          <button
-            type="button"
-            onClick={onGoToDashboard}
-            className="font-medium text-primary underline underline-offset-2"
-            data-testid="link-go-to-dashboard"
-          >
-            Click here for Group Dashboard
-          </button>
-        </p>
-      )}
     </form>
   );
 }

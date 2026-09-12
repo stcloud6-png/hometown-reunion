@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Filter, Moon, Sun } from "lucide-react";
 import EntryForm from "@/components/entry-form";
 import Dashboard from "@/components/dashboard";
+import RollCallBar from "@/components/roll-call-bar";
 import SettingsPopover from "@/components/settings-popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReunionData } from "@/lib/use-reunion-data";
@@ -65,6 +66,20 @@ export default function Home() {
         </div>
       </header>
 
+      {tab === "dashboard" && (
+        <RollCallBar
+          people={data.people}
+          isDemo={data.isDemo}
+          sessionEmail={data.sessionEmail}
+          myPerson={data.myPerson(data.sessionEmail)}
+          onSendSignInLink={data.sendSignInLink}
+          onConfirmYachtPaid={(paid) => data.updateMyPerson({ yacht_paid: paid })}
+          onSaveMieventoIntents={(intents) => data.updateMyPerson({ mievento_intents: intents })}
+          onSaveMieventoTicketStatus={(status) => data.updateMyPerson({ mievento_ticket_status: status })}
+          variant="header"
+        />
+      )}
+
       <main className="mx-auto max-w-5xl px-4 py-8">
         {tab === "entry" ? (
           <>
@@ -97,6 +112,8 @@ export default function Home() {
               sessionEmail={data.sessionEmail}
               onSendSignInLink={data.sendSignInLink}
               onConfirmYachtPaid={(paid) => data.updateMyPerson({ yacht_paid: paid })}
+              onSaveMieventoIntents={(intents) => data.updateMyPerson({ mievento_intents: intents })}
+              onSaveMieventoTicketStatus={(status) => data.updateMyPerson({ mievento_ticket_status: status })}
               myIdentity={myIdentity}
               onSignOut={data.signOut}
               linkError={data.linkError}
@@ -121,10 +138,6 @@ export default function Home() {
             onSuggestResource={data.suggestResource}
             onVolunteerLead={data.volunteerLead}
             onSaveEventPlan={data.saveEventPlan}
-            onSendSignInLink={data.sendSignInLink}
-            onConfirmYachtPaid={(paid) => data.updateMyPerson({ yacht_paid: paid })}
-            onSaveMieventoIntents={(intents) => data.updateMyPerson({ mievento_intents: intents })}
-            onSaveMieventoTicketStatus={(status) => data.updateMyPerson({ mievento_ticket_status: status })}
             onBackToAvailability={() => setTab("entry")}
           />
         )}
