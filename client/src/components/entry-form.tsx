@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CalendarRange, CheckCircle2, Lock, Sparkles, Ticket } from "lucide-react";
+import { CalendarRange, CheckCircle2, Lock, LogIn, Sparkles, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import VolunteerPromptDialog from "@/components/volunteer-prompt-dialog";
 import YachtPaymentDialog from "@/components/yacht-payment-dialog";
@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   type Activity,
   type EventPlan,
+  type MyIdentity,
   type Period,
   type Person,
   type SlotStatus,
@@ -58,6 +59,11 @@ interface EntryFormProps {
   sessionEmail?: string | null;
   onSendSignInLink?: (email: string) => Promise<void>;
   onConfirmYachtPaid?: (paid: boolean) => Promise<void>;
+  /** Name+email remembered on this device from a prior submission, independent of sign-in. */
+  myIdentity?: MyIdentity | null;
+  onSignOut?: () => void;
+  /** Set when a magic-link redirect failed to verify on page load. */
+  linkError?: string | null;
 }
 
 function slugify(label: string): string {
@@ -84,7 +90,7 @@ const LEGEND_ITEMS: { status: SlotStatus; label: string; hint: string }[] = [
   { status: "private", label: "Private", hint: "Private / unavailable" },
 ];
 
-export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid }: EntryFormProps) {
+export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, myIdentity, onSignOut, linkError }: EntryFormProps) {
   const { toast } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
@@ -101,6 +107,89 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // --- Returning-user sign-in & repopulation -------------------------------
+  // Signed in for real: a magic-link click resolved to a live Supabase Auth
+  // session AND that session's email matches a saved entry (`initial`).
+  const signedIn = Boolean(sessionEmail && initial);
+  const hydratedRef = useRef<string | null>(null);
+
+  // Once a signed-in session resolves to the caller's saved row, hydrate the
+  // form fields from it (fields render blank/default until then since the
+  // session + people list load asynchronously after mount).
+  useEffect(() => {
+    if (!initial) return;
+    const key = `${initial.name}|${initial.email ?? ""}`;
+    if (hydratedRef.current === key) return;
+    hydratedRef.current = key;
+    setName(initial.name ?? "");
+    setEmail(initial.email ?? "");
+    setArrival(initial.arrival ?? START_DATE);
+    setDeparture(initial.departure ?? END_DATE);
+    setSlots(initial.slots ?? initSlots(initial.arrival ?? START_DATE, initial.departure ?? END_DATE));
+    setInterests(initial.interests ?? []);
+    setAttending(initial.attending ?? null);
+    setVolunteerSupport(initial.volunteer_support ?? null);
+    setVolunteerLead(initial.volunteer_lead ?? null);
+    setVolunteerPrompted((initial.interests ?? []).length > 0);
+  }, [initial]);
+
+  // Not signed in, but the name typed matches someone who already has a saved
+  // entry (by name or by email) — their entry is protected: we load it for
+  // review but block saving until they verify via the emailed sign-in link.
+  const matchedExisting = useMemo(() => {
+    if (signedIn || !people) return null;
+    const typedName = name.trim().toLowerCase();
+    const typedEmail = email.trim().toLowerCase();
+    return (
+      people.find(
+        (p) =>
+          (typedName && p.name.trim().toLowerCase() === typedName) ||
+          (typedEmail && (p.email ?? "").trim().toLowerCase() === typedEmail),
+      ) ?? null
+    );
+  }, [people, name, email, signedIn]);
+
+  const matchedHydratedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!matchedExisting) {
+      matchedHydratedRef.current = null;
+      return;
+    }
+    const key = `${matchedExisting.name}|${matchedExisting.email ?? ""}`;
+    if (matchedHydratedRef.current === key) return;
+    matchedHydratedRef.current = key;
+    if (!email.trim() && matchedExisting.email) setEmail(matchedExisting.email);
+    setArrival(matchedExisting.arrival ?? START_DATE);
+    setDeparture(matchedExisting.departure ?? END_DATE);
+    setSlots(matchedExisting.slots ?? initSlots(matchedExisting.arrival ?? START_DATE, matchedExisting.departure ?? END_DATE));
+    setInterests(matchedExisting.interests ?? []);
+    setAttending(matchedExisting.attending ?? null);
+    setVolunteerSupport(matchedExisting.volunteer_support ?? null);
+    setVolunteerLead(matchedExisting.volunteer_lead ?? null);
+    setVolunteerPrompted((matchedExisting.interests ?? []).length > 0);
+  }, [matchedExisting]);
+
+  const isProtected = Boolean(matchedExisting) && !signedIn;
+
+  const [linkSending, setLinkSending] = useState(false);
+  const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
+  const [linkSendError, setLinkSendError] = useState<string | null>(null);
+
+  async function handleSendSignInLink() {
+    const target = (matchedExisting?.email ?? email).trim();
+    if (!target || !EMAIL_PATTERN.test(target) || !onSendSignInLink) return;
+    setLinkSending(true);
+    setLinkSendError(null);
+    try {
+      await onSendSignInLink(target);
+      setLinkSentTo(target);
+    } catch {
+      setLinkSendError("Couldn't send the email right now — please try again.");
+    } finally {
+      setLinkSending(false);
+    }
+  }
 
   const days = useMemo(() => DAYS.filter((d) => d.iso >= arrival && d.iso <= departure), [arrival, departure]);
 
@@ -189,6 +278,12 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
       setValidationError("Please enter a valid email address — we'll send you a private link to your entry.");
       return;
     }
+    if (isProtected) {
+      setValidationError(
+        "This entry is protected. If it's yours, enter your name and use the sign-in link we email you above.",
+      );
+      return;
+    }
     if (arrival > departure) {
       setValidationError("Your arrival date must be before your departure date.");
       return;
@@ -268,6 +363,29 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     <form onSubmit={handleSubmit} className="space-y-8" data-testid="form-entry">
       <VolunteerPromptDialog step={volunteerStep} onAnswer={handleVolunteerAnswer} />
 
+      {(signedIn || isProtected) && (
+        <p className="rounded-md border border-primary/30 bg-primary/5 px-4 py-3 text-sm" data-testid="text-welcome-back">
+          {signedIn ? (
+            <>
+              Welcome back, <strong>{(initial?.name ?? name).split(" ")[0]}</strong> — you're signed in, so you can
+              update anything and save.
+            </>
+          ) : (
+            <>
+              Welcome back, <strong>{(matchedExisting?.name ?? name).split(" ")[0]}</strong> — your saved entry is
+              loaded for you to review. To make changes, use the "Email me my sign-in link" button below, then open
+              the link we send you.
+            </>
+          )}
+        </p>
+      )}
+
+      {linkError && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" data-testid="text-link-error">
+          {linkError}
+        </p>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Your name</CardTitle>
@@ -283,6 +401,45 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
             <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" data-testid="input-email" required />
             <p className="text-sm text-muted-foreground">Required. We'll email you a private link to view and update your entry whenever you return.</p>
           </div>
+
+          {isProtected && (
+            <p className="text-sm text-destructive" data-testid="text-protected-entry">
+              This entry is protected. If it's yours, use the sign-in link we email you below.
+            </p>
+          )}
+
+          {onSendSignInLink && (signedIn || isProtected) && (
+            <div className="space-y-1 border-t pt-3">
+              {!signedIn && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={linkSending}
+                  onClick={handleSendSignInLink}
+                  data-testid="button-send-sign-in-link"
+                >
+                  <LogIn className="mr-1.5 h-3.5 w-3.5" />
+                  {linkSending ? "Sending\u2026" : "Email me my sign-in link"}
+                </Button>
+              )}
+              {linkSentTo && (
+                <p className="text-sm font-medium text-primary" data-testid="text-link-sent">
+                  Check your inbox — we sent a sign-in link to {linkSentTo}.
+                </p>
+              )}
+              {linkSendError && (
+                <p className="text-sm text-destructive" data-testid="text-link-send-error">
+                  {linkSendError}
+                </p>
+              )}
+              {signedIn && onSignOut && (
+                <Button type="button" size="sm" variant="outline" onClick={onSignOut} data-testid="button-sign-out">
+                  Sign out
+                </Button>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

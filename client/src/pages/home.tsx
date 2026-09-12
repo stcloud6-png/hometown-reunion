@@ -83,6 +83,7 @@ export default function Home() {
             </div>
             <div id="entry-form" />
             <EntryForm
+              initial={data.myPerson(data.sessionEmail)}
               activities={data.activities}
               eventPlans={data.eventPlans}
               onSave={async (person) => {
@@ -96,6 +97,9 @@ export default function Home() {
               sessionEmail={data.sessionEmail}
               onSendSignInLink={data.sendSignInLink}
               onConfirmYachtPaid={(paid) => data.updateMyPerson({ yacht_paid: paid })}
+              myIdentity={myIdentity}
+              onSignOut={data.signOut}
+              linkError={data.linkError}
             />
           </>
         ) : (
