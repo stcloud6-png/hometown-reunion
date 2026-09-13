@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Info, Download, ShieldCheck, Lock, ArrowLeft,
-  ChevronDown, Flame, Users, Grid3x3, CalendarClock, X, Clock,
+  ChevronDown, Flame, Users, Grid3x3, CalendarClock, X, Clock, MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -766,15 +766,21 @@ function ChatLinkEditor({
   }
 
   const linkNode = lead.chat_link ? (
-    <a
-      href={lead.chat_link}
-      target="_blank"
-      rel="noreferrer"
-      className="text-primary underline underline-offset-2"
-      data-testid={`link-chat-${activityId}`}
+    <Button
+      asChild
+      size="sm"
+      className="gap-1.5 bg-[hsl(142_70%_32%)] text-white border-[hsl(142_70%_26%)] hover:bg-[hsl(142_70%_28%)]"
     >
-      Join the group chat
-    </a>
+      <a
+        href={lead.chat_link}
+        target="_blank"
+        rel="noreferrer"
+        data-testid={`link-chat-${activityId}`}
+      >
+        <MessageCircle className="size-4" />
+        Join the group chat
+      </a>
+    </Button>
   ) : null;
 
   if (!canEdit) {
