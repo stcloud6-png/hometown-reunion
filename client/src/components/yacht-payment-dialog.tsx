@@ -79,9 +79,14 @@ export default function YachtPaymentDialog({ isDemo, sessionEmail, myPerson, onS
             <Anchor className="h-5 w-5" /> Yacht Club Dinner &amp; Dance
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Everyone's slot is already reserved for Wed, Jan 20. Pay your Event Organizer directly (cash,
-            Venmo, etc.) for whatever amount they've told you, then confirm it here so the group total stays
-            accurate.
+            Everyone's slot is already reserved for Wed, Jan 20.
+          </p>
+          <p className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm" data-testid="text-yacht-payment-info">
+            <span className="font-semibold">$50 per person</span>, <span className="font-semibold">$40 for your plus-one</span>.
+            Send via <span className="font-semibold">Zelle to 813-966-8151</span>, or text that number to request an address to mail a check.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Once you've sent payment, confirm it here so the group total stays accurate.
           </p>
         </DialogHeader>
 

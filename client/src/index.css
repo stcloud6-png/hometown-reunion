@@ -391,3 +391,16 @@
     border-color: #e8737373;
   }
 }
+
+/* Yearbook flipbook (react-pageflip) — each page is an image at native 980x1268 aspect (0.773). */
+.yearbook-flipbook {
+  margin: 0 auto;
+}
+.yearbook-page {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.yearbook-page img {
+  pointer-events: none;
+}

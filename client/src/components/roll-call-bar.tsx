@@ -106,6 +106,9 @@ export default function RollCallBar({
             <Anchor className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
             <span className="text-base font-semibold text-primary">{yachtPaid.length}</span>
             <span className="text-muted-foreground">Yacht Club paid</span>
+            <span className="text-[10px] text-muted-foreground" data-testid="text-yacht-payment-info-rollcall">
+              ($50 / $40 plus-one · Zelle 813-966-8151, or text to mail a check)
+            </span>
             {showYachtButton && (
               <YachtPaymentDialog
                 isDemo={isDemo}

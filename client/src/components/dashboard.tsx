@@ -207,7 +207,7 @@ export default function Dashboard({
                           <div
                             key={period}
                             className="h-6 w-full rounded-full bg-[hsl(220_10%_15%)]"
-                            title="Yacht Club 87 Dinner/Dance — everyone's there"
+                            title="Yacht Club 87 Dinner/Dance — everyone's there. $50pp / $40 plus-one, Zelle 813-966-8151 (or text to request a mailing address)."
                             data-testid={`window-${row.day.iso}-${period}`}
                           />
                         ) : cell ? (
@@ -620,7 +620,7 @@ function AvailabilityHeatmap({
                         <div
                           className="h-9 w-full rounded-sm border border-white/15 bg-[hsl(220_10%_10%)] sm:h-10"
                           data-testid={`heatmap-cell-${day.iso}-${period}`}
-                          title="Yacht Club 87 Dinner/Dance — everyone's there"
+                          title="Yacht Club 87 Dinner/Dance — everyone's there. $50pp / $40 plus-one, Zelle 813-966-8151 (or text to request a mailing address)."
                         />
                       </td>
                     );
