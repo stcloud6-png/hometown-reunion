@@ -200,6 +200,28 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
   const [linkSendError, setLinkSendError] = useState<string | null>(null);
 
+  const czrVideoRef = useRef<HTMLVideoElement>(null);
+  const czrHoverPlayRef = useRef(false);
+  const [showYachtVideo, setShowYachtVideo] = useState(false);
+
+  function handleCzrVideoMouseEnter() {
+    const video = czrVideoRef.current;
+    if (!video || !video.paused) return;
+    czrHoverPlayRef.current = true;
+    video.play().catch(() => {
+      czrHoverPlayRef.current = false;
+    });
+  }
+
+  function handleCzrVideoMouseLeave() {
+    const video = czrVideoRef.current;
+    if (!video) return;
+    if (czrHoverPlayRef.current) {
+      video.pause();
+    }
+    czrHoverPlayRef.current = false;
+  }
+
   async function handleSendSignInLink() {
     const target = (matchedExisting?.email ?? email).trim();
     if (!target || !EMAIL_PATTERN.test(target) || !onSendSignInLink) return;
@@ -719,6 +741,8 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                             <div
                               className={cn("flex items-start gap-1 rounded-md border px-1.5 py-1.5 text-[11px] text-muted-foreground sm:px-3 sm:py-2 sm:text-sm", "bg-muted")}
                               data-testid={`slot-locked-${day.iso}-${period}`}
+                              onMouseEnter={() => setShowYachtVideo(true)}
+                              onMouseLeave={() => setShowYachtVideo(false)}
                             >
                               <Lock className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
                               <span>Yacht Club 87</span>
@@ -781,8 +805,44 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
               </tbody>
             </table>
           </div>
+
+          <div
+            className="overflow-hidden rounded-md border bg-black"
+            onMouseEnter={handleCzrVideoMouseEnter}
+            onMouseLeave={handleCzrVideoMouseLeave}
+            data-testid="container-czr-video"
+          >
+            <video
+              ref={czrVideoRef}
+              className="block w-full max-h-[360px] mx-auto"
+              controls
+              muted
+              playsInline
+              preload="metadata"
+              data-testid="video-czr-events"
+            >
+              <source src={`${import.meta.env.BASE_URL}videos/czr-events.mp4`} type="video/mp4" />
+            </video>
+          </div>
         </CardContent>
       </Card>
+
+      {showYachtVideo && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 pointer-events-none"
+          data-testid="overlay-yacht-video"
+        >
+          <video
+            className="max-h-[85vh] max-w-[90vw] rounded-lg shadow-2xl"
+            autoPlay
+            muted
+            playsInline
+            data-testid="video-yacht-club"
+          >
+            <source src={`${import.meta.env.BASE_URL}videos/yacht-club-dinner-dance.mp4`} type="video/mp4" />
+          </video>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
