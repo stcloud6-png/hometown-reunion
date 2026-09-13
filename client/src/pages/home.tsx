@@ -29,10 +29,17 @@ export default function Home() {
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4">
           <div className="flex flex-wrap items-center gap-3">
             <img src={`${import.meta.env.BASE_URL}reunion-logo.jpg`} alt="CZR BHS87 Reunion" className="h-10 w-10 rounded-full object-cover" />
-            <div>
-              <p className="text-sm font-semibold leading-tight">CZR BHS87 Reunion</p>
-              <p className="text-xs text-muted-foreground">Jan 17 – 24, 2027</p>
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="cursor-help" data-testid="header-title-tooltip-trigger">
+                  <p className="text-sm font-semibold leading-tight">CZR BHS87 Reunion</p>
+                  <p className="text-xs text-muted-foreground">Jan 17 – 24, 2027</p>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[240px] text-xs">
+                $30 for t-shirts and Dinner Ticket $50/$40-plus-one, Zelle 813-966-8151, and mailing address provided via text.
+              </TooltipContent>
+            </Tooltip>
             <div className="flex items-center gap-1.5 border-l pl-2.5" data-testid="header-partner-logos">
               <a
                 href="https://canalzonereunion.com/"

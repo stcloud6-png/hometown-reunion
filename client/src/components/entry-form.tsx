@@ -805,25 +805,6 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
               </tbody>
             </table>
           </div>
-
-          <div
-            className="overflow-hidden rounded-md border bg-black"
-            onMouseEnter={handleCzrVideoMouseEnter}
-            onMouseLeave={handleCzrVideoMouseLeave}
-            data-testid="container-czr-video"
-          >
-            <video
-              ref={czrVideoRef}
-              className="block w-full max-h-[360px] mx-auto"
-              controls
-              muted
-              playsInline
-              preload="metadata"
-              data-testid="video-czr-events"
-            >
-              <source src={`${import.meta.env.BASE_URL}videos/czr-events.mp4`} type="video/mp4" />
-            </video>
-          </div>
         </CardContent>
       </Card>
 
@@ -897,6 +878,25 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
         <Button type="submit" disabled={saving} data-testid="button-save-availability">
           {saving ? "Saving…" : "Save my Info"}
         </Button>
+      </div>
+
+      <div
+        className="overflow-hidden rounded-md border bg-black"
+        onMouseEnter={handleCzrVideoMouseEnter}
+        onMouseLeave={handleCzrVideoMouseLeave}
+        data-testid="container-czr-video"
+      >
+        <video
+          ref={czrVideoRef}
+          className="block w-full max-h-[360px] mx-auto"
+          controls
+          muted
+          playsInline
+          preload="metadata"
+          data-testid="video-czr-events"
+        >
+          <source src={`${import.meta.env.BASE_URL}videos/czr-events.mp4`} type="video/mp4" />
+        </video>
       </div>
 
     </form>
