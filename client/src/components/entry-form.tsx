@@ -203,6 +203,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   const czrVideoRef = useRef<HTMLVideoElement>(null);
   const czrHoverPlayRef = useRef(false);
   const [showYachtVideo, setShowYachtVideo] = useState(false);
+  const yachtHideTimerRef = useRef<number | null>(null);
 
   function handleCzrVideoMouseEnter() {
     const video = czrVideoRef.current;
@@ -221,6 +222,29 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     }
     czrHoverPlayRef.current = false;
   }
+
+  function clearYachtHideTimer() {
+    if (yachtHideTimerRef.current !== null) {
+      window.clearTimeout(yachtHideTimerRef.current);
+      yachtHideTimerRef.current = null;
+    }
+  }
+
+  function showYachtOverlay() {
+    clearYachtHideTimer();
+    setShowYachtVideo(true);
+  }
+
+  function scheduleHideYachtOverlay() {
+    clearYachtHideTimer();
+    yachtHideTimerRef.current = window.setTimeout(() => {
+      setShowYachtVideo(false);
+    }, 300);
+  }
+
+  useEffect(() => {
+    return () => clearYachtHideTimer();
+  }, []);
 
   async function handleSendSignInLink() {
     const target = (matchedExisting?.email ?? email).trim();
@@ -741,8 +765,8 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                             <div
                               className={cn("flex items-start gap-1 rounded-md border px-1.5 py-1.5 text-[11px] text-muted-foreground sm:px-3 sm:py-2 sm:text-sm", "bg-muted")}
                               data-testid={`slot-locked-${day.iso}-${period}`}
-                              onMouseEnter={() => setShowYachtVideo(true)}
-                              onMouseLeave={() => setShowYachtVideo(false)}
+                              onMouseEnter={showYachtOverlay}
+                              onMouseLeave={scheduleHideYachtOverlay}
                             >
                               <Lock className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
                               <span>Yacht Club 87</span>
@@ -814,10 +838,13 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
           data-testid="overlay-yacht-video"
         >
           <video
-            className="max-h-[85vh] max-w-[90vw] rounded-lg shadow-2xl"
+            className="max-h-[85vh] max-w-[90vw] rounded-lg shadow-2xl pointer-events-auto"
             autoPlay
             muted
+            controls
             playsInline
+            onMouseEnter={showYachtOverlay}
+            onMouseLeave={scheduleHideYachtOverlay}
             data-testid="video-yacht-club"
           >
             <source src={`${import.meta.env.BASE_URL}videos/yacht-club-dinner-dance.mp4`} type="video/mp4" />
