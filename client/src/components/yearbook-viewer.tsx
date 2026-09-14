@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, BookOpen } from "lucide-react";
 
-const TOTAL_PAGES = 163;
+const TOTAL_PAGES = 173;
 
 interface YearbookViewerProps {
   open: boolean;
