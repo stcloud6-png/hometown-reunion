@@ -14,7 +14,7 @@
 // ---------------------------------------------------------------------------
 
 export type Period = "m" | "a" | "e";
-export type SlotStatus = "ok" | "maybe" | "busy" | "private";
+export type SlotStatus = "ok" | "maybe" | "busy" | "private" | "pool-day";
 
 export interface SlotValue {
   s: SlotStatus;
@@ -38,7 +38,17 @@ export interface Person {
   volunteer_lead?: boolean | null;
   yacht_paid?: boolean | null;
   mievento_intents?: Record<string, string> | null;
+  /** Per sub-event ticket status for the 4 "tickets coming soon" MiEvento events (keyed by ScheduledEvent id), e.g. `{ "mega-cruise-23": { status: "purchased" } }`. */
+  mievento_ticket_status?: Record<string, MieventoTicketEntry> | null;
   updated_at?: string;
+}
+
+export type MieventoTicketStatusValue = "not_registered" | "researching" | "purchased";
+
+export interface MieventoTicketEntry {
+  status: MieventoTicketStatusValue;
+  /** Optional free text: "is there any other info that would help you decide to go?" */
+  note?: string;
 }
 
 export interface Activity {
@@ -70,8 +80,9 @@ export interface ClusterResource {
 export interface ClusterLead {
   id?: number;
   activity_id: string;
-  lead_name: string;
+  lead_name?: string | null;
   lead_email?: string | null;
+  chat_link?: string | null;
   created_at?: string;
 }
 
@@ -119,6 +130,7 @@ export const STATUS_LABEL: Record<SlotStatus, string> = {
   maybe: "Possibly available",
   busy: "Existing event",
   private: "Private / unavailable",
+  "pool-day": "Drinking All Day at the Pool",
 };
 /** Compact labels used in the slot grid itself (busy is overridden by mieventoOrEventLabel()). */
 export const STATUS_SHORT: Record<SlotStatus, string> = {
@@ -126,6 +138,7 @@ export const STATUS_SHORT: Record<SlotStatus, string> = {
   maybe: "Maybe",
   busy: "MiEvento",
   private: "Private",
+  "pool-day": "Drinking All Day at the Pool",
 };
 
 /** Shoulder days: outside the core MiEvento window, on either end of the trip. */
@@ -147,7 +160,15 @@ const POOL_DAY_DATES: string[] = [
 /** The Yacht Club dinner/dance is locked onto every new entry: Wed Jan 20, evening. */
 const YACHT_LOCK = { iso: "2027-01-20", slot: "e" as Period, tag: "yacht-club" };
 
-export const CLUSTER_THRESHOLDS = {
+export interface ClusterThresholds {
+  publicTop: number;
+  publicMinInterest: number;
+  candidateAt: number;
+  spinoffAt: number;
+}
+
+/** Fallback defaults, used until the shared `app_settings` row loads (or when stubbed). */
+export const CLUSTER_THRESHOLDS: ClusterThresholds = {
   publicTop: 2,
   publicMinInterest: 6,
   candidateAt: 10,
@@ -169,6 +190,15 @@ export const BASE_ACTIVITIES: Activity[] = [
   { id: "shopping", label: "Shopping" },
   { id: "karaoke", label: "Karaoke" },
   { id: "bay-cruise-87", label: "Bay Cruise Exclusive for 87" },
+  { id: "golf", label: "Another Golf Day exclusive for 87" },
+  { id: "bowling", label: "Bowling" },
+  { id: "chicken-coup", label: "Chicken coup" },
+  { id: "pin-ding", label: "Exclusive 87 Ping Ding" },
+  { id: "poolside-87", label: "Exclusive Poolside for 87" },
+  { id: "jog-amador-causeway", label: "Jog Amador Causeway" },
+  { id: "pickleball", label: "Pickleball" },
+  { id: "rooftop-dinner-casco", label: "Rooftop dinner casco" },
+  { id: "tennis-doubles", label: "Tennis doubles" },
 ];
 
 /** Typical time-of-day for an activity, used to auto-slot a group-planned sub-event. */
@@ -193,6 +223,9 @@ const ACTIVITY_TIME_OF_DAY: Record<string, "evening" | "day" | "any"> = {
   golf: "day",
   bowling: "any",
   "escape-room": "any",
+  "chicken-coup": "any",
+  "poolside-87": "any",
+  pickleball: "day",
 };
 
 function activityTimeOfDay(activityId: string): "evening" | "day" | "any" {
@@ -237,7 +270,9 @@ export const SCHEDULED_EVENTS: ScheduledEvent[] = [
   { id: "coronado-25", label: "Coronado Beach", days: SHOULDER_END },
   { id: "el-valle-26", label: "El Valle", days: SHOULDER_END },
   { id: "pool-day", label: "Drinking All Day at the Pool", days: POOL_DAY_DATES },
-  { id: "other", label: "Other commitment", note: "", days: [] },
+  // Applies to every shoulder date (both ends of the trip) but never during the
+  // core Jan 17–24 MiEvento window — see the period filter in eventsForDate().
+  { id: "other", label: "Other commitment", note: "", days: [...SHOULDER_START, ...SHOULDER_END] },
 ];
 
 const EVENT_LABEL_BY_ID: Record<string, string> = Object.fromEntries(
@@ -273,6 +308,49 @@ export const EVENT_PLAN_STATUS_LABEL: Record<EventPlanStatus, string> = {
   cancelled: "Cancelled",
 };
 
+/** Per-day interest level a person can declare for the core MiEvento week (Jan 17–24). */
+export type MieventoIntent = "very" | "somewhat" | "skip";
+export const MIEVENTO_INTENTS: MieventoIntent[] = ["very", "somewhat", "skip"];
+export const MIEVENTO_INTENT_LABEL: Record<MieventoIntent, string> = {
+  very: "Very interested",
+  somewhat: "Somewhat interested",
+  skip: "Not this year",
+};
+
+/** The core MiEvento window as a list of DayInfo, for the interest triage dialog. */
+export function mieventoDays(): DayInfo[] {
+  return DAYS.filter((d) => d.iso >= MIEVENTO_START && d.iso <= MIEVENTO_END);
+}
+
+/** Where classmates go to actually buy MiEvento tickets. */
+export const MIEVENTO_TICKET_URL = "https://www.mieventos.com/event-multiple-detail/czr-2027";
+
+export const MIEVENTO_TICKET_STATUSES: MieventoTicketStatusValue[] = ["not_registered", "researching", "purchased"];
+export const MIEVENTO_TICKET_STATUS_LABEL: Record<MieventoTicketStatusValue, string> = {
+  not_registered: "Haven't registered yet",
+  researching: "Looking into it",
+  purchased: "Purchased my tickets",
+};
+
+/**
+ * The MiEvento sub-events flagged "tickets coming soon" in the schedule —
+ * these are the ones that make up the MiEvento shopping list, since they're
+ * the events classmates still need to go register/pay for externally.
+ */
+export function mieventoShoppingEvents(): ScheduledEvent[] {
+  return SCHEDULED_EVENTS.filter((e) => e.blue);
+}
+
+/** Tallies each ticket status across everyone, for one MiEvento sub-event id. */
+export function mieventoTicketTally(people: Person[], eventId: string): Record<MieventoTicketStatusValue, number> {
+  const tally: Record<MieventoTicketStatusValue, number> = { not_registered: 0, researching: 0, purchased: 0 };
+  for (const p of people) {
+    const entry = p.mievento_ticket_status?.[eventId];
+    if (entry?.status) tally[entry.status] += 1;
+  }
+  return tally;
+}
+
 export const MAINTENANCE_PIN = "3817";
 
 // ---------------------------------------------------------------------------
@@ -286,6 +364,45 @@ function parseISO(iso: string): Date {
 
 function toISO(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+const dropdownDateFmt = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+
+export interface DateOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Milestone suffixes shown in the Arrive/Depart dropdowns next to specific dates,
+ * matching the style of the "or earlier"/"or later" boundary suffixes below
+ * (plain date label + a space + this text — no extra punctuation).
+ */
+const MILESTONE_LABELS: Record<string, string> = {
+  "2027-01-17": "CZR Begins",
+  "2027-01-20": "BHS87 Yacht Club Dinner",
+  "2027-01-24": "CZR Ends",
+};
+
+function withMilestone(iso: string, base: string): string {
+  const milestone = MILESTONE_LABELS[iso];
+  return milestone ? `${base} ${milestone}` : base;
+}
+
+/** Arrive dropdown options: plain dates Jan 9–30, with "or earlier" suffix on the first (boundary) option, and milestone suffixes (CZR Begins/Ends, Yacht Club Dinner) on their dates. */
+export function arriveOptions(): DateOption[] {
+  return DAYS.map((d, i) => {
+    const base = i === 0 ? `${dropdownDateFmt.format(parseISO(d.iso))} or earlier` : dropdownDateFmt.format(parseISO(d.iso));
+    return { value: d.iso, label: withMilestone(d.iso, base) };
+  });
+}
+
+/** Depart dropdown options: plain dates Jan 9–30, with "or later" suffix on the last (boundary) option, and milestone suffixes (CZR Begins/Ends, Yacht Club Dinner) on their dates. */
+export function departOptions(): DateOption[] {
+  return DAYS.map((d, i) => {
+    const base = i === DAYS.length - 1 ? `${dropdownDateFmt.format(parseISO(d.iso))} or later` : dropdownDateFmt.format(parseISO(d.iso));
+    return { value: d.iso, label: withMilestone(d.iso, base) };
+  });
 }
 
 export function addDays(iso: string, n: number): string {
@@ -347,15 +464,52 @@ export function eventAppliesToDate(eventId: string, iso: string): boolean {
   return !!event?.days.includes(iso);
 }
 
-/** The events selectable as a "busy" reason for a given date (excludes yacht-club always; excludes pool-day inside the MiEvento window). */
-export function eventsForDate(iso: string): ScheduledEvent[] {
-  return SCHEDULED_EVENTS.filter(
-    (e) => e.id !== "yacht-club" && !(e.id === "pool-day" && iso >= MIEVENTO_START && iso <= MIEVENTO_END) && eventAppliesToDate(e.id, iso),
-  );
+/**
+ * The events selectable as a "busy" reason for a given date (excludes yacht-club; excludes
+ * pool-day — that's now its own standalone status, see statusesForSlot()).
+ *
+ * When `period` is given, also restricts to events that can actually happen in that
+ * exact time-of-day slot: an event's `autoSlots` list is its full set of valid periods
+ * (e.g. ["m"] for a morning-only tour, ["a"] for an afternoon-only tour, ["m","a"] for one
+ * that spans the day, ["e"] for evening-only). A period not in that list is never offered —
+ * so a morning-only tour never leaks into the afternoon dropdown and vice versa. Events with
+ * no autoSlots restriction (no fixed time) are always offered.
+ */
+export function eventsForDate(iso: string, period?: Period): ScheduledEvent[] {
+  return SCHEDULED_EVENTS.filter((e) => {
+    if (e.id === "yacht-club" || e.id === "pool-day") return false;
+    if (!eventAppliesToDate(e.id, iso)) return false;
+    if (!period || !e.autoSlots) return true;
+    return e.autoSlots.includes(period);
+  });
 }
 
 export function isPoolDayEligible(iso: string): boolean {
   return POOL_DAY_DATES.includes(iso);
+}
+
+/** Evening slots on these dates never offer "busy"/MiEvento as a status — those
+ * evenings are exclusively Available/Maybe/Private — unless the slot is *already*
+ * set to busy (so an existing pick doesn't silently disappear from the list). */
+const BUSY_HIDDEN_EVENING_DATES: string[] = ["2027-01-17", "2027-01-18", "2027-01-24"];
+
+/**
+ * The selectable statuses for a given day+period slot, in the exact order the
+ * live site presents them. "Drinking All Day at the Pool" is a 5th, standalone
+ * status (not a "busy" reason) offered only on Morning/Afternoon slots within
+ * the pool-day-eligible date range (Jan 13–27) — Evening slots never offer it.
+ *
+ * `currentStatus` lets an evening slot that's already "busy" keep showing that
+ * option even on a BUSY_HIDDEN_EVENING_DATES date, so an existing choice never
+ * vanishes out from under the person who made it.
+ */
+export function statusesForSlot(iso: string, period: Period, currentStatus?: SlotStatus): SlotStatus[] {
+  const base: SlotStatus[] = ["ok", "maybe", "busy", "private"];
+  const withPool = period !== "e" && isPoolDayEligible(iso) ? [...base, "pool-day" as SlotStatus] : base;
+  if (period === "e" && BUSY_HIDDEN_EVENING_DATES.includes(iso) && currentStatus !== "busy") {
+    return withPool.filter((s) => s !== "busy");
+  }
+  return withPool;
 }
 
 /** Group-planned sub-event ids are prefixed "czr-" + the base activity id. */
@@ -369,36 +523,102 @@ export function fromGroupPlannedId(id: string): string {
   return id.slice(4);
 }
 
-/** Human label for any busy-slot tag id, prefixing "(group-planned)" for czr- ids. */
+/** Human label for any busy-slot tag id, prefixing "(BHS87 event)" for czr- ids. */
 export function labelForTag(tag: string, activities: Activity[]): string {
   if (isGroupPlannedId(tag)) {
     const activityId = fromGroupPlannedId(tag);
     const base = activities.find((a) => a.id === activityId)?.label ?? BASE_ACTIVITIES.find((a) => a.id === activityId)?.label ?? activityId;
-    return `${base} (group-planned)`;
+    return `${base} (BHS87 event)`;
   }
   return EVENT_LABEL_BY_ID[tag] ?? tag;
 }
 
-/** Synthetic selectable sub-events generated from open event plans landing on this date. */
-export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], activities: Activity[]): { id: string; label: string; autoSlots: Period[] }[] {
+const SCHEDULED_EVENT_BY_ID: Record<string, ScheduledEvent> = Object.fromEntries(
+  SCHEDULED_EVENTS.map((e) => [e.id, e]),
+);
+
+/** Label including the parenthetical timing/ticket note, e.g. "Railway (Fri 22 morning &
+ * afternoon \u2014 tickets coming soon)" \u2014 used only for the live Jan 17\u201324 sub-event picker,
+ * where retaining that context (timeframe / ticket status) matters. Other surfaces (roster,
+ * heatmap tooltips) keep using the plain `labelForTag` label. */
+export function labelWithNoteForTag(tag: string, activities: Activity[]): string {
+  if (isGroupPlannedId(tag)) return labelForTag(tag, activities);
+  const event = SCHEDULED_EVENT_BY_ID[tag];
+  if (!event) return labelForTag(tag, activities);
+  return event.note ? `${event.label} (${event.note})` : event.label;
+}
+
+/** Color/weight category for a resolved MiEvento sub-event tag, matched to the live reference
+ * site: "blue" for headline picks, "soon" for tickets-pending, "soft" for optional add-ons,
+ * else muted. Group-planned (czr-) tags are handled by their own cluster styling and return
+ * undefined here so callers leave that path untouched. */
+export function eventCategoryClass(tag: string | undefined): string | undefined {
+  if (!tag || isGroupPlannedId(tag)) return undefined;
+  const event = SCHEDULED_EVENT_BY_ID[tag];
+  if (!event) return undefined;
+  if (event.blue) return "text-blue-event";
+  if (event.soon) return "text-soon-event";
+  if (event.soft) return "text-soft-event";
+  return "text-muted-foreground";
+}
+
+/** Synthetic selectable sub-events generated from open event plans landing on this date.
+ * When `period` is given, applies the same evening-only/day-only restriction as
+ * `eventsForDate()` so a group-planned evening activity doesn't leak into Morning/Afternoon
+ * (and vice versa). */
+export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], activities: Activity[], period?: Period): { id: string; label: string; note?: string; autoSlots: Period[] }[] {
   return eventPlans
     .filter((p) => p.status === "open" && p.event_date === iso)
     .map((p) => {
       const base = activities.find((a) => a.id === p.activity_id) ?? BASE_ACTIVITIES.find((a) => a.id === p.activity_id);
       return {
         id: toGroupPlannedId(p.activity_id),
-        label: `${base?.label ?? p.activity_id} (group-planned)`,
+        label: `${base?.label ?? p.activity_id} (BHS87 event)`,
         autoSlots: autoSlotsForTimeOfDay(activityTimeOfDay(p.activity_id)),
       };
-    });
+    })
+    .filter((e) => (period ? e.autoSlots.includes(period) : true));
 }
 
-/** Initializes a fresh person's slots as all-Available across the whole trip, with the Yacht Club lock applied. */
+/**
+ * Default per-date overrides applied to every fresh entry — the known-event
+ * defaults the live site pre-fills so a new respondent sees a realistic
+ * starting schedule instead of a blank green grid. Days/periods not listed
+ * here default to "ok" (Available). Un-tagged "busy" entries render as an
+ * unresolved "Which event?" prompt until the person picks one.
+ */
+const DEFAULT_SLOT_OVERRIDES: Partial<Record<string, { period: Period; status: SlotStatus; tag?: string }[]>> = {
+  "2027-01-13": [{ period: "e", status: "busy", tag: "czr-napoli" }],
+  "2027-01-17": [
+    { period: "m", status: "busy" },
+    { period: "a", status: "busy" },
+  ],
+  "2027-01-19": [{ period: "e", status: "busy", tag: "coffee-house-19" }],
+  "2027-01-21": [{ period: "e", status: "busy", tag: "chicken-21" }],
+  "2027-01-22": [
+    { period: "m", status: "busy", tag: "railway-22" },
+    { period: "a", status: "busy", tag: "railway-22" },
+    { period: "e", status: "busy", tag: "pin-ding-22" },
+  ],
+  "2027-01-23": [{ period: "e", status: "busy", tag: "mega-cruise-23" }],
+  "2027-01-24": [
+    { period: "m", status: "busy" },
+    { period: "a", status: "busy" },
+  ],
+};
+
+/** Initializes a fresh person's slots as Available across the whole trip, with the known-event defaults and the Yacht Club lock applied. */
 export function initSlots(arrival: string, departure: string): PersonSlots {
   const slots: PersonSlots = {};
   let cursor = arrival;
   while (cursor <= departure) {
     slots[cursor] = { m: { s: "ok" }, a: { s: "ok" }, e: { s: "ok" } };
+    const overrides = DEFAULT_SLOT_OVERRIDES[cursor];
+    if (overrides) {
+      for (const o of overrides) {
+        slots[cursor][o.period] = o.tag ? { s: o.status, t: o.tag } : { s: o.status };
+      }
+    }
     cursor = addDays(cursor, 1);
   }
   if (slots[YACHT_LOCK.iso]) {
@@ -423,18 +643,80 @@ export interface WindowTally {
   maybe: string[];
   busy: string[];
   private: string[];
+  "pool-day": string[];
   out: string[];
 }
 
-/** Tallies who's ok/maybe/busy/private/out for a specific day+period, optionally filtered to people interested in `activityId`. */
+/** Tallies who's ok/maybe/busy/private/pool-day/out for a specific day+period, optionally filtered to people interested in `activityId`. */
 export function tallyWindow(people: Person[], iso: string, period: Period, activityId?: string): WindowTally {
-  const tally: WindowTally = { ok: [], maybe: [], busy: [], private: [], out: [] };
+  const tally: WindowTally = { ok: [], maybe: [], busy: [], private: [], "pool-day": [], out: [] };
   for (const person of people) {
     if (activityId && !person.interests?.includes(activityId)) continue;
     const status = statusFor(person, iso, period);
     tally[status].push(person.name);
   }
   return tally;
+}
+
+export interface DetailedWindowTally {
+  ok: string[];
+  maybe: string[];
+  busy: { name: string; label: string }[];
+  private: string[];
+  out: string[];
+}
+
+/** Like tallyWindow, but busy entries carry the event label (for the heatmap's per-cell breakdown popover). */
+export function tallyWindowDetailed(people: Person[], iso: string, period: Period, activities: Activity[]): DetailedWindowTally {
+  const out: DetailedWindowTally = { ok: [], maybe: [], busy: [], private: [], out: [] };
+  for (const person of people) {
+    const status = statusFor(person, iso, period);
+    if (status === "ok" || status === "pool-day") out.ok.push(person.name);
+    else if (status === "maybe") out.maybe.push(person.name);
+    else if (status === "private") out.private.push(person.name);
+    else if (status === "out") out.out.push(person.name);
+    else if (status === "busy") {
+      if (isYachtLockSlot(iso, period)) {
+        out.busy.push({ name: person.name, label: "Yacht Club 87 Dinner/Dance" });
+      } else {
+        const tag = person.slots?.[iso]?.[period]?.t;
+        out.busy.push({ name: person.name, label: tag ? labelForTag(tag, activities) : "Existing event" });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Merges the built-in seed activities with any classmate-suggested rows from the
+ * `activities` table, keeping exactly one entry per id — BASE_ACTIVITIES wins ties.
+ *
+ * A classmate suggesting a "new" activity that slugifies to an id already in
+ * BASE_ACTIVITIES (e.g. typing "Golf" → id "golf", which already exists) inserts a
+ * second `activities` row with the same id. Every function that renders or counts
+ * activities MUST merge through this helper instead of concatenating the raw arrays
+ * — otherwise that same activity renders twice (this caused the Interest Clusters
+ * duplicate-pill bug in Maintenance mode, since `clusterSummaries` mapped the raw,
+ * un-deduped list while `interestPillCounts` already deduped).
+ */
+export function mergeActivities(activities: Activity[]): Activity[] {
+  return [...BASE_ACTIVITIES, ...activities.filter((a) => !BASE_ACTIVITIES.some((b) => b.id === a.id))];
+}
+
+/** Interest pills in the same left-to-right/top-to-bottom order shown on the entry form, each with how many respondents picked it — for the dashboard's left-edge curtain filter. */
+export function interestPillCounts(people: Person[], activities: Activity[]): { id: string; label: string; count: number }[] {
+  const all = mergeActivities(activities);
+  return all.map((activity) => ({
+    id: activity.id,
+    label: activity.label,
+    count: people.filter((p) => p.interests?.includes(activity.id)).length,
+  }));
+}
+
+/** Scopes a people list to those interested in `activityId`; passing null/undefined returns everyone. */
+export function scopeByInterest(people: Person[], activityId: string | null | undefined): Person[] {
+  if (!activityId) return people;
+  return people.filter((p) => p.interests?.includes(activityId));
 }
 
 /** Best windows for the whole group: every day+period ranked by number available ("ok"), highest first. */
@@ -451,6 +733,70 @@ export function bestWindows(people: Person[], limit = 5): { iso: string; period:
   return rows.sort((a, b) => b.available - a.available).slice(0, limit);
 }
 
+/** Ranked "best windows for the group" row: percentage available per period, per day. Yacht-locked evening (Wed 20) is excluded (null) since it's mandatory for everyone. */
+export interface RankedWindowRow {
+  day: DayInfo;
+  periods: Partial<Record<Period, { available: number; total: number; pct: number } | null>>;
+}
+
+/** Group-wide best windows, ranked by average availability across periods, in a 2-column/N-row shape for the dashboard's percentage-badge layout. */
+export function bestWindowsRanked(people: Person[], limit = 6): RankedWindowRow[] {
+  const scored: (RankedWindowRow & { avg: number })[] = [];
+  for (const day of DAYS) {
+    const periods: RankedWindowRow["periods"] = {};
+    let sum = 0;
+    let count = 0;
+    for (const period of PERIODS) {
+      if (isYachtLockSlot(day.iso, period)) {
+        periods[period] = null;
+        continue;
+      }
+      const tally = tallyWindow(people, day.iso, period);
+      const inTown = people.length - tally.out.length;
+      if (inTown === 0) {
+        periods[period] = null;
+        continue;
+      }
+      const pct = Math.round((tally.ok.length / inTown) * 100);
+      periods[period] = { available: tally.ok.length, total: inTown, pct };
+      sum += pct;
+      count++;
+    }
+    if (count === 0) continue;
+    scored.push({ day, periods, avg: sum / count });
+  }
+  return scored.sort((a, b) => b.avg - a.avg).slice(0, limit).map(({ avg, ...row }) => row);
+}
+
+/** Green (high) → olive (low) text/badge color for a 0–100 availability percentage. */
+export function pctScaleColor(pct: number): string {
+  const hue = 45 + ((152 - 45) * Math.min(Math.max(pct, 0), 100)) / 100;
+  return `hsl(${hue.toFixed(0)} 48% 30%)`;
+}
+export function pctScaleBg(pct: number): string {
+  const hue = 45 + ((152 - 45) * Math.min(Math.max(pct, 0), 100)) / 100;
+  return `hsl(${hue.toFixed(0)} 48% 92%)`;
+}
+
+/** Who most recently saved/updated their entry — for the maintenance-only "last edited by" indicator. */
+export function mostRecentEditor(people: Person[]): { name: string; updated_at: string } | null {
+  const withTimestamps = people.filter((p) => p.updated_at);
+  if (withTimestamps.length === 0) return null;
+  const latest = withTimestamps.reduce((a, b) => ((a.updated_at! > b.updated_at!) ? a : b));
+  return { name: latest.name, updated_at: latest.updated_at! };
+}
+
+/** The most recent `limit` people to have saved/edited their availability, newest first.
+ * Uses the existing `people.updated_at` save timestamp — not a separate page-visit log. */
+export function recentEditors(people: Person[], limit = 5): { name: string; updated_at: string }[] {
+  return people
+    .filter((p) => p.updated_at)
+    .slice()
+    .sort((a, b) => (b.updated_at! > a.updated_at! ? 1 : b.updated_at! < a.updated_at! ? -1 : 0))
+    .slice(0, limit)
+    .map((p) => ({ name: p.name, updated_at: p.updated_at! }));
+}
+
 export interface ClusterSummary {
   activity: Activity;
   interestedCount: number;
@@ -458,9 +804,31 @@ export interface ClusterSummary {
   tier: "none" | "public" | "candidate" | "spinoff";
 }
 
+/** Interest-cluster stage label shown on each cluster card, per the group's published legend. */
+export function clusterStage(count: number, thresholds: ClusterThresholds = CLUSTER_THRESHOLDS): "Gathering" | "Sub-event candidate" | "Spin-off" {
+  if (count >= thresholds.spinoffAt) return "Spin-off";
+  if (count >= thresholds.candidateAt) return "Sub-event candidate";
+  return "Gathering";
+}
+
+/** Best windows scoped to the people interested in one activity — "Day, Period — X of Y free" lines for a cluster card. */
+export function bestWindowsForActivity(people: Person[], activityId: string, limit = 3): { iso: string; period: Period; day: DayInfo; available: number; total: number }[] {
+  const interested = people.filter((p) => p.interests?.includes(activityId));
+  const total = interested.length;
+  if (total === 0) return [];
+  const rows: { iso: string; period: Period; day: DayInfo; available: number; total: number }[] = [];
+  for (const day of DAYS) {
+    for (const period of PERIODS) {
+      const tally = tallyWindow(interested, day.iso, period);
+      rows.push({ iso: day.iso, period, day, available: tally.ok.length, total });
+    }
+  }
+  return rows.sort((a, b) => b.available - a.available).slice(0, limit);
+}
+
 /** Buckets each activity's interest level against CLUSTER_THRESHOLDS. */
 export function clusterSummaries(people: Person[], activities: Activity[]): ClusterSummary[] {
-  return activities.map((activity) => {
+  return mergeActivities(activities).map((activity) => {
     const interestedNames = people.filter((p) => p.interests?.includes(activity.id)).map((p) => p.name);
     const count = interestedNames.length;
     let tier: ClusterSummary["tier"] = "none";
@@ -469,6 +837,48 @@ export function clusterSummaries(people: Person[], activities: Activity[]): Clus
     else if (count >= CLUSTER_THRESHOLDS.publicMinInterest) tier = "public";
     return { activity, interestedCount: count, interestedNames, tier };
   }).sort((a, b) => b.interestedCount - a.interestedCount);
+}
+
+export interface SharedCommitment {
+  event: ScheduledEvent;
+  count: number;
+  /** Distinct dates (short label, e.g. "Tue Jan 12") this event is marked on someone's schedule. */
+  dates: string[];
+}
+
+/** Tallies how many respondents currently have each known scheduled event (Yacht Club, MiEvento week bookings, tours, pool day, ...) marked on their schedule — "times blocked by existing events the group already knows about." */
+export function sharedCommitments(people: Person[]): SharedCommitment[] {
+  const counts: Record<string, number> = {};
+  const dateSets: Record<string, Set<string>> = {};
+  function markDate(eventId: string, iso: string) {
+    if (!dateSets[eventId]) dateSets[eventId] = new Set();
+    dateSets[eventId].add(iso);
+  }
+  for (const person of people) {
+    const seen = new Set<string>();
+    for (const [iso, day] of Object.entries(person.slots ?? {})) {
+      for (const slot of Object.values(day ?? {})) {
+        if ((slot?.s === "busy" || slot?.s === "pool-day") && slot.t && !isGroupPlannedId(slot.t)) {
+          seen.add(slot.t);
+          markDate(slot.t, iso);
+        }
+      }
+    }
+    if (person.arrival <= YACHT_LOCK.iso && person.departure >= YACHT_LOCK.iso) {
+      seen.add(YACHT_LOCK.tag);
+      markDate(YACHT_LOCK.tag, YACHT_LOCK.iso);
+    }
+    for (const id of Array.from(seen)) counts[id] = (counts[id] ?? 0) + 1;
+  }
+  return SCHEDULED_EVENTS.filter((e) => e.id !== "other" && counts[e.id])
+    .map((event) => ({
+      event,
+      count: counts[event.id],
+      dates: Array.from(dateSets[event.id] ?? [])
+        .sort()
+        .map((iso) => DAYS.find((d) => d.iso === iso)?.short ?? iso),
+    }))
+    .sort((a, b) => b.count - a.count);
 }
 
 /** Distinct labels of any auto-slot conflicts (scheduled group events) a person's slots reference. */
@@ -578,7 +988,15 @@ const STORAGE_KEYS = {
   accessToken: "hr-access-token",
   refreshToken: "hr-refresh-token",
   clusterThresholds: "cluster-thresholds",
+  /** Name + email captured on the My Availability tab — used to identify "me" for
+   * volunteer sign-up, independent of the Roll Call magic-link auth session. */
+  myIdentity: "hr-my-identity",
 } as const;
+
+export interface MyIdentity {
+  name: string;
+  email: string;
+}
 
 // ---------------------------------------------------------------------------
 // Supabase REST client (hand-rolled fetch, matching the live site — no supabase-js)
@@ -686,6 +1104,17 @@ export async function supabaseRest<T = unknown>(
 
 export { STORAGE_KEYS };
 
+/** Reads the name+email captured on the My Availability tab, if any. */
+export function readMyIdentity(): MyIdentity | null {
+  return storage.get<MyIdentity>(STORAGE_KEYS.myIdentity);
+}
+
+/** Persists the name+email captured on the My Availability tab so volunteer
+ * sign-up can identify "me" without requiring the Roll Call magic-link sign-in. */
+export function writeMyIdentity(identity: MyIdentity): void {
+  storage.set(STORAGE_KEYS.myIdentity, identity);
+}
+
 // ---------------------------------------------------------------------------
 // Demo/seed data — used only for local QA against stubbed routes, never
 // written to the live project. Names here are fictional and are NOT the
@@ -694,7 +1123,14 @@ export { STORAGE_KEYS };
 
 type SlotEdit = [dayOffset: number, period: Period, status: SlotStatus, tag?: string];
 
-export function buildDemoPerson(name: string, arrivalOffset: number, departureOffset: number, edits: SlotEdit[], interests: string[]): Person {
+export function buildDemoPerson(
+  name: string,
+  arrivalOffset: number,
+  departureOffset: number,
+  edits: SlotEdit[],
+  interests: string[],
+  extra: Partial<Person> = {},
+): Person {
   const arrival = addDays(START_DATE, arrivalOffset);
   const departure = addDays(START_DATE, departureOffset);
   const slots = initSlots(arrival, departure);
@@ -702,7 +1138,7 @@ export function buildDemoPerson(name: string, arrivalOffset: number, departureOf
     const iso = addDays(START_DATE, dayOffset);
     if (slots[iso]) slots[iso][period] = tag ? { s: status, t: tag } : { s: status };
   }
-  return { name, arrival, departure, slots, interests, updated_at: new Date().toISOString() };
+  return { name, arrival, departure, slots, interests, updated_at: new Date().toISOString(), ...extra };
 }
 
 export const DEMO_PEOPLE: Person[] = [
@@ -710,10 +1146,18 @@ export const DEMO_PEOPLE: Person[] = [
     [12, "m", "busy", "golf-21"],
     [12, "a", "busy", "golf-21"],
     [13, "m", "busy", "railway-22"],
-  ], ["railway-87", "deep-sea-fishing", "cruise-87"]),
+  ], ["railway-87", "deep-sea-fishing", "cruise-87"], {
+    email: "marcus.demo@example.com",
+    yacht_paid: true,
+    mievento_ticket_status: { "railway-22": { status: "purchased" }, "mega-cruise-23": { status: "researching" } },
+  }),
   buildDemoPerson("Danny Whitfield", 4, 10, [
     [8, "m", "busy", "transit-17"],
     [8, "a", "busy", "transit-17"],
-  ], ["napoli", "coronado", "casino"]),
+  ], ["napoli", "coronado", "casino"], {
+    email: "danny.demo@example.com",
+    mievento_intents: { "2027-01-17": "very", "2027-01-18": "somewhat" },
+    mievento_ticket_status: { "coffee-house-19": { status: "not_registered", note: "Waiting to see who else is going first." } },
+  }),
   buildDemoPerson("Jerry Pankow", 0, 21, [], ["napoli", "hiking", "escape-room"]),
 ];

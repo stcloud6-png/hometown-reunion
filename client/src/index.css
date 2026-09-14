@@ -59,6 +59,8 @@
   --status-busy-fg: #822a1c;
   --status-private-bg: #e5e7eb;
   --status-private-fg: #525866;
+  --status-pool-bg: #d7ecf6;
+  --status-pool-fg: #0d5a7a;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
   --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0), 0px 1px 2px -1px hsl(0 0% 0% / 0);
@@ -162,6 +164,8 @@
   --status-busy-fg: #ec9a8d;
   --status-private-bg: #2d2f34;
   --status-private-fg: #abb0ba;
+  --status-pool-bg: #1d3c4a;
+  --status-pool-fg: #8ecdea;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
   --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0), 0px 1px 2px -1px hsl(0 0% 0% / 0);
@@ -352,4 +356,51 @@
     background-color: var(--status-private-bg);
     color: var(--status-private-fg);
   }
+  .status-pool {
+    background-color: var(--status-pool-bg);
+    color: var(--status-pool-fg);
+  }
+
+  /* Jan 17–24 MiEvento sub-event resolution colors (matched to live reference site) */
+  .text-blue-event, .text-blue-event-option {
+    color: #1147bb;
+    font-weight: 700;
+  }
+  .dark .text-blue-event, .dark .text-blue-event-option {
+    color: #70aefb;
+  }
+  .text-soon-event, .text-soon-event-option {
+    color: #6c819d;
+  }
+  .dark .text-soon-event, .dark .text-soon-event-option {
+    color: #99a7b8;
+  }
+  .text-soft-event, .text-soft-event-option {
+    color: #a3a3a3;
+  }
+  .dark .text-soft-event, .dark .text-soft-event-option {
+    color: #949494;
+  }
+  .tag-unanswered {
+    color: #b42222;
+    font-weight: 700;
+    border-color: #b4222273;
+  }
+  .dark .tag-unanswered {
+    color: #e87373;
+    border-color: #e8737373;
+  }
+}
+
+/* Yearbook flipbook (react-pageflip) — each page is an image at native 980x1268 aspect (0.773). */
+.yearbook-flipbook {
+  margin: 0 auto;
+}
+.yearbook-page {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.yearbook-page img {
+  pointer-events: none;
 }
