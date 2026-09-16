@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Filter, Moon, Sun } from "lucide-react";
 import EntryForm from "@/components/entry-form";
@@ -9,7 +9,7 @@ import YearbookViewer from "@/components/yearbook-viewer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReunionData } from "@/lib/use-reunion-data";
 import { useDarkMode } from "@/hooks/use-dark-mode";
-import { readMyIdentity, type MyIdentity } from "@/lib/reunion";
+import { readMyIdentity, logVisit, type MyIdentity } from "@/lib/reunion";
 
 const STUB = import.meta.env.VITE_STUB_DATA === "true";
 
@@ -22,6 +22,12 @@ export default function Home() {
   const [curtainOpen, setCurtainOpen] = useState(false);
   const [myIdentity, setMyIdentity] = useState<MyIdentity | null>(() => readMyIdentity());
   const [yearbookOpen, setYearbookOpen] = useState(false);
+
+  // Log one anonymous page-visit per browser per day (Maintenance-mode traffic
+  // indicator only) — never during stubbed/local QA runs.
+  useEffect(() => {
+    if (!STUB) logVisit();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background text-foreground">

@@ -41,6 +41,7 @@ import {
   isYachtLockSlot,
   labelForTag,
   mostRecentEditor,
+  fetchVisitCount,
   pctScaleBg,
   pctScaleColor,
   recentEditors,
@@ -152,6 +153,25 @@ export default function Dashboard({
   const commitments = useMemo(() => sharedCommitments(people), [people]);
   const lastEditor = useMemo(() => mostRecentEditor(people), [people]);
   const lastFiveEditors = useMemo(() => recentEditors(people, 5), [people]);
+
+  // Anonymous-visit traffic counters (Maintenance mode only) — fetched fresh
+  // each time Maintenance is unlocked, never against demo/stub data.
+  const [visitSinceLastSave, setVisitSinceLastSave] = useState<number | null>(null);
+  const [visitLast5Days, setVisitLast5Days] = useState<number | null>(null);
+  useEffect(() => {
+    if (!unlocked || isDemo) return;
+    let cancelled = false;
+    const sinceLastIso = lastEditor?.updated_at ?? new Date(0).toISOString();
+    const fiveDaysAgoIso = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    Promise.all([fetchVisitCount(sinceLastIso), fetchVisitCount(fiveDaysAgoIso)]).then(([sinceLast, last5]) => {
+      if (cancelled) return;
+      setVisitSinceLastSave(sinceLast);
+      setVisitLast5Days(last5);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [unlocked, isDemo, lastEditor?.updated_at]);
 
   const visibleClusters = clusters
     .filter((c) => c.interestedCount > 0)
@@ -503,6 +523,15 @@ export default function Dashboard({
                 ) : (
                   <p>No one has saved their availability yet.</p>
                 )}
+                <div className="mt-2 space-y-0.5 border-t pt-2" data-testid="text-anonymous-visit-traffic">
+                  <p className="font-semibold">Anonymous site visits</p>
+                  <p>
+                    {visitSinceLastSave === null ? "—" : visitSinceLastSave} since last save
+                  </p>
+                  <p>
+                    {visitLast5Days === null ? "—" : visitLast5Days} in the last 5 days
+                  </p>
+                </div>
               </TooltipContent>
             </Tooltip>
           )}

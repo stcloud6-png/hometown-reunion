@@ -1104,6 +1104,76 @@ export async function supabaseRest<T = unknown>(
 
 export { STORAGE_KEYS };
 
+const VISITOR_KEY_STORAGE = "hr-visitor-key";
+
+// Deliberately raw `localStorage`, not the window.name-based `storage` helper
+// above (that helper exists to survive the Computer preview's sandboxed-iframe
+// localStorage restriction, but only persists within a single tab session).
+// The visitor key needs to survive across real browser restarts/days on the
+// live site, which window.name does not. Falls back to a per-session id if
+// localStorage is unavailable (e.g. private browsing) rather than throwing.
+function getVisitorKey(): string {
+  try {
+    let id = window.localStorage.getItem(VISITOR_KEY_STORAGE);
+    if (!id) {
+      id = crypto.randomUUID();
+      window.localStorage.setItem(VISITOR_KEY_STORAGE, id);
+    }
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+/**
+ * Logs one anonymous page-visit row per browser per calendar day (UTC), used
+ * only for the Maintenance-mode "site traffic" indicator — no personal info
+ * is recorded, just a random per-browser key and a timestamp. A repeat call
+ * on the same day hits the `site_visits` unique (visitor_key, visit_date)
+ * constraint and is silently ignored, by design.
+ */
+export async function logVisit(): Promise<void> {
+  try {
+    await supabaseRest("/site_visits", {
+      method: "POST",
+      prefer: "return=minimal",
+      body: { visitor_key: getVisitorKey() },
+    });
+  } catch {
+    // Already logged today, or a network hiccup — either way, nothing to do.
+  }
+}
+
+/** Counts `site_visits` rows recorded at or after `sinceIso` — used for the
+ * Maintenance-mode "anonymous visits" indicators. Returns null on failure
+ * (e.g. offline) so callers can show a neutral state instead of a wrong 0. */
+export async function fetchVisitCount(sinceIso: string): Promise<number | null> {
+  try {
+    const { url, key } = requireEnv();
+    // GET + Range: 0-0 is the standard PostgREST "count only, no rows" pattern —
+    // deliberately not HEAD, which can stall behind Supabase's edge/CDN layer.
+    const res = await fetch(
+      `${url}/rest/v1/site_visits?select=id&visited_at=gte.${encodeURIComponent(sinceIso)}`,
+      {
+        method: "GET",
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          Prefer: "count=exact",
+          Range: "0-0",
+          "Range-Unit": "items",
+        },
+      },
+    );
+    if (!res.ok) return null;
+    const range = res.headers.get("content-range"); // e.g. "0-0/42"
+    const total = range ? parseInt(range.split("/")[1] ?? "", 10) : NaN;
+    return Number.isFinite(total) ? total : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Reads the name+email captured on the My Availability tab, if any. */
 export function readMyIdentity(): MyIdentity | null {
   return storage.get<MyIdentity>(STORAGE_KEYS.myIdentity);
