@@ -3,9 +3,12 @@ import {
   type Activity,
   type ClusterLead,
   type ClusterResource,
+  type ClusterThresholds,
   type EventPlan,
   type Person,
   BASE_ACTIVITIES,
+  CLUSTER_THRESHOLDS,
+  mergeActivities,
   DEMO_PEOPLE,
   STORAGE_KEYS,
   storage,
@@ -13,6 +16,24 @@ import {
   supabaseRest,
   parseAuthHashFragment,
 } from "./reunion";
+
+/** Row shape of the shared `app_settings` table — one global row, id "default". */
+interface AppSettingsRow {
+  id: string;
+  public_top: number;
+  public_min_interest: number;
+  candidate_at: number;
+  spinoff_at: number;
+}
+
+function rowToThresholds(row: AppSettingsRow): ClusterThresholds {
+  return {
+    publicTop: row.public_top,
+    publicMinInterest: row.public_min_interest,
+    candidateAt: row.candidate_at,
+    spinoffAt: row.spinoff_at,
+  };
+}
 
 interface Session {
   accessToken: string;
@@ -48,6 +69,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDemo, setIsDemo] = useState(false);
+  const [appSettings, setAppSettings] = useState<ClusterThresholds>(CLUSTER_THRESHOLDS);
   const [session, setSession] = useState<Session | null>(() => (stub ? null : loadStoredSession()));
   const [linkError, setLinkError] = useState<string | null>(null);
   const stubActivities = useRef<Activity[]>([]);
@@ -58,7 +80,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     try {
       if (stub) {
         setPeople(DEMO_PEOPLE);
-        setActivities([...BASE_ACTIVITIES, ...stubActivities.current]);
+        setActivities(mergeActivities(stubActivities.current));
         setClusterResources([]);
         setClusterLeads([{ activity_id: "napoli", lead_name: "Demo Organizer" }]);
         setEventPlans([{ activity_id: "napoli", status: "open", event_date: "2027-01-13", start_time: "11:30am", venue: "Napoli", max_size: 50 }]);
@@ -66,18 +88,20 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         return;
       }
       const token = session?.accessToken ?? null;
-      const [peopleRes, activitiesRes, resourcesRes, leadsRes, plansRes] = await Promise.all([
+      const [peopleRes, activitiesRes, resourcesRes, leadsRes, plansRes, settingsRes] = await Promise.all([
         supabaseRest<Person[]>("/people?select=*&order=name.asc", { accessToken: token }),
         supabaseRest<Activity[]>("/activities?select=*&order=id.asc", { accessToken: token }),
         supabaseRest<ClusterResource[]>("/cluster_resources?select=*&order=created_at.asc", { accessToken: token }),
         supabaseRest<ClusterLead[]>("/cluster_leads?select=*", { accessToken: token }),
         supabaseRest<EventPlan[]>("/event_plans?select=*", { accessToken: token }),
+        supabaseRest<AppSettingsRow[]>("/app_settings?select=*&id=eq.default", { accessToken: token }).catch(() => []),
       ]);
       setPeople(peopleRes);
-      setActivities([...BASE_ACTIVITIES, ...activitiesRes]);
+      setActivities(mergeActivities(activitiesRes));
       setClusterResources(resourcesRes);
       setClusterLeads(leadsRes);
       setEventPlans(plansRes);
+      if (settingsRes[0]) setAppSettings(rowToThresholds(settingsRes[0]));
       setIsDemo(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load reunion data.");
@@ -136,16 +160,20 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const savePerson = useCallback(
     async (person: Person) => {
       if (stub) {
+        // Merge onto the existing row (matching production's PostgREST
+        // merge-duplicates upsert, which only touches columns present in
+        // the payload) so fields the form doesn't send — yacht_paid,
+        // mievento_intents — survive a re-save during local/stub QA.
         setPeople((prev) => {
           const idx = prev.findIndex((p) => p.name === person.name);
           if (idx === -1) return [...prev, person];
           const next = [...prev];
-          next[idx] = person;
+          next[idx] = { ...next[idx], ...person };
           return next;
         });
         return;
       }
-      await supabaseRest("/people", {
+      await supabaseRest("/people?on_conflict=name", {
         method: "POST",
         accessToken: session?.accessToken,
         prefer: "resolution=merge-duplicates,return=minimal",
@@ -160,7 +188,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     async (id: string, label: string, suggestedBy: string) => {
       if (stub) {
         stubActivities.current = [...stubActivities.current, { id, label, suggested_by: suggestedBy }];
-        setActivities([...BASE_ACTIVITIES, ...stubActivities.current]);
+        setActivities(mergeActivities(stubActivities.current));
         return;
       }
       await supabaseRest("/activities", {
@@ -194,10 +222,14 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const volunteerLead = useCallback(
     async (lead: ClusterLead) => {
       if (stub) {
-        setClusterLeads((prev) => [...prev.filter((l) => l.activity_id !== lead.activity_id), lead]);
+        setClusterLeads((prev) => {
+          const existing = prev.find((l) => l.activity_id === lead.activity_id);
+          const merged = { ...existing, ...lead };
+          return [...prev.filter((l) => l.activity_id !== lead.activity_id), merged];
+        });
         return;
       }
-      await supabaseRest("/cluster_leads", {
+      await supabaseRest("/cluster_leads?on_conflict=activity_id", {
         method: "POST",
         accessToken: session?.accessToken,
         prefer: "resolution=merge-duplicates,return=minimal",
@@ -225,9 +257,81 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     [session, stub, load],
   );
 
+  /**
+   * Update the shared Maintenance-mode cluster thresholds. Applies immediately
+   * for every visitor since it's read from the shared `app_settings` table,
+   * not per-browser localStorage. No auth required (matches the other
+   * anon+authenticated open-write tables such as event_plans/cluster_leads).
+   */
+  const updateAppSettings = useCallback(
+    async (next: ClusterThresholds) => {
+      if (stub) {
+        setAppSettings(next);
+        return;
+      }
+      await supabaseRest("/app_settings", {
+        method: "POST",
+        accessToken: session?.accessToken,
+        prefer: "resolution=merge-duplicates,return=minimal",
+        body: {
+          id: "default",
+          public_top: next.publicTop,
+          public_min_interest: next.publicMinInterest,
+          candidate_at: next.candidateAt,
+          spinoff_at: next.spinoffAt,
+          updated_at: new Date().toISOString(),
+        },
+      });
+      setAppSettings(next);
+    },
+    [session, stub],
+  );
+
   const signOut = useCallback(() => {
     persistSession(null);
   }, [persistSession]);
+
+  /**
+   * Find the caller's own row by case-insensitive email match against the
+   * currently signed-in session — the only row RLS will let them update.
+   * Returns null when stubbed-out with no session, or no match on file.
+   */
+  const myPerson = useCallback(
+    (email: string | null | undefined): Person | null => {
+      const target = (email ?? session?.email ?? "").trim().toLowerCase();
+      if (!target) return null;
+      return people.find((p) => (p.email ?? "").trim().toLowerCase() === target) ?? null;
+    },
+    [people, session],
+  );
+
+  /**
+   * Partial update to the signed-in user's own row (yacht_paid,
+   * mievento_intents, etc). Requires an authenticated session whose email
+   * matches the target row — enforced both here (myPerson lookup) and by
+   * Supabase RLS server-side. Sends only the changed columns so unrelated
+   * fields (slots, interests, ...) are left untouched by the upsert.
+   */
+  const updateMyPerson = useCallback(
+    async (patch: Partial<Person>) => {
+      if (!session?.accessToken) throw new Error("Sign in with your email first.");
+      const mine = myPerson(session.email);
+      if (!mine) throw new Error("No reunion entry found for your email yet. Fill out your availability first.");
+      if (stub) {
+        const target = (session.email ?? "").trim().toLowerCase();
+        setPeople((prev) => prev.map((p) => ((p.email ?? "").trim().toLowerCase() === target ? { ...p, ...patch } : p)));
+        return;
+      }
+      await supabaseRest("/people?on_conflict=name", {
+        method: "POST",
+        accessToken: session.accessToken,
+        prefer: "resolution=merge-duplicates,return=minimal",
+        body: { name: mine.name, email: mine.email, ...patch, updated_at: new Date().toISOString() },
+      });
+      await load();
+    },
+    [session, stub, load, myPerson],
+  );
 
   return {
     people,
@@ -235,6 +339,8 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     clusterResources,
     clusterLeads,
     eventPlans,
+    appSettings,
+    updateAppSettings,
     loading,
     error,
     isDemo,
@@ -248,6 +354,17 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     linkError,
     completeMagicLink,
     signOut,
+    myPerson,
+    updateMyPerson,
+    sendSignInLink: stub
+      ? async (email: string) => {
+          // Never hit the real Supabase Auth endpoint while showing stub/demo
+          // data. Instead, simulate an instant sign-in so the rest of the
+          // authenticated flow (yacht payment / MiEvento intents) is
+          // exercisable during local QA without a real magic-link round trip.
+          persistSession({ accessToken: "stub-token", refreshToken: "stub-refresh", email });
+        }
+      : supabaseAuth.sendMagicLink,
   };
 }
 
