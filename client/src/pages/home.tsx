@@ -13,8 +13,16 @@ import { readMyIdentity, logVisit, type MyIdentity } from "@/lib/reunion";
 
 const STUB = import.meta.env.VITE_STUB_DATA === "true";
 
+// Reads the `tab` query param from the hash URL (e.g. #/?tab=dashboard) so a
+// direct link can land members straight on the Group dashboard without them
+// needing to click the nav button first.
+function initialTabFromUrl(): "entry" | "dashboard" {
+  const query = window.location.hash.split("?")[1] ?? "";
+  return new URLSearchParams(query).get("tab") === "dashboard" ? "dashboard" : "entry";
+}
+
 export default function Home() {
-  const [tab, setTab] = useState<"entry" | "dashboard">("entry");
+  const [tab, setTab] = useState<"entry" | "dashboard">(initialTabFromUrl);
   const { dark, toggle } = useDarkMode();
   const data = useReunionData({ stub: STUB });
   const [showPills, setShowPills] = useState(true);
