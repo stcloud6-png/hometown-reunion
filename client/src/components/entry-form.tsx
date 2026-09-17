@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CalendarRange, CheckCircle2, ExternalLink, Lock, LogIn, Sparkles, Ticket } from "lucide-react";
+import { CalendarRange, CheckCircle2, ExternalLink, Lock, LogIn, Pencil, Sparkles, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import VolunteerPromptDialog from "@/components/volunteer-prompt-dialog";
 import YachtPaymentDialog from "@/components/yacht-payment-dialog";
@@ -49,6 +49,7 @@ import {
   isYachtLockSlot,
   labelForTag,
   eventCategoryClass,
+  formatDateRange,
   mieventoOrEventLabel,
   mieventoShoppingEvents,
   mieventoTicketTally,
@@ -196,6 +197,23 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
 
   const isProtected = Boolean(matchedExisting) && !signedIn;
 
+  // --- Step-by-step gating for brand-new, first-time entries ---------------
+  // Only a person with no known saved entry yet (no signed-in session, and
+  // nothing already on file matching what they've typed) gets walked through
+  // one section at a time. Anyone with an existing entry (signed in, or a
+  // protected match found while typing) always sees the classic all-at-once
+  // form so returning members aren't slowed down re-confirming old answers.
+  const gatingActive = !initial && !matchedExisting;
+  const nameReadyToConfirm = name.trim().length > 0 && EMAIL_PATTERN.test(email.trim());
+  const [nameConfirmed, setNameConfirmed] = useState(false);
+  const [datesConfirmed, setDatesConfirmed] = useState(false);
+  const [interestsConfirmed, setInterestsConfirmed] = useState(false);
+  const [slotsConfirmed, setSlotsConfirmed] = useState(false);
+  const showDatesSection = !gatingActive || nameConfirmed;
+  const showInterestsSection = !gatingActive || (nameConfirmed && datesConfirmed);
+  const showSlotsSection = !gatingActive || (nameConfirmed && datesConfirmed && interestsConfirmed);
+  const showTicketAndSave = !gatingActive || (nameConfirmed && datesConfirmed && interestsConfirmed && slotsConfirmed);
+
   const [linkSending, setLinkSending] = useState(false);
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
   const [linkSendError, setLinkSendError] = useState<string | null>(null);
@@ -326,6 +344,12 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
       setVolunteerLead(yes);
       setVolunteerStep(null);
     }
+  }
+
+  function summarizeInterests(): string {
+    if (interests.length === 0) return "No interest pills selected";
+    const labels = interests.map((id) => labelForTag(id, activities));
+    return labels.length > 3 ? `${labels.slice(0, 3).join(", ")} + ${labels.length - 3} more` : labels.join(", ");
   }
 
   async function handleSuggestActivity() {
@@ -538,10 +562,24 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
         </p>
       )}
 
-      <Card>
+      <Card data-testid="card-name">
         <CardHeader>
           <CardTitle>Your name</CardTitle>
         </CardHeader>
+        {gatingActive && nameConfirmed ? (
+        <CardContent>
+          <div className="flex items-center justify-between text-sm" data-testid="text-name-confirmed">
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]" />
+              <strong>{name.split(" ")[0]}</strong>
+              <span className="text-muted-foreground">— {email}</span>
+            </span>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setNameConfirmed(false)} data-testid="button-edit-name">
+              <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+            </Button>
+          </div>
+        </CardContent>
+        ) : (
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
@@ -553,6 +591,17 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
             <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" data-testid="input-email" required />
             <p className="text-sm text-muted-foreground">Required. We'll email you a private link to view and update your entry whenever you return.</p>
           </div>
+
+          {gatingActive && (
+            <div className="border-t pt-3">
+              <Button type="button" disabled={!nameReadyToConfirm} onClick={() => setNameConfirmed(true)} data-testid="button-confirm-name">
+                Confirm and continue
+              </Button>
+              {!nameReadyToConfirm && (
+                <p className="mt-2 text-xs text-muted-foreground">Enter your name and a valid email to unlock the next section.</p>
+              )}
+            </div>
+          )}
 
           {isProtected && (
             <p className="text-sm text-destructive" data-testid="text-protected-entry">
@@ -599,9 +648,11 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
             </div>
           )}
         </CardContent>
+        )}
       </Card>
 
-      <Card>
+      {showDatesSection && (
+      <Card data-testid="card-dates">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CalendarRange className="h-5 w-5" /> When are you in the area?
@@ -614,7 +665,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="arrival">Arrive</Label>
-            <Select value={arrival} onValueChange={(value) => updateRange(value, value > departure ? value : departure)}>
+            <Select value={arrival} onValueChange={(value) => updateRange(value, value > departure ? value : departure)} disabled={gatingActive && datesConfirmed}>
               <SelectTrigger id="arrival" data-testid="input-arrival">
                 <SelectValue />
               </SelectTrigger>
@@ -629,7 +680,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
           </div>
           <div className="space-y-2">
             <Label htmlFor="departure">Depart</Label>
-            <Select value={departure} onValueChange={(value) => updateRange(value < arrival ? value : arrival, value)}>
+            <Select value={departure} onValueChange={(value) => updateRange(value < arrival ? value : arrival, value)} disabled={gatingActive && datesConfirmed}>
               <SelectTrigger id="departure" data-testid="input-departure">
                 <SelectValue />
               </SelectTrigger>
@@ -643,9 +694,35 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
             </Select>
           </div>
         </CardContent>
+        {gatingActive && (
+          <CardContent className="pt-0">
+            {datesConfirmed ? (
+              <div className="flex items-center justify-between border-t pt-3 text-sm" data-testid="text-dates-confirmed">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]" />
+                  <strong>{formatDateRange(arrival, departure)}</strong>
+                </span>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setDatesConfirmed(false)} data-testid="button-edit-dates">
+                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                </Button>
+              </div>
+            ) : (
+              <div className="border-t pt-3">
+                <Button type="button" onClick={() => setDatesConfirmed(true)} data-testid="button-confirm-dates">
+                  Confirm and continue
+                </Button>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Double-check these dates reflect your actual arrival and departure before continuing.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        )}
       </Card>
+      )}
 
-      <Card>
+      {showInterestsSection && (
+      <Card data-testid="card-interests">
         <CardHeader>
           <CardTitle>What are you up for?</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -663,6 +740,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                   type="button"
                   key={activity.id}
                   onClick={() => toggleInterest(activity.id)}
+                  disabled={gatingActive && interestsConfirmed}
                   data-testid={`pill-interest-${activity.id}`}
                   className={cn(
                     "rounded-full border px-3 py-1.5 text-sm transition-colors hover-elevate active-elevate-2",
@@ -683,16 +761,39 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                 onChange={(e) => setNewActivityLabel(e.target.value)}
                 placeholder="Suggest an activity"
                 data-testid="input-suggest-activity"
+                disabled={gatingActive && interestsConfirmed}
               />
             </div>
-            <Button type="button" variant="secondary" onClick={handleSuggestActivity} data-testid="button-suggest-activity">
+            <Button type="button" variant="secondary" onClick={handleSuggestActivity} disabled={gatingActive && interestsConfirmed} data-testid="button-suggest-activity">
               <Sparkles className="mr-1 h-4 w-4" /> Add
             </Button>
           </div>
+          {gatingActive && (
+            interestsConfirmed ? (
+              <div className="flex items-center justify-between border-t pt-3 text-sm" data-testid="text-interests-confirmed">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]" />
+                  <span>{summarizeInterests()}</span>
+                </span>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setInterestsConfirmed(false)} data-testid="button-edit-interests">
+                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                </Button>
+              </div>
+            ) : (
+              <div className="border-t pt-3">
+                <Button type="button" onClick={() => setInterestsConfirmed(true)} data-testid="button-confirm-interests">
+                  Confirm and continue
+                </Button>
+                <p className="mt-2 text-xs text-muted-foreground">It's fine to leave this blank if nothing fits — just confirm to move on.</p>
+              </div>
+            )
+          )}
         </CardContent>
       </Card>
+      )}
 
-      <Card>
+      {showSlotsSection && (
+      <Card data-testid="card-slots">
         <CardHeader>
           <CardTitle>Mark your time slots</CardTitle>
           <div className="text-sm text-muted-foreground space-y-1.5">
@@ -710,6 +811,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          <fieldset disabled={gatingActive && slotsConfirmed} className="space-y-3">
           <div className="flex flex-wrap gap-3 rounded-md border bg-muted/40 p-3 text-xs" data-testid="slot-legend">
             {LEGEND_ITEMS.map((item, i) => (
               <span key={`${item.status}-${i}`} className="flex items-center gap-1.5">
@@ -829,8 +931,31 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
               </tbody>
             </table>
           </div>
+          </fieldset>
+          {gatingActive && (
+            slotsConfirmed ? (
+              <div className="flex items-center justify-between border-t pt-3 text-sm" data-testid="text-slots-confirmed">
+                <span className="flex items-center gap-1.5 font-medium text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]">
+                  <CheckCircle2 className="h-4 w-4" /> Confirmed
+                </span>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setSlotsConfirmed(false)} data-testid="button-edit-slots">
+                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                </Button>
+              </div>
+            ) : (
+              <div className="border-t pt-3">
+                <Button type="button" onClick={() => setSlotsConfirmed(true)} data-testid="button-confirm-slots">
+                  Confirm my time slots
+                </Button>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Everything defaults to Available — that's fine to leave as-is. Just review and confirm to continue.
+                </p>
+              </div>
+            )
+          )}
         </CardContent>
       </Card>
+      )}
 
       {showYachtVideo && (
         <div
@@ -852,6 +977,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
         </div>
       )}
 
+      {showTicketAndSave && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -893,6 +1019,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
           </button>
         </CardContent>
       </Card>
+      )}
 
       {validationError && (
         <p className="text-sm text-destructive" role="alert" data-testid="text-validation-error">
@@ -900,12 +1027,20 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
         </p>
       )}
 
+      {gatingActive && !showTicketAndSave && (
+        <p className="text-sm text-muted-foreground" data-testid="text-gating-hint">
+          Confirm each section above to unlock the Ticket-check and Save step.
+        </p>
+      )}
+
+      {showTicketAndSave && (
       <div className="flex items-center justify-between">
         <Badge variant="secondary">{interests.length} interests selected</Badge>
         <Button type="submit" disabled={saving} data-testid="button-save-availability">
           {saving ? "Saving…" : "Save my Info"}
         </Button>
       </div>
+      )}
 
       <div
         className="overflow-hidden rounded-md border bg-black"
