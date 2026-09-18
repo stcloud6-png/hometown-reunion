@@ -13,12 +13,22 @@ import { readMyIdentity, logVisit, type MyIdentity } from "@/lib/reunion";
 
 const STUB = import.meta.env.VITE_STUB_DATA === "true";
 
-// Reads the `tab` query param from the hash URL (e.g. #/?tab=dashboard) so a
-// direct link can land members straight on the Group dashboard without them
-// needing to click the nav button first.
-function initialTabFromUrl(): "entry" | "dashboard" {
+// Reads the `tab` query param from the hash URL (e.g. #/?tab=dashboard or
+// #/?tab=yearbook) so a direct link can land members straight on the Group
+// dashboard, or straight into the flipbook yearbook viewer, without them
+// needing to click a nav button first.
+function tabParamFromUrl(): "entry" | "dashboard" | "yearbook" | null {
   const query = window.location.hash.split("?")[1] ?? "";
-  return new URLSearchParams(query).get("tab") === "dashboard" ? "dashboard" : "entry";
+  const value = new URLSearchParams(query).get("tab");
+  return value === "dashboard" || value === "yearbook" || value === "entry" ? value : null;
+}
+
+function initialTabFromUrl(): "entry" | "dashboard" {
+  return tabParamFromUrl() === "dashboard" ? "dashboard" : "entry";
+}
+
+function initialYearbookOpenFromUrl(): boolean {
+  return tabParamFromUrl() === "yearbook";
 }
 
 export default function Home() {
@@ -29,7 +39,7 @@ export default function Home() {
   const [unlocked, setUnlocked] = useState(false);
   const [curtainOpen, setCurtainOpen] = useState(false);
   const [myIdentity, setMyIdentity] = useState<MyIdentity | null>(() => readMyIdentity());
-  const [yearbookOpen, setYearbookOpen] = useState(false);
+  const [yearbookOpen, setYearbookOpen] = useState(initialYearbookOpenFromUrl);
 
   // Log one anonymous page-visit per browser per day (Maintenance-mode traffic
   // indicator only) — never during stubbed/local QA runs.
