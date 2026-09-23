@@ -1,0 +1,105 @@
+// Run in the persistent Playwright REPL after building/serving the harness.
+var { chromium } = await import("playwright");
+var assert = (await import("node:assert/strict")).default;
+var browser = await chromium.launch({ headless: true });
+var storedPlans = [
+  { id: 1, activity_id: "napoli", status: "open", event_date: "2027-01-13", start_time: "11:30am", venue: "Napoli", max_size: 50, cost: "Preserve cost", notes: "Preserve notes" },
+  { id: 2, activity_id: "other-test-event", status: "open", event_date: "2027-01-19", notes: "Untouched" },
+];
+var otherPlan = JSON.stringify(storedPlans[1]);
+var requests = [];
+var failure = null;
+var pages = [];
+async function openTest(role, mobile = false) {
+  var ctx = await browser.newContext({ viewport: mobile ? { width: 375, height: 844 } : { width: 1440, height: 1000 } });
+  await ctx.route("**/*", async route => {
+    var req = route.request(), url = new URL(req.url());
+    if (url.hostname === "127.0.0.1") return route.continue();
+    if (url.hostname !== "reunion-test.invalid") return route.abort();
+    var table = url.pathname.split("/").pop();
+    if (table === "event_plans" && req.method() === "PATCH") {
+      requests.push({ method: req.method(), search: url.search, body: req.postDataJSON(), headers: req.headers() });
+      assert.equal(url.searchParams.get("activity_id"), "eq.napoli");
+      assert.equal(req.headers().prefer, "return=representation");
+      assert(!("id" in req.postDataJSON()));
+      assert(!("notes" in req.postDataJSON()));
+      assert(!("cost" in req.postDataJSON()));
+      await new Promise(resolve => setTimeout(resolve, 200));
+      if (failure === "denied") return route.fulfill({ status: 403, json: { message: "Simulated permission error" } });
+      if (failure === "empty") return route.fulfill({ json: [] });
+      storedPlans[0] = { ...storedPlans[0], ...req.postDataJSON() };
+      return route.fulfill({ json: [storedPlans[0]] });
+    }
+    assert.equal(req.method(), "GET", `Unexpected write: ${req.method()} ${url}`);
+    return route.fulfill({ json: table === "event_plans" ? storedPlans : table === "cluster_leads" ? [{ activity_id: "napoli", lead_name: "Test Organizer", lead_email: "organizer@example.com" }] : [] });
+  });
+  var p = await ctx.newPage();
+  await p.goto(`http://127.0.0.1:5001/?role=${role}`);
+  await p.getByTestId("plan-box-napoli").waitFor();
+  pages.push(ctx);
+  return p;
+}
+var admin = await openTest("maintenance");
+assert.equal(await admin.getByTestId("event-plan-editor-napoli").count(), 0);
+await admin.getByTestId("button-settings").click();
+await admin.getByTestId("button-open-maintenance-pin").click();
+await admin.getByTestId("maintenance-pin-input").fill("3817");
+await admin.getByTestId("maintenance-pin-submit").click();
+await admin.getByTestId("button-cancel-maintenance-settings").click();
+await admin.keyboard.press("Escape");
+await admin.getByTestId("input-plan-date-napoli").fill("2027-01-20");
+await admin.getByTestId("input-plan-time-napoli").fill("11:30am");
+await admin.getByTestId("button-save-plan-napoli").click();
+await admin.getByTestId("plan-save-success-napoli").waitFor();
+assert.equal(storedPlans[0].event_date, "2027-01-20");
+assert.equal(storedPlans[0].updated_by, "Maintenance");
+assert.equal(requests.at(-1).headers.authorization, "Bearer synthetic-anon-key");
+await admin.getByTestId("plan-box-napoli").screenshot({ path: "/tmp/plan-admin-desktop.png" });
+var reader = await openTest("reader");
+assert.match(await reader.getByTestId("plan-box-napoli").innerText(), /Jan 20/);
+assert.equal(await reader.getByTestId("event-plan-editor-napoli").count(), 0);
+console.log("PASS: Maintenance PIN unlock, targeted PATCH, saved feedback, fresh-browser persistence, ordinary viewer has no editor");
+var organizer = await openTest("organizer", true);
+await organizer.getByTestId("event-plan-editor-napoli").waitFor();
+await organizer.getByTestId("input-plan-venue-napoli").fill("Napoli test meeting point");
+await organizer.getByTestId("input-plan-maxsize-napoli").fill("45");
+await organizer.getByTestId("input-plan-time-napoli").fill("11:45am");
+await organizer.getByTestId("select-plan-status-napoli").click();
+await organizer.getByRole("option", { name: "Cancelled", exact: true }).click();
+await organizer.getByTestId("button-save-plan-napoli").click();
+await organizer.getByTestId("plan-save-success-napoli").waitFor();
+assert.equal(storedPlans[0].status, "cancelled");
+assert.equal(storedPlans[0].venue, "Napoli test meeting point");
+assert.equal(storedPlans[0].max_size, 45);
+assert.equal(storedPlans[0].start_time, "11:45am");
+assert.equal(storedPlans[0].updated_by, "Test Organizer");
+assert.equal(storedPlans[0].notes, "Preserve notes");
+assert.equal(storedPlans[0].cost, "Preserve cost");
+assert.equal(JSON.stringify(storedPlans[1]), otherPlan);
+assert(await organizer.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+await organizer.getByTestId("plan-box-napoli").screenshot({ path: "/tmp/plan-organizer-mobile.png" });
+console.log("PASS: Organizer edit access without Maintenance; time, venue, capacity and status save; notes, cost, other event preserved; mobile fits");
+failure = "denied";
+await organizer.getByTestId("input-plan-date-napoli").fill("2027-01-21");
+await organizer.getByTestId("button-save-plan-napoli").click();
+await organizer.getByTestId("plan-save-error-napoli").waitFor();
+assert.equal(await organizer.getByTestId("input-plan-date-napoli").inputValue(), "2027-01-21");
+assert.equal(await organizer.getByTestId("plan-save-success-napoli").count(), 0);
+assert.equal(storedPlans[0].event_date, "2027-01-20");
+await organizer.getByTestId("plan-box-napoli").screenshot({ path: "/tmp/plan-error-mobile.png" });
+failure = "empty";
+await organizer.getByTestId("button-save-plan-napoli").click();
+await organizer.getByTestId("plan-save-error-napoli").filter({ hasText: "No plan was updated" }).waitFor();
+failure = null;
+await organizer.getByTestId("button-save-plan-napoli").click();
+await organizer.getByTestId("plan-save-success-napoli").waitFor();
+var signedIn = await openTest("organizer-auth");
+assert.equal(await signedIn.getByTestId("input-plan-date-napoli").inputValue(), "2027-01-21");
+await signedIn.getByTestId("input-plan-date-napoli").fill("2027-01-22");
+await signedIn.getByTestId("button-save-plan-napoli").click();
+await signedIn.getByTestId("plan-save-success-napoli").waitFor();
+assert.equal(requests.at(-1).headers.authorization, "Bearer synthetic-test-token");
+console.log("PASS: failed/zero-row save is visible, draft retained, retry succeeds; authenticated Organizer saves with session token and sees persisted updates");
+for (var ctx of pages) await ctx.close();
+await browser.close();
+console.log("All isolated regression checks passed; no live database requests.");

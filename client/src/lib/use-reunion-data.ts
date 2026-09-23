@@ -246,15 +246,28 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         setEventPlans((prev) => [...prev.filter((p) => p.activity_id !== plan.activity_id), plan]);
         return;
       }
-      await supabaseRest("/event_plans", {
-        method: "POST",
+      // This editor changes an existing plan, never inserts a replacement.
+      // activity_id is unique; a missing/denied row must not look like success.
+      const saved = await supabaseRest<EventPlan[]>(`/event_plans?activity_id=eq.${encodeURIComponent(plan.activity_id)}`, {
+        method: "PATCH",
         accessToken: session?.accessToken,
-        prefer: "resolution=merge-duplicates,return=minimal",
-        body: { ...plan, updated_at: new Date().toISOString() },
+        prefer: "return=representation",
+        body: {
+          status: plan.status,
+          event_date: plan.event_date,
+          start_time: plan.start_time,
+          venue: plan.venue,
+          max_size: plan.max_size,
+          updated_by: plan.updated_by,
+          updated_at: new Date().toISOString(),
+        },
       });
-      await load();
+      if (saved.length !== 1 || saved[0].activity_id !== plan.activity_id) {
+        throw new Error("No plan was updated. Refresh the dashboard and try again.");
+      }
+      setEventPlans((prev) => prev.map((p) => p.activity_id === plan.activity_id ? saved[0] : p));
     },
-    [session, stub, load],
+    [session, stub],
   );
 
   /**
