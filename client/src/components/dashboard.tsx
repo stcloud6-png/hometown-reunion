@@ -375,7 +375,7 @@ export default function Dashboard({
                       )}
                       <p className="mt-2 text-xs text-muted-foreground">It's also reflected on your schedule in "Mark your time slots."</p>
                       {(unlocked || isClusterLead(lead, sessionEmail, myIdentity)) && (
-                        <EventPlanEditor activityId={cluster.activity.id} initial={plan} onSave={onSaveEventPlan} sessionEmail={sessionEmail} />
+                        <EventPlanEditor activityId={cluster.activity.id} initial={plan} onSave={onSaveEventPlan} sessionEmail={sessionEmail || (unlocked ? "Maintenance" : myIdentity?.name || lead?.lead_name || null)} />
                       )}
                     </div>
                   )}
@@ -907,21 +907,36 @@ function EventPlanEditor({
   const [startTime, setStartTime] = useState(initial.start_time ?? "");
   const [maxSize, setMaxSize] = useState(initial.max_size?.toString() ?? "");
   const [status, setStatus] = useState(initial.status);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   async function submit() {
-    await onSave({
-      activity_id: activityId,
-      status,
-      event_date: eventDate || null,
-      start_time: startTime || null,
-      venue: venue || null,
-      max_size: maxSize ? Number(maxSize) : null,
-      updated_by: sessionEmail,
-    });
+    if (saving) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaved(false);
+    try {
+      await onSave({
+        activity_id: activityId,
+        status,
+        event_date: eventDate || null,
+        start_time: startTime.trim() || null,
+        venue: venue.trim() || null,
+        max_size: maxSize ? Number(maxSize) : null,
+        updated_by: sessionEmail,
+      });
+      setSaved(true);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Could not save the plan. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <div className="mt-3 grid gap-3 border-t pt-3 sm:grid-cols-2" data-testid={`event-plan-editor-${activityId}`}>
+    <form onSubmit={(event) => { event.preventDefault(); void submit(); }} onChange={() => { setSaved(false); setSaveError(null); }} data-testid={`event-plan-editor-${activityId}`}>
+    <fieldset disabled={saving} className="mt-3 grid min-w-0 gap-3 border-t pt-3 sm:grid-cols-2">
       <div className="space-y-1">
         <Label htmlFor={`input-plan-venue-${activityId}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Venue</Label>
         <Input id={`input-plan-venue-${activityId}`} value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Venue" data-testid={`input-plan-venue-${activityId}`} />
@@ -946,11 +961,11 @@ function EventPlanEditor({
       </div>
       <div className="space-y-1">
         <Label htmlFor={`input-plan-maxsize-${activityId}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Max group size</Label>
-        <Input id={`input-plan-maxsize-${activityId}`} type="number" value={maxSize} onChange={(e) => setMaxSize(e.target.value)} placeholder="Max size" data-testid={`input-plan-maxsize-${activityId}`} />
+        <Input id={`input-plan-maxsize-${activityId}`} type="number" min={1} step={1} value={maxSize} onChange={(e) => setMaxSize(e.target.value)} placeholder="Max size" data-testid={`input-plan-maxsize-${activityId}`} />
       </div>
       <div className="space-y-1 sm:col-span-2">
         <Label htmlFor={`select-plan-status-${activityId}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</Label>
-        <Select value={status} onValueChange={(v) => setStatus(v as EventPlanStatus)}>
+        <Select disabled={saving} value={status} onValueChange={(v) => { setStatus(v as EventPlanStatus); setSaved(false); setSaveError(null); }}>
           <SelectTrigger id={`select-plan-status-${activityId}`} data-testid={`select-plan-status-${activityId}`}>
             <SelectValue />
           </SelectTrigger>
@@ -963,10 +978,13 @@ function EventPlanEditor({
           </SelectContent>
         </Select>
       </div>
-      <Button size="sm" onClick={submit} className="sm:col-span-2" data-testid={`button-save-plan-${activityId}`}>
-        Save plan
+      <Button type="submit" size="sm" disabled={saving} className="min-h-11 sm:col-span-2" data-testid={`button-save-plan-${activityId}`}>
+        {saving ? "Saving plan…" : "Save plan"}
       </Button>
-    </div>
+      {saved && <p role="status" className="text-sm text-primary sm:col-span-2" data-testid={`plan-save-success-${activityId}`}>Plan saved. Members will see it when they open or refresh the dashboard. No message has been sent.</p>}
+      {saveError && <p role="alert" className="break-words text-sm text-destructive sm:col-span-2" data-testid={`plan-save-error-${activityId}`}>Plan not saved. Your edits are still here. {saveError}</p>}
+    </fieldset>
+    </form>
   );
 }
 
