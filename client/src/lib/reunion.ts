@@ -41,6 +41,8 @@ export interface Person {
   /** Per sub-event ticket status for the 4 "tickets coming soon" MiEvento events (keyed by ScheduledEvent id), e.g. `{ "mega-cruise-23": { status: "purchased" } }`. */
   mievento_ticket_status?: Record<string, MieventoTicketEntry> | null;
   updated_at?: string;
+  /** Private test-account entry — visible only to that account (and admins in the directory). */
+  is_test?: boolean;
 }
 
 export type MieventoTicketStatusValue = "not_registered" | "researching" | "purchased";
@@ -939,14 +941,14 @@ export function autoSlotConflicts(person: Person): string[] {
 // CSV export
 // ---------------------------------------------------------------------------
 
-export function exportAvailabilityCsv(people: Person[], activities: Activity[]): void {
+export function exportAvailabilityCsv(people: Person[], activities: Activity[], emailById?: Map<string, string>): void {
   const header = [
     "Name", "Email", "In town from", "In town to", "Interests",
     ...DAYS.flatMap((day) => PERIODS.map((p) => `${day.short} ${PERIOD_SHORT[p]}`)),
   ];
   const rows = people.map((person) => [
     person.name,
-    person.email ?? "",
+    (person.id ? emailById?.get(person.id) : undefined) ?? person.email ?? "",
     person.arrival,
     person.departure,
     person.interests.join("; "),
@@ -1096,6 +1098,22 @@ export const supabaseAuth = {
     throw new Error("This sign-in link is invalid or has expired.");
   },
 
+  /**
+   * Password sign-in — used only by the private test account (created by an
+   * admin, no email verification). The database grants password sign-ins no
+   * rights over real member entries; only listed test accounts are honoured.
+   */
+  async signInWithPassword(email: string, password: string): Promise<{ access_token: string; refresh_token: string; user?: { email?: string } }> {
+    const { url, key } = requireEnv();
+    const res = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) throw new Error("Sign-in failed. Check the email and password.");
+    return res.json();
+  },
+
   async refreshSession(refreshToken: string): Promise<{ access_token: string; refresh_token: string }> {
     const { url, key } = requireEnv();
     const res = await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, {
@@ -1117,15 +1135,80 @@ export const supabaseAuth = {
   },
 };
 
+function jwtExpiry(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.exp === "number" ? payload.exp : null;
+  } catch {
+    return null;
+  }
+}
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+/**
+ * Returns a usable access token for the signed-in visitor, refreshing it with
+ * the stored refresh token when it is about to expire (Supabase tokens last
+ * about an hour). If the refresh fails the stored session is cleared and the
+ * request falls back to anonymous access, instead of failing the whole page.
+ */
+async function freshAccessToken(token: string): Promise<string | null> {
+  if (token === "stub-token") return token;
+  const stored = storage.get<string>(STORAGE_KEYS.accessToken);
+  const current = stored && stored !== token && (jwtExpiry(stored) ?? 0) > (jwtExpiry(token) ?? 0) ? stored : token;
+  const exp = jwtExpiry(current);
+  if (exp === null || exp - Date.now() / 1000 > 60) return current;
+  const refreshToken = storage.get<string>(STORAGE_KEYS.refreshToken);
+  if (!refreshToken) return null;
+  if (!refreshInFlight) {
+    refreshInFlight = supabaseAuth
+      .refreshSession(refreshToken)
+      .then((next) => {
+        storage.set(STORAGE_KEYS.accessToken, next.access_token);
+        storage.set(STORAGE_KEYS.refreshToken, next.refresh_token);
+        window.dispatchEvent(new CustomEvent("reunion-session-refreshed", { detail: next }));
+        return next.access_token;
+      })
+      .catch(() => {
+        storage.del(STORAGE_KEYS.accessToken);
+        storage.del(STORAGE_KEYS.refreshToken);
+        storage.del(STORAGE_KEYS.email);
+        window.dispatchEvent(new CustomEvent("reunion-session-expired"));
+        return null;
+      })
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
+/** Turns raw database/permission errors into plain-language messages. */
+export function friendlyError(error: unknown, fallback = "Something went wrong. Please try again."): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  if (/already has an Event Organizer/i.test(raw)) return "This event already has an Event Organizer.";
+  if (/test account cannot/i.test(raw)) return "The test account can't volunteer as a public Event Organizer.";
+  if (/Admin sign-in required/i.test(raw)) return "Admin sign-in required. Use the admin sign-in link first.";
+  if (/\(409\)|23505|duplicate key/i.test(raw)) return "That name is already on the list. Sign in with the email you used to update that entry.";
+  if (/\(401\)|\(403\)|42501|row-level security|permission denied|JWT/i.test(raw)) return "You don't have permission to make that change. Sign in with the right email and try again.";
+  return raw && raw.length < 160 && !/Supabase request failed/.test(raw) ? raw : fallback;
+}
+
+/** Calls a Postgres function exposed through PostgREST (`/rpc/<name>`). */
+export async function supabaseRpc<T = unknown>(name: string, args: Record<string, unknown> = {}, accessToken?: string | null): Promise<T> {
+  return supabaseRest<T>(`/rpc/${name}`, { method: "POST", body: args, accessToken });
+}
+
 /** Generic PostgREST fetch wrapper. Uses the signed-in session token when present, else the anon key only. */
 export async function supabaseRest<T = unknown>(
   path: string,
   options: { method?: string; body?: unknown; accessToken?: string | null; prefer?: string } = {},
 ): Promise<T> {
   const { url, key } = requireEnv();
+  const token = options.accessToken ? await freshAccessToken(options.accessToken) : null;
   const headers: Record<string, string> = {
     apikey: key,
-    Authorization: `Bearer ${options.accessToken || key}`,
+    Authorization: `Bearer ${token || key}`,
     "Content-Type": "application/json",
   };
   if (options.prefer) headers["Prefer"] = options.prefer;

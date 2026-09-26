@@ -6,8 +6,10 @@ import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
-import { Settings } from "lucide-react";
-import { MAINTENANCE_PIN, type ClusterThresholds, CLUSTER_THRESHOLDS } from "@/lib/reunion";
+import { Settings, Users } from "lucide-react";
+import { MAINTENANCE_PIN, type ClusterThresholds, CLUSTER_THRESHOLDS, friendlyError } from "@/lib/reunion";
+import type { MemberDirectoryRow } from "@/lib/use-reunion-data";
+import { AdminAccessPanel, MemberDirectoryDialog, TestAccountPanel } from "@/components/maintenance-access";
 
 interface SettingsPopoverProps {
   showPills: boolean;
@@ -16,6 +18,13 @@ interface SettingsPopoverProps {
   onUnlockedChange: (next: boolean) => void;
   thresholds?: ClusterThresholds;
   onThresholdsChange?: (next: ClusterThresholds) => Promise<void> | void;
+  isAdmin?: boolean;
+  isTestAccount?: boolean;
+  sessionEmail?: string | null;
+  onSendSignInLink?: (email: string) => Promise<void>;
+  onSignOut?: () => void;
+  onFetchMemberDirectory?: () => Promise<MemberDirectoryRow[]>;
+  onTestSignIn?: (email: string, password: string) => Promise<void>;
 }
 
 /**
@@ -33,7 +42,19 @@ export default function SettingsPopover({
   onUnlockedChange,
   thresholds = CLUSTER_THRESHOLDS,
   onThresholdsChange,
+  isAdmin = false,
+  isTestAccount = false,
+  sessionEmail = null,
+  onSendSignInLink = async () => {},
+  onSignOut = () => {},
+  onFetchMemberDirectory = async () => [],
+  onTestSignIn = async () => {},
 }: SettingsPopoverProps) {
+  const [directoryOpen, setDirectoryOpen] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const adminPanel = (
+    <AdminAccessPanel isAdmin={isAdmin} sessionEmail={sessionEmail} isTestAccount={isTestAccount} onSendSignInLink={onSendSignInLink} onSignOut={onSignOut} />
+  );
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
@@ -59,9 +80,12 @@ export default function SettingsPopover({
 
   async function saveThresholds() {
     setSaving(true);
+    setSaveError(null);
     try {
       await onThresholdsChange?.(draft);
       setSettingsDialogOpen(false);
+    } catch (error) {
+      setSaveError(friendlyError(error, "Could not save settings."));
     } finally {
       setSaving(false);
     }
@@ -96,6 +120,15 @@ export default function SettingsPopover({
                 data-testid="button-open-maintenance-settings"
               >
                 Settings
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setDirectoryOpen(true)}
+                data-testid="button-open-member-directory"
+              >
+                <Users className="mr-1 h-3.5 w-3.5" /> Members
               </Button>
               <Switch id="toggle-maintenance" checked={unlocked} onCheckedChange={onUnlockedChange} data-testid="settings-maintenance-switch" />
             </div>
@@ -146,7 +179,7 @@ export default function SettingsPopover({
       </PopoverContent>
 
       <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
-        <DialogContent data-testid="maintenance-settings-dialog">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="maintenance-settings-dialog">
           <DialogHeader>
             <DialogTitle>Maintenance settings</DialogTitle>
             <DialogDescription>
@@ -154,6 +187,10 @@ export default function SettingsPopover({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {adminPanel}
+            <Button variant="outline" size="sm" onClick={() => setDirectoryOpen(true)} data-testid="button-settings-member-directory">
+              <Users className="mr-1 h-4 w-4" /> Member directory
+            </Button>
             <div className="space-y-1">
               <Label htmlFor="threshold-public-top">Clusters shown to group (top)</Label>
               <Input
@@ -202,17 +239,27 @@ export default function SettingsPopover({
               />
               <p className="text-xs text-muted-foreground">Interested count at which the group should consider planning a second session.</p>
             </div>
+            {!isAdmin && <p className="text-xs text-muted-foreground">Saving these limits requires admin sign-in.</p>}
+            <TestAccountPanel isTestAccount={isTestAccount} sessionEmail={sessionEmail} onSignIn={onTestSignIn} onSignOut={onSignOut} />
+            {saveError && <p className="text-sm text-destructive" data-testid="text-settings-save-error">{saveError}</p>}
           </div>
           <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setSettingsDialogOpen(false)} data-testid="button-cancel-maintenance-settings">
               Cancel
             </Button>
-            <Button onClick={saveThresholds} disabled={saving} data-testid="button-save-maintenance-settings">
+            <Button onClick={saveThresholds} disabled={saving || !isAdmin} data-testid="button-save-maintenance-settings">
               {saving ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <MemberDirectoryDialog
+        open={directoryOpen}
+        onOpenChange={setDirectoryOpen}
+        isAdmin={isAdmin}
+        onFetch={onFetchMemberDirectory}
+        adminPanel={adminPanel}
+      />
     </Popover>
   );
 }

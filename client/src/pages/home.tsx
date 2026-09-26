@@ -122,6 +122,13 @@ export default function Home() {
               onUnlockedChange={setUnlocked}
               thresholds={data.appSettings}
               onThresholdsChange={data.updateAppSettings}
+              isAdmin={data.isAdmin}
+              isTestAccount={data.isTestAccount}
+              sessionEmail={data.sessionEmail}
+              onSendSignInLink={data.sendSignInLink}
+              onSignOut={data.signOut}
+              onFetchMemberDirectory={data.fetchMemberDirectory}
+              onTestSignIn={data.signInTestAccount}
             />
             <Button variant="ghost" size="icon" aria-label="Toggle dark mode" onClick={toggle} data-testid="button-dark-mode">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -129,6 +136,15 @@ export default function Home() {
           </nav>
         </div>
       </header>
+
+      {data.isTestAccount && (
+        <div className="border-b border-dashed bg-muted/60 px-4 py-2 text-center text-xs text-muted-foreground" data-testid="banner-test-account">
+          Test account — your entries are private and left out of everyone else's results.{" "}
+          <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={data.signOut} data-testid="button-banner-test-sign-out">
+            Sign out
+          </button>
+        </div>
+      )}
 
       {tab === "dashboard" && (
         <RollCallBar
@@ -180,6 +196,7 @@ export default function Home() {
               myIdentity={myIdentity}
               onSignOut={data.signOut}
               linkError={data.linkError}
+              onCheckEmailTaken={data.entryEmailTaken}
             />
           </>
         ) : (
@@ -198,6 +215,10 @@ export default function Home() {
             curtainOpen={curtainOpen}
             onCurtainOpenChange={setCurtainOpen}
             thresholds={data.appSettings}
+            isAdmin={data.isAdmin}
+            ledActivityIds={data.ledActivityIds}
+            onSaveChatLink={data.saveChatLink}
+            onFetchMemberDirectory={data.fetchMemberDirectory}
             onSuggestResource={data.suggestResource}
             onVolunteerLead={data.volunteerLead}
             onSaveEventPlan={data.saveEventPlan}

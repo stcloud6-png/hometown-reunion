@@ -14,8 +14,24 @@ import {
   storage,
   supabaseAuth,
   supabaseRest,
+  supabaseRpc,
   parseAuthHashFragment,
 } from "./reunion";
+
+/** Public columns only — member emails are never readable by the public API. */
+const PEOPLE_COLUMNS =
+  "id,name,arrival,departure,slots,interests,updated_at,attending,volunteer_support,volunteer_lead,yacht_paid,mievento_intents,mievento_ticket_status,is_test";
+const LEAD_COLUMNS = "id,activity_id,lead_name,chat_link,created_at";
+
+/** Member directory row — returned only to verified admins. */
+export interface MemberDirectoryRow {
+  id: string;
+  name: string;
+  email: string | null;
+  attending: boolean | null;
+  is_test: boolean;
+  updated_at: string | null;
+}
 
 /** Row shape of the shared `app_settings` table — one global row, id "default". */
 interface AppSettingsRow {
@@ -72,6 +88,10 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const [appSettings, setAppSettings] = useState<ClusterThresholds>(CLUSTER_THRESHOLDS);
   const [session, setSession] = useState<Session | null>(() => (stub ? null : loadStoredSession()));
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [myEntry, setMyEntry] = useState<Person | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isTestAccount, setIsTestAccount] = useState(false);
+  const [ledActivityIds, setLedActivityIds] = useState<string[]>([]);
   const stubActivities = useRef<Activity[]>([]);
 
   const load = useCallback(async () => {
@@ -85,17 +105,40 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         setClusterLeads([{ activity_id: "napoli", lead_name: "Demo Organizer" }]);
         setEventPlans([{ activity_id: "napoli", status: "open", event_date: "2027-01-13", start_time: "11:30am", venue: "Napoli", max_size: 50 }]);
         setIsDemo(true);
+        const stubMine = session ? DEMO_PEOPLE.find((p) => (p.email ?? "").toLowerCase() === session.email.toLowerCase()) ?? null : null;
+        setMyEntry(stubMine);
+        const stubTest = Boolean(session && /tester@/i.test(session.email));
+        setIsAdmin(Boolean(session) && !stubTest);
+        setIsTestAccount(stubTest);
+        setLedActivityIds(session ? ["napoli"] : []);
         return;
       }
       const token = session?.accessToken ?? null;
-      const [peopleRes, activitiesRes, resourcesRes, leadsRes, plansRes, settingsRes] = await Promise.all([
-        supabaseRest<Person[]>("/people?select=*&order=name.asc", { accessToken: token }),
+      // Caller-specific facts (own entry, admin/organizer status). These are
+      // answered by the database from the verified sign-in, never from what
+      // the browser claims. Failures degrade to "not signed in" rights.
+      const mine = token
+        ? Promise.all([
+            supabaseRpc<Person[]>("my_entry", {}, token).catch(() => [] as Person[]),
+            supabaseRpc<boolean>("app_is_admin", {}, token).catch(() => false),
+            supabaseRpc<boolean>("app_is_test_account", {}, token).catch(() => false),
+            supabaseRpc<string[]>("my_led_activities", {}, token).catch(() => [] as string[]),
+          ])
+        : Promise.resolve([[] as Person[], false, false, [] as string[]] as const);
+      const [peopleRes, activitiesRes, resourcesRes, leadsRes, plansRes, settingsRes, mineRes] = await Promise.all([
+        supabaseRest<Person[]>(`/people?select=${PEOPLE_COLUMNS}&order=name.asc`, { accessToken: token }),
         supabaseRest<Activity[]>("/activities?select=*&order=id.asc", { accessToken: token }),
         supabaseRest<ClusterResource[]>("/cluster_resources?select=*&order=created_at.asc", { accessToken: token }),
-        supabaseRest<ClusterLead[]>("/cluster_leads?select=*", { accessToken: token }),
+        supabaseRest<ClusterLead[]>(`/cluster_leads?select=${LEAD_COLUMNS}`, { accessToken: token }),
         supabaseRest<EventPlan[]>("/event_plans?select=*", { accessToken: token }),
         supabaseRest<AppSettingsRow[]>("/app_settings?select=*&id=eq.default", { accessToken: token }).catch(() => []),
+        mine,
       ]);
+      const [myRows, admin, tester, led] = mineRes;
+      setMyEntry(Array.isArray(myRows) && myRows[0] ? myRows[0] : null);
+      setIsAdmin(admin === true);
+      setIsTestAccount(tester === true);
+      setLedActivityIds(Array.isArray(led) ? led.map((v) => (typeof v === "string" ? v : String((v as Record<string, unknown>).my_led_activities ?? ""))).filter(Boolean) : []);
       setPeople(peopleRes);
       setActivities(mergeActivities(activitiesRes));
       setClusterResources(resourcesRes);
@@ -126,6 +169,22 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     const stored = loadStoredSession();
     if (stored && !session) setSession(stored);
   }, [stub, session]);
+
+  // Keep React state in step with background token refreshes / expiry.
+  useEffect(() => {
+    if (stub) return;
+    const onRefreshed = () => {
+      const stored = loadStoredSession();
+      if (stored) setSession((prev) => (prev && prev.accessToken === stored.accessToken ? prev : stored));
+    };
+    const onExpired = () => setSession(null);
+    window.addEventListener("reunion-session-refreshed", onRefreshed);
+    window.addEventListener("reunion-session-expired", onExpired);
+    return () => {
+      window.removeEventListener("reunion-session-refreshed", onRefreshed);
+      window.removeEventListener("reunion-session-expired", onExpired);
+    };
+  }, [stub]);
 
   const persistSession = useCallback((next: Session | null) => {
     setSession(next);
@@ -173,15 +232,32 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         });
         return;
       }
-      await supabaseRest("/people?on_conflict=name", {
-        method: "POST",
-        accessToken: session?.accessToken,
-        prefer: "resolution=merge-duplicates,return=minimal",
-        body: { ...person, updated_at: new Date().toISOString() },
-      });
+      const body = { ...person, updated_at: new Date().toISOString() } as Record<string, unknown>;
+      delete body.id;
+      delete body.is_test;
+      if (myEntry?.id && session?.accessToken) {
+        // Signed-in member changing their own entry: update that one row. The
+        // database only allows it when the verified sign-in email matches.
+        const saved = await supabaseRest<{ id: string }[]>(`/people?id=eq.${encodeURIComponent(myEntry.id)}&select=id`, {
+          method: "PATCH",
+          accessToken: session.accessToken,
+          prefer: "return=representation",
+          body,
+        });
+        if (!saved || saved.length !== 1) throw new Error("permission denied");
+      } else {
+        // Brand-new entry. An existing name is refused by the database
+        // (unique name), so nobody can overwrite someone else's entry.
+        await supabaseRest("/people", {
+          method: "POST",
+          accessToken: session?.accessToken,
+          prefer: "return=minimal",
+          body,
+        });
+      }
       await load();
     },
-    [session, stub, load],
+    [session, stub, load, myEntry],
   );
 
   const suggestActivity = useCallback(
@@ -229,15 +305,94 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         });
         return;
       }
-      await supabaseRest("/cluster_leads?on_conflict=activity_id", {
-        method: "POST",
-        accessToken: session?.accessToken,
-        prefer: "resolution=merge-duplicates,return=minimal",
-        body: lead,
-      });
+      await supabaseRpc(
+        "volunteer_as_lead",
+        { p_activity_id: lead.activity_id, p_lead_name: lead.lead_name ?? "", p_lead_email: lead.lead_email ?? "" },
+        session?.accessToken,
+      );
       await load();
     },
     [session, stub, load],
+  );
+
+  /**
+   * Save an event's group chat link. Allowed for admins and for that event's
+   * signed-in organizer; a denied change is reported instead of looking saved.
+   */
+  const saveChatLink = useCallback(
+    async (activityId: string, chatLink: string | null) => {
+      if (stub) {
+        setClusterLeads((prev) => {
+          const existing = prev.find((l) => l.activity_id === activityId);
+          return [...prev.filter((l) => l.activity_id !== activityId), { ...existing, activity_id: activityId, chat_link: chatLink }];
+        });
+        return;
+      }
+      if (!session?.accessToken) throw new Error("permission denied");
+      const existing = clusterLeads.find((l) => l.activity_id === activityId);
+      if (existing) {
+        const saved = await supabaseRest<{ id: number }[]>(`/cluster_leads?activity_id=eq.${encodeURIComponent(activityId)}&select=id`, {
+          method: "PATCH",
+          accessToken: session.accessToken,
+          prefer: "return=representation",
+          body: { chat_link: chatLink },
+        });
+        if (!saved || saved.length !== 1) throw new Error("permission denied");
+      } else {
+        await supabaseRest("/cluster_leads", {
+          method: "POST",
+          accessToken: session.accessToken,
+          prefer: "return=minimal",
+          body: { activity_id: activityId, chat_link: chatLink },
+        });
+      }
+      await load();
+    },
+    [session, stub, load, clusterLeads],
+  );
+
+  /** Admin-only: full member list with emails (the database refuses anyone else). */
+  const fetchMemberDirectory = useCallback(async (): Promise<MemberDirectoryRow[]> => {
+    if (stub) {
+      return DEMO_PEOPLE.map((p, i) => ({
+        id: p.id ?? `demo-${i}`,
+        name: p.name,
+        email: p.email ?? null,
+        attending: p.attending ?? null,
+        is_test: false,
+        updated_at: p.updated_at ?? null,
+      }));
+    }
+    if (!session?.accessToken) throw new Error("Admin sign-in required.");
+    return supabaseRpc<MemberDirectoryRow[]>("admin_member_directory", {}, session.accessToken);
+  }, [session, stub]);
+
+  /** Password sign-in for the private test account only. */
+  const signInTestAccount = useCallback(
+    async (email: string, password: string) => {
+      if (stub) {
+        persistSession({ accessToken: "stub-token", refreshToken: "stub-refresh", email });
+        return;
+      }
+      const result = await supabaseAuth.signInWithPassword(email.trim(), password);
+      const user = result.user?.email ? result.user : await supabaseAuth.getUser(result.access_token);
+      if (!user.email) throw new Error("Sign-in failed.");
+      persistSession({ accessToken: result.access_token, refreshToken: result.refresh_token, email: user.email });
+    },
+    [stub, persistSession],
+  );
+
+  /** True when a (non-test) reunion entry already uses this email. Reveals nothing else. */
+  const entryEmailTaken = useCallback(
+    async (email: string): Promise<boolean> => {
+      if (stub) return DEMO_PEOPLE.some((p) => (p.email ?? "").toLowerCase() === email.trim().toLowerCase());
+      try {
+        return (await supabaseRpc<boolean>("entry_email_taken", { p_email: email.trim() })) === true;
+      } catch {
+        return false;
+      }
+    },
+    [stub],
   );
 
   const saveEventPlan = useCallback(
@@ -258,7 +413,8 @@ export function useReunionData(options: { stub?: boolean } = {}) {
           start_time: plan.start_time,
           venue: plan.venue,
           max_size: plan.max_size,
-          updated_by: plan.updated_by,
+          // The database stamps "updated by" itself (Maintenance / organizer
+          // name) so no email address is ever published.
           updated_at: new Date().toISOString(),
         },
       });
@@ -310,12 +466,9 @@ export function useReunionData(options: { stub?: boolean } = {}) {
    * Returns null when stubbed-out with no session, or no match on file.
    */
   const myPerson = useCallback(
-    (email: string | null | undefined): Person | null => {
-      const target = (email ?? session?.email ?? "").trim().toLowerCase();
-      if (!target) return null;
-      return people.find((p) => (p.email ?? "").trim().toLowerCase() === target) ?? null;
-    },
-    [people, session],
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    (_email?: string | null): Person | null => (session ? myEntry : null),
+    [session, myEntry],
   );
 
   /**
@@ -331,16 +484,17 @@ export function useReunionData(options: { stub?: boolean } = {}) {
       const mine = myPerson(session.email);
       if (!mine) throw new Error("No reunion entry found for your email yet. Fill out your availability first.");
       if (stub) {
-        const target = (session.email ?? "").trim().toLowerCase();
-        setPeople((prev) => prev.map((p) => ((p.email ?? "").trim().toLowerCase() === target ? { ...p, ...patch } : p)));
+        setPeople((prev) => prev.map((p) => (p.name === mine.name ? { ...p, ...patch } : p)));
+        setMyEntry({ ...mine, ...patch });
         return;
       }
-      await supabaseRest("/people?on_conflict=name", {
-        method: "POST",
+      const saved = await supabaseRest<{ id: string }[]>(`/people?id=eq.${encodeURIComponent(mine.id ?? "")}&select=id`, {
+        method: "PATCH",
         accessToken: session.accessToken,
-        prefer: "resolution=merge-duplicates,return=minimal",
-        body: { name: mine.name, email: mine.email, ...patch, updated_at: new Date().toISOString() },
+        prefer: "return=representation",
+        body: { ...patch, updated_at: new Date().toISOString() },
       });
+      if (!saved || saved.length !== 1) throw new Error("permission denied");
       await load();
     },
     [session, stub, load, myPerson],
@@ -369,6 +523,13 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     signOut,
     myPerson,
     updateMyPerson,
+    isAdmin,
+    isTestAccount,
+    ledActivityIds,
+    saveChatLink,
+    fetchMemberDirectory,
+    signInTestAccount,
+    entryEmailTaken,
     sendSignInLink: stub
       ? async (email: string) => {
           // Never hit the real Supabase Auth endpoint while showing stub/demo

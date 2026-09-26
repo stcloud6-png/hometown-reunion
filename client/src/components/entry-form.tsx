@@ -79,6 +79,8 @@ interface EntryFormProps {
   onSignOut?: () => void;
   /** Set when a magic-link redirect failed to verify on page load. */
   linkError?: string | null;
+  /** Asks the database whether an entry already uses this email (yes/no only). */
+  onCheckEmailTaken?: (email: string) => Promise<boolean>;
 }
 
 function slugify(label: string): string {
@@ -118,7 +120,7 @@ const LEGEND_ITEMS: { status: SlotStatus; label: string; hint: string }[] = [
   { status: "private", label: "Private", hint: "Private / unavailable" },
 ];
 
-export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus, myIdentity, onSignOut, linkError }: EntryFormProps) {
+export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus, myIdentity, onSignOut, linkError, onCheckEmailTaken }: EntryFormProps) {
   const { toast } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
@@ -178,18 +180,36 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   // Not signed in, but the name typed matches someone who already has a saved
   // entry (by name or by email) — their entry is protected: we load it for
   // review but block saving until they verify via the emailed sign-in link.
+  // Member emails are never sent to the browser, so matching is by name here;
+  // a typed email is checked separately with a yes/no database lookup.
   const matchedExisting = useMemo(() => {
     if (signedIn || !people) return null;
     const typedName = name.trim().toLowerCase();
-    const typedEmail = email.trim().toLowerCase();
-    return (
-      people.find(
-        (p) =>
-          (typedName && p.name.trim().toLowerCase() === typedName) ||
-          (typedEmail && (p.email ?? "").trim().toLowerCase() === typedEmail),
-      ) ?? null
-    );
-  }, [people, name, email, signedIn]);
+    return (typedName && people.find((p) => !p.is_test && p.name.trim().toLowerCase() === typedName)) || null;
+  }, [people, name, signedIn]);
+
+  const [emailTaken, setEmailTaken] = useState(false);
+  useEffect(() => {
+    const typed = email.trim();
+    if (signedIn || matchedExisting || !onCheckEmailTaken || !EMAIL_PATTERN.test(typed)) {
+      setEmailTaken(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      onCheckEmailTaken(typed)
+        .then((taken) => {
+          if (!cancelled) setEmailTaken(taken);
+        })
+        .catch(() => {
+          if (!cancelled) setEmailTaken(false);
+        });
+    }, 500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [email, signedIn, matchedExisting, onCheckEmailTaken]);
 
   const matchedHydratedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -197,10 +217,9 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
       matchedHydratedRef.current = null;
       return;
     }
-    const key = `${matchedExisting.name}|${matchedExisting.email ?? ""}`;
+    const key = matchedExisting.id ?? matchedExisting.name;
     if (matchedHydratedRef.current === key) return;
     matchedHydratedRef.current = key;
-    if (!email.trim() && matchedExisting.email) setEmail(matchedExisting.email);
     setArrival(matchedExisting.arrival ?? START_DATE);
     setDeparture(matchedExisting.departure ?? END_DATE);
     setSlots(matchedExisting.slots ?? initSlots(matchedExisting.arrival ?? START_DATE, matchedExisting.departure ?? END_DATE));
@@ -215,7 +234,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     setVolunteerPrompted((matchedExisting.interests ?? []).length > 0);
   }, [matchedExisting]);
 
-  const isProtected = Boolean(matchedExisting) && !signedIn;
+  const isProtected = (Boolean(matchedExisting) || emailTaken) && !signedIn;
 
   // --- Step-by-step gating for brand-new, first-time entries ---------------
   // Only a person with no known saved entry yet (no signed-in session, and
@@ -223,7 +242,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   // one section at a time. Anyone with an existing entry (signed in, or a
   // protected match found while typing) always sees the classic all-at-once
   // form so returning members aren't slowed down re-confirming old answers.
-  const gatingActive = !initial && !matchedExisting;
+  const gatingActive = !initial && !matchedExisting && !emailTaken;
   const nameReadyToConfirm = name.trim().length > 0 && EMAIL_PATTERN.test(email.trim());
   const [nameConfirmed, setNameConfirmed] = useState(false);
   const [datesConfirmed, setDatesConfirmed] = useState(false);
@@ -285,8 +304,12 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   }, []);
 
   async function handleSendSignInLink() {
-    const target = (matchedExisting?.email ?? email).trim();
-    if (!target || !EMAIL_PATTERN.test(target) || !onSendSignInLink) return;
+    const target = email.trim();
+    if (!target || !EMAIL_PATTERN.test(target)) {
+      setLinkSendError("Enter the email you used when you first saved, then request the link.");
+      return;
+    }
+    if (!onSendSignInLink) return;
     setLinkSending(true);
     setLinkSendError(null);
     try {
@@ -449,10 +472,8 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   }
 
   if (saved) {
-    const savedEmail = email.trim().toLowerCase();
-    const myPersonRow = savedEmail
-      ? people?.find((p) => (p.email ?? "").trim().toLowerCase() === savedEmail) ?? null
-      : null;
+    const savedName = name.trim().toLowerCase();
+    const myPersonRow = initial ?? people?.find((p) => p.name.trim().toLowerCase() === savedName) ?? null;
     const alreadyPaidYacht = Boolean(myPersonRow?.yacht_paid);
     return (
       <Card className="max-w-xl mx-auto" data-testid="card-confirmation">
@@ -633,7 +654,9 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
 
           {isProtected && (
             <p className="text-sm text-destructive" data-testid="text-protected-entry">
-              This entry is protected. If it's yours, use the sign-in link we email you below.
+              {emailTaken && !matchedExisting
+                ? "An entry already uses this email. If it's yours, request a sign-in link below to update it."
+                : "This entry is protected. If it's yours, enter the email you used and request a sign-in link below."}
             </p>
           )}
 

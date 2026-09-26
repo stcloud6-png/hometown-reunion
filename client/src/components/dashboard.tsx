@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { friendlyError } from "@/lib/reunion";
+import type { MemberDirectoryRow } from "@/lib/use-reunion-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,13 +53,6 @@ import {
   tallyWindowDetailed,
 } from "@/lib/reunion";
 
-/** True when the signed-in person's email matches the cluster lead's email, case-insensitively. */
-function isClusterLead(lead: ClusterLead | undefined, sessionEmail: string | null, myIdentity: MyIdentity | null): boolean {
-  if (!lead?.lead_email) return false;
-  const myEmail = sessionEmail ?? myIdentity?.email ?? null;
-  if (!myEmail) return false;
-  return myEmail.trim().toLowerCase() === lead.lead_email.trim().toLowerCase();
-}
 
 const PERIOD_SHORT_LABEL: Record<Period, string> = { m: "AM", a: "PM", e: "EVE" };
 
@@ -80,6 +75,12 @@ interface DashboardProps {
   onVolunteerLead: (lead: ClusterLead) => Promise<void>;
   onSaveEventPlan: (plan: EventPlan) => Promise<void>;
   onBackToAvailability: () => void;
+  /** Verified by the database from an email-link sign-in (never from the PIN alone). */
+  isAdmin?: boolean;
+  /** Events this signed-in visitor organizes, as reported by the database. */
+  ledActivityIds?: string[];
+  onSaveChatLink?: (activityId: string, chatLink: string | null) => Promise<void>;
+  onFetchMemberDirectory?: () => Promise<MemberDirectoryRow[]>;
 }
 
 /** Collapsible dashboard section wrapper, matching the live site's collapse/expand section chrome. */
@@ -143,7 +144,26 @@ export default function Dashboard({
   onVolunteerLead,
   onSaveEventPlan,
   onBackToAvailability,
+  isAdmin = false,
+  ledActivityIds = [],
+  onSaveChatLink = async () => {},
+  onFetchMemberDirectory,
 }: DashboardProps) {
+  const canEditEvent = (activityId: string) => isAdmin || ledActivityIds.includes(activityId);
+  const [exportError, setExportError] = useState<string | null>(null);
+  async function handleExport() {
+    setExportError(null);
+    let emails: Map<string, string> | undefined;
+    if (isAdmin && onFetchMemberDirectory) {
+      try {
+        const rows = await onFetchMemberDirectory();
+        emails = new Map(rows.filter((r) => r.email).map((r) => [r.id, r.email as string]));
+      } catch (error) {
+        setExportError(friendlyError(error, "Could not load emails for the export."));
+      }
+    }
+    exportAvailabilityCsv(people, activities, emails);
+  }
   const [interestFilter, setInterestFilter] = useState<string | null>(null);
   const pillCounts = useMemo(() => interestPillCounts(people, activities), [people, activities]);
   const filteredPeople = useMemo(() => scopeByInterest(people, interestFilter), [people, interestFilter]);
@@ -337,8 +357,8 @@ export default function Dashboard({
                       <ChatLinkEditor
                         activityId={cluster.activity.id}
                         lead={lead}
-                        canEdit={unlocked || isClusterLead(lead, sessionEmail, myIdentity)}
-                        onSave={onVolunteerLead}
+                        canEdit={canEditEvent(cluster.activity.id)}
+                        onSave={onSaveChatLink}
                       />
                     </div>
                   ) : (
@@ -351,8 +371,8 @@ export default function Dashboard({
                       <ChatLinkEditor
                         activityId={cluster.activity.id}
                         lead={lead ?? { activity_id: cluster.activity.id, lead_name: null }}
-                        canEdit={unlocked}
-                        onSave={onVolunteerLead}
+                        canEdit={isAdmin}
+                        onSave={onSaveChatLink}
                       />
                     </div>
                   )}
@@ -374,9 +394,13 @@ export default function Dashboard({
                         </p>
                       )}
                       <p className="mt-2 text-xs text-muted-foreground">It's also reflected on your schedule in "Mark your time slots."</p>
-                      {(unlocked || isClusterLead(lead, sessionEmail, myIdentity)) && (
-                        <EventPlanEditor activityId={cluster.activity.id} initial={plan} onSave={onSaveEventPlan} sessionEmail={sessionEmail || (unlocked ? "Maintenance" : myIdentity?.name || lead?.lead_name || null)} />
-                      )}
+                      {canEditEvent(cluster.activity.id) ? (
+                        <EventPlanEditor activityId={cluster.activity.id} initial={plan} onSave={onSaveEventPlan} sessionEmail={isAdmin ? "Maintenance" : lead?.lead_name || null} />
+                      ) : unlocked ? (
+                        <p className="mt-2 text-xs text-muted-foreground" data-testid={`text-plan-admin-needed-${cluster.activity.id}`}>
+                          To edit this plan, use Admin sign-in in Maintenance settings.
+                        </p>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -499,10 +523,11 @@ export default function Dashboard({
       <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
         <div className="flex items-center gap-2">
           {unlocked && (
-            <Button variant="outline" size="sm" onClick={() => exportAvailabilityCsv(people, activities)} data-testid="button-export">
+            <Button variant="outline" size="sm" onClick={() => void handleExport()} data-testid="button-export">
               <Download className="mr-1 h-4 w-4" /> Export CSV
             </Button>
           )}
+          {unlocked && exportError && <span className="text-xs text-destructive">{exportError}</span>}
           {unlocked && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -723,13 +748,17 @@ function VolunteerLeadForm({
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [selected, setSelected] = useState(false);
+  const [volunteerError, setVolunteerError] = useState<string | null>(null);
 
   async function submit() {
     if (!myIdentity) return;
     setSubmitting(true);
+    setVolunteerError(null);
     try {
       await onVolunteer({ activity_id: activityId, lead_name: myIdentity.name, lead_email: myIdentity.email });
       setSelected(true);
+    } catch (error) {
+      setVolunteerError(friendlyError(error, "Could not save. Please try again."));
     } finally {
       setSubmitting(false);
     }
@@ -744,6 +773,7 @@ function VolunteerLeadForm({
   }
 
   return (
+    <>
     <label className="flex items-center gap-2 text-sm hover-elevate active-elevate-2 rounded-md p-1">
       <input
         type="radio"
@@ -757,6 +787,8 @@ function VolunteerLeadForm({
         <ShieldCheck className="h-4 w-4 text-muted-foreground" /> Be the first to volunteer as Event Organizer for this event
       </span>
     </label>
+    {volunteerError && <p className="text-xs text-destructive" data-testid={`text-volunteer-error-${activityId}`}>{volunteerError}</p>}
+    </>
   );
 }
 
@@ -772,11 +804,12 @@ function ChatLinkEditor({
   activityId: string;
   lead: ClusterLead;
   canEdit: boolean;
-  onSave: (lead: ClusterLead) => Promise<void>;
+  onSave: (activityId: string, chatLink: string | null) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(lead.chat_link ?? "");
   const [saving, setSaving] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   useEffect(() => {
     setValue(lead.chat_link ?? "");
@@ -786,9 +819,12 @@ function ChatLinkEditor({
     const trimmed = value.trim();
     const normalized = trimmed && !/^https?:\/\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
     setSaving(true);
+    setChatError(null);
     try {
-      await onSave({ ...lead, chat_link: normalized || null });
+      await onSave(activityId, normalized || null);
       setEditing(false);
+    } catch (error) {
+      setChatError(friendlyError(error, "Could not save the link. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -856,6 +892,7 @@ function ChatLinkEditor({
       >
         Cancel
       </Button>
+      {chatError && <p className="w-full text-xs text-destructive" data-testid={`text-chat-link-error-${activityId}`}>{chatError}</p>}
     </div>
   );
 }
