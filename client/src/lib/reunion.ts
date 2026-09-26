@@ -240,9 +240,10 @@ function autoSlotsForTimeOfDay(tod: "evening" | "day" | "any"): Period[] {
 export const SCHEDULED_EVENTS: ScheduledEvent[] = [
   { id: "yacht-club", label: "Yacht Club 87 Dinner/Dance", note: "Wed 20 evening", days: ["2027-01-20"] },
   { id: "bocas", label: "Bocas Del Toro", days: SHOULDER_START },
-  { id: "vulcan", label: "Vulcan", days: SHOULDER_START },
+  // Stable IDs preserve existing saved answers; only the displayed names change.
+  { id: "vulcan", label: "Volcán", days: [...SHOULDER_START, ...SHOULDER_END] },
   { id: "cerro-punta", label: "Cerro Punta", days: SHOULDER_START },
-  { id: "boquette", label: "Boquette", days: SHOULDER_START },
+  { id: "boquette", label: "Boquete", days: [...SHOULDER_START, ...SHOULDER_END] },
   { id: "transit-17", label: "Southbound Partial Transit", note: "Sun 17 morning & afternoon", days: ["2027-01-17"], autoSlots: ["m", "a"], blue: true },
   { id: "gold-coast-18", label: "Gold Coast Bus", note: "Mon 18 morning & afternoon", days: ["2027-01-18"], autoSlots: ["m", "a"], blue: true },
   { id: "chichipati-18", label: "Chichipati Fishing", note: "Mon 18, 6am-4pm", days: ["2027-01-18"], autoSlots: ["m", "a"], soft: true },
@@ -267,8 +268,8 @@ export const SCHEDULED_EVENTS: ScheduledEvent[] = [
   { id: "mega-cruise-23", label: "MEGA Cruise", note: "Sat 23 evening — tickets coming soon", days: ["2027-01-23"], autoSlots: ["e"], blue: true, soon: true },
   { id: "jamboree-23", label: "Jamboree", note: "Sat 23, 10am-6pm", days: ["2027-01-23"], autoSlots: ["m", "a"] },
   { id: "taboga-24", label: "Taboga Island", note: "Sun 24 all day", days: ["2027-01-24"], autoSlots: ["m", "a", "e"], blue: true },
-  { id: "coronado-25", label: "Coronado Beach", days: SHOULDER_END },
-  { id: "el-valle-26", label: "El Valle", days: SHOULDER_END },
+  { id: "coronado-25", label: "Coronado Beach", days: [...SHOULDER_START, "2027-01-17", ...SHOULDER_END] },
+  { id: "el-valle-26", label: "El Valle", days: [...SHOULDER_START, "2027-01-17", ...SHOULDER_END] },
   { id: "pool-day", label: "Drinking All Day at the Pool", days: POOL_DAY_DATES },
   // Applies to every shoulder date (both ends of the trip) but never during the
   // core Jan 17–24 MiEvento window — see the period filter in eventsForDate().
@@ -324,6 +325,52 @@ export function mieventoDays(): DayInfo[] {
 
 /** Where classmates go to actually buy MiEvento tickets. */
 export const MIEVENTO_TICKET_URL = "https://www.mieventos.com/event-multiple-detail/czr-2027";
+
+/** Suggestions, NOT default attendance. Keep ticket status separate from plans. */
+export const SUGGESTED_MIEVENTO_IDS = [
+  "coffee-house-19", "chicken-21", "railway-22", "pin-ding-22", "mega-cruise-23",
+];
+
+export function suggestedMieventoEvents(arrival: string, departure: string): ScheduledEvent[] {
+  return SUGGESTED_MIEVENTO_IDS.flatMap((id) =>
+    SCHEDULED_EVENTS.filter((event) =>
+      event.id === id && event.days?.some((day) => day >= arrival && day <= departure),
+    ),
+  );
+}
+
+export function selectedSuggestedEvents(slots: PersonSlots, arrival: string, departure: string): string[] {
+  return suggestedMieventoEvents(arrival, departure)
+    .filter((event) => event.days?.some((day) =>
+      PERIODS.some((period) => slots[day]?.[period]?.s === "busy" && slots[day]?.[period]?.t === event.id),
+    ))
+    .map((event) => event.id);
+}
+
+/** Only called after explicit review. Unrelated slots and the Yacht lock survive. */
+export function applySuggestedEvents(
+  slots: PersonSlots, arrival: string, departure: string, selected: string[],
+): PersonSlots {
+  const next: PersonSlots = Object.fromEntries(
+    Object.entries(slots).map(([day, periods]) => [day, { ...periods }]),
+  );
+  for (const event of suggestedMieventoEvents(arrival, departure)) {
+    for (const day of event.days ?? []) {
+      if (day < arrival || day > departure || !next[day]) continue;
+      for (const period of event.autoSlots ?? []) {
+        if (isYachtLockSlot(day, period)) continue;
+        if (selected.includes(event.id)) {
+          // Preserve existing partial-day answers when reconfirming an old choice.
+          const alreadySelected = PERIODS.some((p) => slots[day]?.[p]?.s === "busy" && slots[day]?.[p]?.t === event.id);
+          if (!alreadySelected) next[day][period] = { s: "busy", t: event.id };
+        } else if (next[day][period]?.t === event.id) {
+          next[day][period] = { s: "ok" };
+        }
+      }
+    }
+  }
+  return next;
+}
 
 export const MIEVENTO_TICKET_STATUSES: MieventoTicketStatusValue[] = ["not_registered", "researching", "purchased"];
 export const MIEVENTO_TICKET_STATUS_LABEL: Record<MieventoTicketStatusValue, string> = {
@@ -491,7 +538,8 @@ export function isPoolDayEligible(iso: string): boolean {
 /** Evening slots on these dates never offer "busy"/MiEvento as a status — those
  * evenings are exclusively Available/Maybe/Private — unless the slot is *already*
  * set to busy (so an existing pick doesn't silently disappear from the list). */
-const BUSY_HIDDEN_EVENING_DATES: string[] = ["2027-01-17", "2027-01-18", "2027-01-24"];
+// Jan 17 now offers El Valle and Coronado in every period.
+const BUSY_HIDDEN_EVENING_DATES: string[] = ["2027-01-18", "2027-01-24"];
 
 /**
  * The selectable statuses for a given day+period slot, in the exact order the
@@ -593,14 +641,6 @@ const DEFAULT_SLOT_OVERRIDES: Partial<Record<string, { period: Period; status: S
     { period: "m", status: "busy" },
     { period: "a", status: "busy" },
   ],
-  "2027-01-19": [{ period: "e", status: "busy", tag: "coffee-house-19" }],
-  "2027-01-21": [{ period: "e", status: "busy", tag: "chicken-21" }],
-  "2027-01-22": [
-    { period: "m", status: "busy", tag: "railway-22" },
-    { period: "a", status: "busy", tag: "railway-22" },
-    { period: "e", status: "busy", tag: "pin-ding-22" },
-  ],
-  "2027-01-23": [{ period: "e", status: "busy", tag: "mega-cruise-23" }],
   "2027-01-24": [
     { period: "m", status: "busy" },
     { period: "a", status: "busy" },

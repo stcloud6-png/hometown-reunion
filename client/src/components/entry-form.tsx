@@ -54,6 +54,9 @@ import {
   mieventoShoppingEvents,
   mieventoTicketTally,
   statusesForSlot,
+  suggestedMieventoEvents,
+  selectedSuggestedEvents,
+  applySuggestedEvents,
 } from "@/lib/reunion";
 
 interface EntryFormProps {
@@ -132,6 +135,15 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [suggestedChoices, setSuggestedChoices] = useState<string[]>(() =>
+    selectedSuggestedEvents(initial?.slots ?? {}, initial?.arrival ?? START_DATE, initial?.departure ?? END_DATE),
+  );
+  const [eventChoiceMade, setEventChoiceMade] = useState(Boolean(initial));
+  const [ticketCostsAcknowledged, setTicketCostsAcknowledged] = useState(false);
+  const [eventsReviewed, setEventsReviewed] = useState(false);
+  const suggestedEvents = suggestedMieventoEvents(arrival, departure);
+  const eventReviewRequired = suggestedEvents.length > 0 && !eventsReviewed;
+  const selectedEventCount = suggestedEvents.filter((event) => suggestedChoices.includes(event.id)).length;
 
   // --- Returning-user sign-in & repopulation -------------------------------
   // Signed in for real: a magic-link click resolved to a live Supabase Auth
@@ -152,6 +164,10 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     setArrival(initial.arrival ?? START_DATE);
     setDeparture(initial.departure ?? END_DATE);
     setSlots(initial.slots ?? initSlots(initial.arrival ?? START_DATE, initial.departure ?? END_DATE));
+    setSuggestedChoices(selectedSuggestedEvents(initial.slots ?? {}, initial.arrival ?? START_DATE, initial.departure ?? END_DATE));
+    setEventChoiceMade(true);
+    setTicketCostsAcknowledged(false);
+    setEventsReviewed(false);
     setInterests(initial.interests ?? []);
     setAttending(initial.attending ?? null);
     setVolunteerSupport(initial.volunteer_support ?? null);
@@ -188,6 +204,10 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     setArrival(matchedExisting.arrival ?? START_DATE);
     setDeparture(matchedExisting.departure ?? END_DATE);
     setSlots(matchedExisting.slots ?? initSlots(matchedExisting.arrival ?? START_DATE, matchedExisting.departure ?? END_DATE));
+    setSuggestedChoices(selectedSuggestedEvents(matchedExisting.slots ?? {}, matchedExisting.arrival ?? START_DATE, matchedExisting.departure ?? END_DATE));
+    setEventChoiceMade(true);
+    setTicketCostsAcknowledged(false);
+    setEventsReviewed(false);
     setInterests(matchedExisting.interests ?? []);
     setAttending(matchedExisting.attending ?? null);
     setVolunteerSupport(matchedExisting.volunteer_support ?? null);
@@ -212,7 +232,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   const showDatesSection = !gatingActive || nameConfirmed;
   const showInterestsSection = !gatingActive || (nameConfirmed && datesConfirmed);
   const showSlotsSection = !gatingActive || (nameConfirmed && datesConfirmed && interestsConfirmed);
-  const showTicketAndSave = !gatingActive || (nameConfirmed && datesConfirmed && interestsConfirmed && slotsConfirmed);
+  const showTicketAndSave = !eventReviewRequired && (!gatingActive || (nameConfirmed && datesConfirmed && interestsConfirmed && slotsConfirmed));
 
   const [linkSending, setLinkSending] = useState(false);
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
@@ -282,6 +302,10 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   const days = useMemo(() => DAYS.filter((d) => d.iso >= arrival && d.iso <= departure), [arrival, departure]);
 
   function updateRange(nextArrival: string, nextDeparture: string) {
+    setEventsReviewed(false);
+    setTicketCostsAcknowledged(false);
+    setEventChoiceMade(false);
+    setSlotsConfirmed(false);
     setArrival(nextArrival);
     setDeparture(nextDeparture);
     setSlots((prev) => {
@@ -394,6 +418,10 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     }
     if (arrival > departure) {
       setValidationError("Your arrival date must be before your departure date.");
+      return;
+    }
+    if (eventReviewRequired || (gatingActive && (!nameConfirmed || !datesConfirmed || !interestsConfirmed || !slotsConfirmed))) {
+      setValidationError("Please review the optional events and confirm your time slots before saving.");
       return;
     }
     if (attending === null) {
@@ -798,7 +826,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
           <CardTitle>Mark your time slots</CardTitle>
           <div className="text-sm text-muted-foreground space-y-1.5">
             <p>
-              Everything starts as <span className="font-medium text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]">Available</span>.{" "}
+              Unassigned time slots start as <span className="font-medium text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]">Available</span>.{" "}
               <span className="underline underline-offset-2">
                 Change any slot where you already have plans — choose <strong className="font-bold">MiEvento</strong> and pick from what's scheduled that day.
               </span>{" "}
@@ -808,10 +836,99 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
               Go through each block — a blank canvas of green reads as "free and ready to join," and the organizers
               will plan accordingly.
             </p>
+            {suggestedEvents.length === 0 && <p>
+              MiEvento events are optional and require separate tickets, not included in the Yacht Club dinner fee.
+              Selecting a time slot does not purchase a ticket.{" "}
+              <a href={MIEVENTO_TICKET_URL} target="_blank" rel="noreferrer" className="font-medium text-primary underline">
+                Check current prices and buy/reserve on MiEvento
+              </a>.
+            </p>}
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          <fieldset disabled={gatingActive && slotsConfirmed} className="space-y-3">
+          {suggestedEvents.length > 0 && (
+            <section className="space-y-4 rounded-md border border-primary/30 bg-primary/5 p-4" aria-labelledby="optional-events-heading" data-testid="optional-event-review">
+              <div className="space-y-2">
+                <h3 id="optional-events-heading" className="text-base font-semibold">Optional MiEvento events: choose before continuing</h3>
+                <p className="text-sm">
+                  These are suggestions, not automatic attendance. Choose individual events or select the displayed group, then confirm your plans.
+                  Selecting an event here does not buy or reserve a ticket.
+                </p>
+                <p className="text-sm font-medium">
+                  Separate paid tickets are required. These events are not included in the Yacht Club 87 Dinner/Dance fee.
+                </p>
+                <a className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary underline underline-offset-2"
+                  href={MIEVENTO_TICKET_URL} target="_blank" rel="noreferrer" data-testid="link-review-mievento">
+                  Check current prices and buy/reserve on MiEvento <ExternalLink className="h-4 w-4 shrink-0" />
+                </a>
+                <p className="text-xs text-muted-foreground">
+                  Prices and a reliable total are not available here. Check each event's current price, fees and ticket availability on MiEvento before committing.
+                  Ticket purchase status is tracked separately and is self-reported.
+                </p>
+              </div>
+              {eventsReviewed ? (
+                <div className="flex flex-wrap items-center justify-between gap-3" data-testid="event-review-complete">
+                  <p className="text-sm">Event choices reviewed. Only events you select are added to your draft schedule; save the form to record changes.</p>
+                  <Button type="button" variant="outline" className="min-h-11" data-testid="button-review-events"
+                    onClick={() => {
+                      setSuggestedChoices(selectedSuggestedEvents(slots, arrival, departure));
+                      setEventChoiceMade(true);
+                      setEventsReviewed(false);
+                      setTicketCostsAcknowledged(false);
+                      setSlotsConfirmed(false);
+                    }}>Review event choices</Button>
+                </div>
+              ) : (
+                <>
+                  {(initial || matchedExisting) && <p className="text-sm" data-testid="legacy-event-notice">
+                    Checked items reflect your previously saved schedule, which may include old defaults. Please verify them.
+                    Nothing on file changes until you save.
+                  </p>}
+                  <div className="space-y-2">
+                    {suggestedEvents.map((event) => (
+                      <label key={event.id} className="flex cursor-pointer items-start gap-3 rounded-md border bg-card p-3">
+                        <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-primary"
+                          data-testid={`review-event-${event.id}`}
+                          checked={suggestedChoices.includes(event.id)}
+                          onChange={(e) => {
+                            setSuggestedChoices((prev) => e.target.checked ? [...prev, event.id] : prev.filter((id) => id !== event.id));
+                            setEventChoiceMade(true);
+                          }} />
+                        <span className="space-y-1">
+                          <span className="block text-sm font-medium">{event.label}</span>
+                          <span className="block text-xs text-muted-foreground">{event.note?.split(" — ")[0]} · Separate ticket; check price on MiEvento</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" className="min-h-11 whitespace-normal" data-testid="button-select-all-events"
+                      onClick={() => { setSuggestedChoices(suggestedEvents.map((event) => event.id)); setEventChoiceMade(true); }}>
+                      Select all {suggestedEvents.length} displayed events
+                    </Button>
+                    <Button type="button" variant="outline" className="min-h-11" data-testid="button-no-events"
+                      onClick={() => { setSuggestedChoices([]); setEventChoiceMade(true); }}>None for now</Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Newly selected events will occupy their scheduled time slots. You can adjust conflicts in the grid before saving.</p>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm">
+                    <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-primary" data-testid="checkbox-ticket-costs"
+                      checked={ticketCostsAcknowledged} onChange={(e) => setTicketCostsAcknowledged(e.target.checked)} />
+                    <span>I understand these optional events cost extra, are not included in the Yacht Club fee, and require separate tickets through MiEvento.</span>
+                  </label>
+                  <Button type="button" className="min-h-11 h-auto whitespace-normal" data-testid="button-confirm-events"
+                    disabled={(!eventChoiceMade && selectedEventCount === 0) || !ticketCostsAcknowledged}
+                    onClick={() => {
+                      setSlots((prev) => applySuggestedEvents(prev, arrival, departure, suggestedChoices));
+                      setEventsReviewed(true);
+                    }}>
+                    {selectedEventCount ? `Confirm ${selectedEventCount} planned event${selectedEventCount === 1 ? "" : "s"} and edit time slots` : "Continue without these events"}
+                  </Button>
+                </>
+              )}
+            </section>
+          )}
+          {eventReviewRequired && <p className="text-sm text-muted-foreground">Review the optional events above to unlock the time-slot grid. Suggestions below are not selected attendance.</p>}
+          <fieldset disabled={eventReviewRequired || (gatingActive && slotsConfirmed)} className="space-y-3">
           <div className="flex flex-wrap gap-3 rounded-md border bg-muted/40 p-3 text-xs" data-testid="slot-legend">
             {LEGEND_ITEMS.map((item, i) => (
               <span key={`${item.status}-${i}`} className="flex items-center gap-1.5">
@@ -875,6 +992,13 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                             </div>
                           ) : (
                             <div className="space-y-1">
+                              {eventReviewRequired && suggestedEvents.filter((event) =>
+                                event.days?.includes(day.iso) && event.autoSlots?.includes(period) && current.t !== event.id,
+                              ).map((event) => (
+                                <p key={event.id} className="rounded-md border border-dashed p-1.5 text-xs text-muted-foreground" data-testid={`suggestion-${day.iso}-${period}`}>
+                                  Suggested: {event.label}. Not selected.
+                                </p>
+                              ))}
                               <Select
                                 value={current.s}
                                 onValueChange={(value) => setSlotStatus(day.iso, period, value as SlotStatus, current.t)}
@@ -944,11 +1068,11 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
               </div>
             ) : (
               <div className="border-t pt-3">
-                <Button type="button" onClick={() => setSlotsConfirmed(true)} data-testid="button-confirm-slots">
+                <Button type="button" disabled={eventReviewRequired} onClick={() => setSlotsConfirmed(true)} data-testid="button-confirm-slots">
                   Confirm my time slots
                 </Button>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Everything defaults to Available — that's fine to leave as-is. Just review and confirm to continue.
+                  Available means organizers may plan around you. Review each day, mark private or uncertain times, then confirm to continue.
                 </p>
               </div>
             )
