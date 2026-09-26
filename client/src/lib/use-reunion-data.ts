@@ -126,7 +126,10 @@ export function useReunionData(options: { stub?: boolean } = {}) {
           ])
         : Promise.resolve([[] as Person[], false, false, [] as string[]] as const);
       const [peopleRes, activitiesRes, resourcesRes, leadsRes, plansRes, settingsRes, mineRes] = await Promise.all([
-        supabaseRest<Person[]>(`/people?select=${PEOPLE_COLUMNS}&order=name.asc`, { accessToken: token }),
+        supabaseRest<Person[]>(`/people?select=${PEOPLE_COLUMNS}&order=name.asc`, { accessToken: token }).catch(() =>
+          // Before the is_test column exists (mid-rollout), read without it.
+          supabaseRest<Person[]>(`/people?select=${PEOPLE_COLUMNS.replace(/,?is_test/, "")}&order=name.asc`, { accessToken: token }),
+        ),
         supabaseRest<Activity[]>("/activities?select=*&order=id.asc", { accessToken: token }),
         supabaseRest<ClusterResource[]>("/cluster_resources?select=*&order=created_at.asc", { accessToken: token }),
         supabaseRest<ClusterLead[]>(`/cluster_leads?select=${LEAD_COLUMNS}`, { accessToken: token }),
