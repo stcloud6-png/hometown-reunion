@@ -30,6 +30,8 @@ export interface MemberDirectoryRow {
   email: string | null;
   attending: boolean | null;
   is_test: boolean;
+  /** Admin-hidden (fake/duplicate) entry — excluded from all group results. */
+  hidden: boolean;
   updated_at: string | null;
 }
 
@@ -363,12 +365,24 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         email: p.email ?? null,
         attending: p.attending ?? null,
         is_test: false,
+        hidden: false,
         updated_at: p.updated_at ?? null,
       }));
     }
     if (!session?.accessToken) throw new Error("Admin sign-in required.");
     return supabaseRpc<MemberDirectoryRow[]>("admin_member_directory", {}, session.accessToken);
   }, [session, stub]);
+
+  /** Admin-only: hide (or restore) an entry from every group result. Never deletes data. */
+  const setMemberHidden = useCallback(
+    async (id: string, hidden: boolean) => {
+      if (stub) return;
+      if (!session?.accessToken) throw new Error("Admin sign-in required.");
+      await supabaseRpc("admin_set_member_hidden", { p_id: id, p_hidden: hidden }, session.accessToken);
+      await load();
+    },
+    [session, stub, load],
+  );
 
   /** Password sign-in for the private test account only. */
   const signInTestAccount = useCallback(
@@ -531,6 +545,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     ledActivityIds,
     saveChatLink,
     fetchMemberDirectory,
+    setMemberHidden,
     signInTestAccount,
     entryEmailTaken,
     sendSignInLink: stub

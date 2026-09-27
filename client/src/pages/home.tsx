@@ -128,6 +128,7 @@ export default function Home() {
               onSendSignInLink={data.sendSignInLink}
               onSignOut={data.signOut}
               onFetchMemberDirectory={data.fetchMemberDirectory}
+              onSetMemberHidden={data.setMemberHidden}
               onTestSignIn={data.signInTestAccount}
             />
             <Button variant="ghost" size="icon" aria-label="Toggle dark mode" onClick={toggle} data-testid="button-dark-mode">
@@ -170,12 +171,29 @@ export default function Home() {
                 CZR January 17&ndash;24, 2027. Tell the group when you're around and what you're up for
                 &mdash; we'll find the times that work for the most of us.
               </p>
-              <Button asChild size="lg" className="mt-2 rounded-full px-8" data-testid="button-mark-availability">
-                <a href="#entry-form">Mark my availability</a>
-              </Button>
-              <p className="text-xs text-muted-foreground">Takes about two minutes</p>
+              {!(data.isAdmin && !data.isTestAccount) && (
+                <>
+                  <Button asChild size="lg" className="mt-2 rounded-full px-8" data-testid="button-mark-availability">
+                    <a href="#entry-form">Mark my availability</a>
+                  </Button>
+                  <p className="text-xs text-muted-foreground">Takes about two minutes</p>
+                </>
+              )}
             </div>
             <div id="entry-form" />
+            {data.isAdmin && !data.isTestAccount ? (
+              <div className="mx-auto max-w-xl rounded-lg border border-dashed bg-muted/40 p-5 text-center" data-testid="notice-admin-no-entry">
+                <p className="font-semibold">You're signed in with an admin account</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Admin accounts don't take part in availability, so there's no entry form here and
+                  nothing you do as admin is counted in the group results.
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  <Button size="sm" onClick={() => setTab("dashboard")} data-testid="button-admin-go-dashboard">Go to Group Dashboard</Button>
+                  <Button size="sm" variant="outline" onClick={data.signOut} data-testid="button-admin-sign-out">Sign out of admin</Button>
+                </div>
+              </div>
+            ) : (
             <EntryForm
               initial={data.myPerson(data.sessionEmail)}
               activities={data.activities}
@@ -198,6 +216,7 @@ export default function Home() {
               linkError={data.linkError}
               onCheckEmailTaken={data.entryEmailTaken}
             />
+            )}
           </>
         ) : (
           <Dashboard

@@ -46,6 +46,7 @@ import {
   groupPlannedEventsForDate,
   initSlots,
   isGroupPlannedId,
+  applyGroupPlanDefaults,
   isYachtLockSlot,
   labelForTag,
   eventCategoryClass,
@@ -126,7 +127,14 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   const [email, setEmail] = useState(initial?.email ?? "");
   const [arrival, setArrival] = useState(initial?.arrival ?? START_DATE);
   const [departure, setDeparture] = useState(initial?.departure ?? END_DATE);
-  const [slots, setSlots] = useState(initial?.slots ?? initSlots(START_DATE, END_DATE));
+  const [slots, setSlots] = useState(initial?.slots ?? applyGroupPlanDefaults(initSlots(START_DATE, END_DATE), eventPlans));
+  // Event plans may arrive after first render — pre-fill live plan slots once for a fresh entry.
+  const planDefaultsApplied = useRef(eventPlans.length > 0);
+  useEffect(() => {
+    if (planDefaultsApplied.current || initial || eventPlans.length === 0) return;
+    planDefaultsApplied.current = true;
+    setSlots((prev) => applyGroupPlanDefaults(prev, eventPlans));
+  }, [eventPlans, initial]);
   const [interests, setInterests] = useState<string[]>(initial?.interests ?? []);
   const [newActivityLabel, setNewActivityLabel] = useState("");
   const [attending, setAttending] = useState<boolean | null>(initial?.attending ?? null);
@@ -165,7 +173,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     setEmail(initial.email ?? "");
     setArrival(initial.arrival ?? START_DATE);
     setDeparture(initial.departure ?? END_DATE);
-    setSlots(initial.slots ?? initSlots(initial.arrival ?? START_DATE, initial.departure ?? END_DATE));
+    setSlots(initial.slots ?? applyGroupPlanDefaults(initSlots(initial.arrival ?? START_DATE, initial.departure ?? END_DATE), eventPlans));
     setSuggestedChoices(selectedSuggestedEvents(initial.slots ?? {}, initial.arrival ?? START_DATE, initial.departure ?? END_DATE));
     setEventChoiceMade(true);
     setTicketCostsAcknowledged(false);
@@ -222,7 +230,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     matchedHydratedRef.current = key;
     setArrival(matchedExisting.arrival ?? START_DATE);
     setDeparture(matchedExisting.departure ?? END_DATE);
-    setSlots(matchedExisting.slots ?? initSlots(matchedExisting.arrival ?? START_DATE, matchedExisting.departure ?? END_DATE));
+    setSlots(matchedExisting.slots ?? applyGroupPlanDefaults(initSlots(matchedExisting.arrival ?? START_DATE, matchedExisting.departure ?? END_DATE), eventPlans));
     setSuggestedChoices(selectedSuggestedEvents(matchedExisting.slots ?? {}, matchedExisting.arrival ?? START_DATE, matchedExisting.departure ?? END_DATE));
     setEventChoiceMade(true);
     setTicketCostsAcknowledged(false);
@@ -332,7 +340,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     setArrival(nextArrival);
     setDeparture(nextDeparture);
     setSlots((prev) => {
-      const fresh = initSlots(nextArrival, nextDeparture);
+      const fresh = applyGroupPlanDefaults(initSlots(nextArrival, nextDeparture), eventPlans);
       // Preserve any answers already given for days still in range.
       for (const iso of Object.keys(fresh)) {
         if (prev[iso]) fresh[iso] = { ...fresh[iso], ...prev[iso] };

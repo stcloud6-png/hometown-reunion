@@ -24,6 +24,7 @@ interface SettingsPopoverProps {
   onSendSignInLink?: (email: string) => Promise<void>;
   onSignOut?: () => void;
   onFetchMemberDirectory?: () => Promise<MemberDirectoryRow[]>;
+  onSetMemberHidden?: (id: string, hidden: boolean) => Promise<void>;
   onTestSignIn?: (email: string, password: string) => Promise<void>;
 }
 
@@ -48,6 +49,7 @@ export default function SettingsPopover({
   onSendSignInLink = async () => {},
   onSignOut = () => {},
   onFetchMemberDirectory = async () => [],
+  onSetMemberHidden,
   onTestSignIn = async () => {},
 }: SettingsPopoverProps) {
   const [directoryOpen, setDirectoryOpen] = useState(false);
@@ -258,6 +260,7 @@ export default function SettingsPopover({
         onOpenChange={setDirectoryOpen}
         isAdmin={isAdmin}
         onFetch={onFetchMemberDirectory}
+        onSetHidden={onSetMemberHidden}
         adminPanel={adminPanel}
       />
     </Popover>

@@ -204,8 +204,10 @@ export const BASE_ACTIVITIES: Activity[] = [
 ];
 
 /** Typical time-of-day for an activity, used to auto-slot a group-planned sub-event. */
-const ACTIVITY_TIME_OF_DAY: Record<string, "evening" | "day" | "any"> = {
-  napoli: "evening",
+type TimeOfDay = "evening" | "afternoon" | "day" | "any";
+const ACTIVITY_TIME_OF_DAY: Record<string, TimeOfDay> = {
+  // Napoli lunch, Wed Jan 20 — reserves the Afternoon (12–5pm) slot.
+  napoli: "afternoon",
   casino: "evening",
   "cruise-87": "evening",
   karaoke: "evening",
@@ -230,12 +232,12 @@ const ACTIVITY_TIME_OF_DAY: Record<string, "evening" | "day" | "any"> = {
   pickleball: "day",
 };
 
-function activityTimeOfDay(activityId: string): "evening" | "day" | "any" {
+function activityTimeOfDay(activityId: string): TimeOfDay {
   return ACTIVITY_TIME_OF_DAY[activityId] ?? "any";
 }
 
-function autoSlotsForTimeOfDay(tod: "evening" | "day" | "any"): Period[] {
-  return tod === "evening" ? ["e"] : tod === "day" ? ["m", "a"] : ["m", "a", "e"];
+function autoSlotsForTimeOfDay(tod: TimeOfDay): Period[] {
+  return tod === "evening" ? ["e"] : tod === "afternoon" ? ["a"] : tod === "day" ? ["m", "a"] : ["m", "a", "e"];
 }
 
 /** The full locked/scheduled events calendar (immutable — organizers manage this list, not attendees). */
@@ -638,7 +640,6 @@ export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], 
  * unresolved "Which event?" prompt until the person picks one.
  */
 const DEFAULT_SLOT_OVERRIDES: Partial<Record<string, { period: Period; status: SlotStatus; tag?: string }[]>> = {
-  "2027-01-13": [{ period: "e", status: "busy", tag: "czr-napoli" }],
   "2027-01-17": [
     { period: "m", status: "busy" },
     { period: "a", status: "busy" },
@@ -648,6 +649,24 @@ const DEFAULT_SLOT_OVERRIDES: Partial<Record<string, { period: Period; status: S
     { period: "a", status: "busy" },
   ],
 };
+
+/**
+ * Group-planned events pre-fill a fresh entry from the LIVE event plan (date +
+ * time of day), so a rescheduled event never leaves a stale "ghost" behind.
+ */
+export function applyGroupPlanDefaults(slots: PersonSlots, eventPlans: EventPlan[]): PersonSlots {
+  const next: PersonSlots = { ...slots };
+  for (const plan of eventPlans) {
+    if (plan.status !== "open" || !plan.event_date || !next[plan.event_date]) continue;
+    for (const period of autoSlotsForTimeOfDay(activityTimeOfDay(plan.activity_id))) {
+      if (isYachtLockSlot(plan.event_date, period)) continue;
+      const day = { ...next[plan.event_date] };
+      if (day[period]?.s === "ok") day[period] = { s: "busy", t: toGroupPlannedId(plan.activity_id) };
+      next[plan.event_date] = day;
+    }
+  }
+  return next;
+}
 
 /** Initializes a fresh person's slots as Available across the whole trip, with the known-event defaults and the Yacht Club lock applied. */
 export function initSlots(arrival: string, departure: string): PersonSlots {

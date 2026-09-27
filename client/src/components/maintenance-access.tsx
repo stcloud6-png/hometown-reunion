@@ -196,12 +196,14 @@ export function MemberDirectoryDialog({
   onOpenChange,
   isAdmin,
   onFetch,
+  onSetHidden,
   adminPanel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isAdmin: boolean;
   onFetch: () => Promise<MemberDirectoryRow[]>;
+  onSetHidden?: (id: string, hidden: boolean) => Promise<void>;
   adminPanel: React.ReactNode;
 }) {
   const [rows, setRows] = useState<MemberDirectoryRow[] | null>(null);
@@ -209,6 +211,7 @@ export function MemberDirectoryDialog({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !isAdmin) return;
@@ -244,10 +247,26 @@ export function MemberDirectoryDialog({
     return list.filter((r) => r.name.toLowerCase().includes(q) || (r.email ?? "").toLowerCase().includes(q));
   }, [rows, query]);
 
-  const memberCount = (rows ?? []).filter((r) => !r.is_test).length;
+  const counted = (r: MemberDirectoryRow) => !r.is_test && !r.hidden;
+  const memberCount = (rows ?? []).filter(counted).length;
+  const hiddenCount = (rows ?? []).length - memberCount;
+
+  async function toggleHidden(r: MemberDirectoryRow) {
+    if (!onSetHidden) return;
+    setBusyId(r.id);
+    setError(null);
+    try {
+      await onSetHidden(r.id, !r.hidden);
+      setRows((prev) => (prev ?? []).map((x) => (x.id === r.id ? { ...x, hidden: !r.hidden } : x)));
+    } catch (e) {
+      setError(friendlyError(e, "Could not update that entry."));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function copyEmails() {
-    const emails = (rows ?? []).filter((r) => !r.is_test && r.email).map((r) => r.email as string);
+    const emails = (rows ?? []).filter((r) => counted(r) && r.email).map((r) => r.email as string);
     try {
       await navigator.clipboard.writeText(emails.join(", "));
       setCopied(true);
@@ -265,7 +284,7 @@ export function MemberDirectoryDialog({
               <Users className="h-5 w-5" /> Member directory
             </DialogTitle>
             <DialogDescription>
-              {isAdmin ? `${memberCount} signed-up member${memberCount === 1 ? "" : "s"}. Visible to admins only.` : "Admin sign-in is required to see member names and emails."}
+              {isAdmin ? `${memberCount} signed-up member${memberCount === 1 ? "" : "s"}${hiddenCount ? ` (+${hiddenCount} hidden from group results)` : ""}. Visible to admins only.` : "Admin sign-in is required to see member names and emails."}
             </DialogDescription>
           </DialogHeader>
 
@@ -290,15 +309,17 @@ export function MemberDirectoryDialog({
                         <th className="py-2 pr-3 font-semibold">Name</th>
                         <th className="py-2 pr-3 font-semibold">Email</th>
                         <th className="hidden py-2 pr-3 font-semibold sm:table-cell">Status</th>
-                        <th className="hidden py-2 font-semibold sm:table-cell">Updated</th>
+                        <th className="hidden py-2 pr-3 font-semibold sm:table-cell">Updated</th>
+                        {onSetHidden && <th className="py-2 text-right font-semibold">Results</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {filtered.map((r) => (
-                        <tr key={r.id} className="border-b last:border-0 align-top" data-testid={`row-member-${r.id}`}>
+                        <tr key={r.id} className={`border-b last:border-0 align-top ${counted(r) ? "" : "text-muted-foreground"}`} data-testid={`row-member-${r.id}`}>
                           <td className="py-2 pr-3 font-medium">
                             {r.name}
-                            {r.is_test && <Badge variant="outline" className="ml-2 text-[10px]">Test</Badge>}
+                            {r.is_test && <Badge variant="outline" className="ml-2 text-[10px]">Test / admin</Badge>}
+                            {!r.is_test && r.hidden && <Badge variant="outline" className="ml-2 text-[10px]">Hidden</Badge>}
                           </td>
                           <td className="break-all py-2 pr-3">
                             {r.email ? (
@@ -310,7 +331,18 @@ export function MemberDirectoryDialog({
                           <td className="hidden py-2 pr-3 text-muted-foreground sm:table-cell">
                             {r.attending === true ? "Count me in" : r.attending === false ? "Not sure yet" : "—"}
                           </td>
-                          <td className="hidden whitespace-nowrap py-2 text-muted-foreground sm:table-cell">{formatUpdated(r.updated_at)}</td>
+                          <td className="hidden whitespace-nowrap py-2 pr-3 text-muted-foreground sm:table-cell">{formatUpdated(r.updated_at)}</td>
+                          {onSetHidden && (
+                            <td className="py-1.5 text-right">
+                              {r.is_test ? (
+                                <span className="text-xs text-muted-foreground">Always hidden</span>
+                              ) : (
+                                <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={busyId === r.id} onClick={() => void toggleHidden(r)} data-testid={`button-toggle-hidden-${r.id}`}>
+                                  {r.hidden ? "Show" : "Hide"}
+                                </Button>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
