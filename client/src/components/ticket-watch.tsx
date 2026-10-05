@@ -59,15 +59,23 @@ function SummaryLine({ tickets }: { tickets: TicketWatchRow[] }) {
 }
 
 /** Full ticket watch card: urgent tickets first, then everything else on request. */
-export function TicketWatchCard({ tickets, run, onRegister, className }: { tickets: TicketWatchRow[]; run: TicketWatchRun | null; onRegister?: () => void; className?: string }) {
+/** `fitHeight`: fill the parent's height and scroll the ticket list inside the card (landing side frame). */
+export function TicketWatchCard({ tickets, run, onRegister, className, fitHeight = false }: { tickets: TicketWatchRow[]; run: TicketWatchRun | null; onRegister?: () => void; className?: string; fitHeight?: boolean }) {
   const [showAll, setShowAll] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  // In the fixed-height side frame, bring the newly revealed tickets into view.
+  useEffect(() => {
+    if (!fitHeight || !showAll || !listRef.current || !toggleRef.current) return;
+    listRef.current.scrollTo({ top: toggleRef.current.offsetTop - 4, behavior: "smooth" });
+  }, [showAll, fitHeight]);
   const sorted = useMemo(() => sortByUrgency(tickets), [tickets]);
   const urgent = sorted.filter((t) => ["sold_out", "low"].includes(ticketLevel(t)));
   const rest = sorted.filter((t) => !["sold_out", "low"].includes(ticketLevel(t))).sort((a, b) => a.event_date.localeCompare(b.event_date));
 
   return (
-    <section className={cn("rounded-xl border bg-card shadow-sm", className)} data-testid="card-ticket-watch" aria-labelledby="ticket-watch-title">
-      <div className="border-b p-4 pb-3">
+    <section className={cn("rounded-xl border bg-card shadow-sm", fitHeight && "flex h-full flex-col overflow-hidden", className)} data-testid="card-ticket-watch" aria-labelledby="ticket-watch-title">
+      <div className="shrink-0 border-b p-4 pb-3">
         <div className="flex items-center gap-2">
           <Ticket className="size-4 text-primary" aria-hidden="true" />
           <h2 id="ticket-watch-title" className="font-serif text-lg font-semibold leading-none">MiEvento ticket watch</h2>
@@ -77,7 +85,7 @@ export function TicketWatchCard({ tickets, run, onRegister, className }: { ticke
         </p>
       </div>
 
-      <div className="px-4">
+      <div ref={listRef} className={cn("relative px-4", fitHeight && "min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2")} data-testid="ticket-watch-list">
         {urgent.length > 0 && (
           <>
             <p className="pt-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Going fast</p>
@@ -87,6 +95,7 @@ export function TicketWatchCard({ tickets, run, onRegister, className }: { ticke
         {rest.length > 0 && (
           <>
             <button
+              ref={toggleRef}
               type="button"
               className="flex w-full items-center justify-between pt-3 pb-1 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
               onClick={() => setShowAll((v) => !v)}
@@ -101,7 +110,7 @@ export function TicketWatchCard({ tickets, run, onRegister, className }: { ticke
         )}
       </div>
 
-      <div className="space-y-2 p-4">
+      <div className={cn("space-y-2 p-4", fitHeight && "shrink-0 border-t pt-3")}>
         <Button asChild className="w-full" data-testid="link-mievento-tickets">
           <a href={MIEVENTO_TICKETS_URL} target="_blank" rel="noreferrer">
             Get tickets on MiEvento <ExternalLink className="ml-1.5 size-3.5" aria-hidden="true" />
