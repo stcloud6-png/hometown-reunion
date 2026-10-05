@@ -9,6 +9,8 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { Settings, Users } from "lucide-react";
 import { MAINTENANCE_PIN, type ClusterThresholds, CLUSTER_THRESHOLDS, friendlyError } from "@/lib/reunion";
 import type { MemberDirectoryRow } from "@/lib/use-reunion-data";
+import { TicketWatchStatus } from "@/components/ticket-watch";
+import type { TicketWatchRun } from "@/lib/ticket-watch";
 import { AdminAccessPanel, MemberDirectoryDialog, TestAccountPanel } from "@/components/maintenance-access";
 
 interface SettingsPopoverProps {
@@ -26,6 +28,8 @@ interface SettingsPopoverProps {
   onFetchMemberDirectory?: () => Promise<MemberDirectoryRow[]>;
   onSetMemberHidden?: (id: string, hidden: boolean) => Promise<void>;
   onTestSignIn?: (email: string, password: string) => Promise<void>;
+  ticketHealth?: TicketWatchRun | null;
+  ticketRun?: TicketWatchRun | null;
 }
 
 /**
@@ -51,6 +55,8 @@ export default function SettingsPopover({
   onFetchMemberDirectory = async () => [],
   onSetMemberHidden,
   onTestSignIn = async () => {},
+  ticketHealth = null,
+  ticketRun = null,
 }: SettingsPopoverProps) {
   const [directoryOpen, setDirectoryOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -190,6 +196,7 @@ export default function SettingsPopover({
           </DialogHeader>
           <div className="space-y-4 py-2">
             {adminPanel}
+            <TicketWatchStatus health={ticketHealth} lastGood={ticketRun} />
             <Button variant="outline" size="sm" onClick={() => setDirectoryOpen(true)} data-testid="button-settings-member-directory">
               <Users className="mr-1 h-4 w-4" /> Member directory
             </Button>

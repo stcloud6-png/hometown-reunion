@@ -132,6 +132,8 @@ export default function Home() {
               onFetchMemberDirectory={data.fetchMemberDirectory}
               onSetMemberHidden={data.setMemberHidden}
               onTestSignIn={data.signInTestAccount}
+              ticketHealth={data.ticketHealth}
+              ticketRun={data.ticketRun}
             />
             <Button variant="ghost" size="icon" aria-label="Toggle dark mode" onClick={toggle} data-testid="button-dark-mode">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

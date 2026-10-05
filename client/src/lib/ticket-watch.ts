@@ -26,6 +26,17 @@ export interface TicketWatchRun {
   ok: boolean;
   tickets: number | null;
   sold_out: number | null;
+  health?: "ok" | "warning" | "action" | null;
+  warnings?: string[] | null;
+  dates?: number | null;
+  layout_changed?: boolean | null;
+}
+
+/** The daily check is "stale" if the last good snapshot is more than 36 hours old. */
+export const TICKET_STALE_HOURS = 36;
+export function isTicketDataStale(run: TicketWatchRun | null, now = Date.now()): boolean {
+  if (!run) return false;
+  return now - new Date(run.ran_at).getTime() > TICKET_STALE_HOURS * 3_600_000;
 }
 
 export type TicketLevel = "sold_out" | "low" | "available" | "other";

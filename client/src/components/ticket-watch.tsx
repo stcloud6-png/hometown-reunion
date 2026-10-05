@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, Ticket } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ExternalLink, Ticket, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -8,6 +8,7 @@ import {
   LEVEL_CLASS,
   MIEVENTO_TICKETS_URL,
   formatCheckedAt,
+  isTicketDataStale,
   formatTicketDay,
   shortTicketName,
   sortByUrgency,
@@ -111,6 +112,11 @@ export function TicketWatchCard({ tickets, run, onRegister, className }: { ticke
             Mark my availability
           </Button>
         )}
+        {isTicketDataStale(run) && run && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] leading-snug text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200" data-testid="text-ticket-stale">
+            Last updated {formatCheckedAt(run.ran_at)}. See MiEvento for the latest.
+          </p>
+        )}
         <p className="pt-1 text-[11px] leading-snug text-muted-foreground">
           Checked daily{run ? ` · last checked ${formatCheckedAt(run.ran_at)}` : ""}. "Only N left" uses MiEvento's current purchase limit, so treat it as a close estimate.
         </p>
@@ -211,5 +217,52 @@ export function SlotTicketHint({ tickets, testId }: { tickets: TicketWatchRow[];
         </a>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** Maintenance-only health line for the daily MiEvento check. */
+export function TicketWatchStatus({ health, lastGood }: { health: TicketWatchRun | null; lastGood: TicketWatchRun | null }) {
+  const stale = isTicketDataStale(lastGood);
+  const level = !health ? "unknown" : health.health === "action" || health.ok === false ? "action" : health.health === "warning" || stale ? "warning" : "ok";
+  const styles = {
+    ok: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200",
+    warning: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200",
+    action: "border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200",
+    unknown: "border-border bg-muted/40 text-muted-foreground",
+  }[level];
+  const Icon = level === "ok" ? CheckCircle2 : level === "action" ? XCircle : AlertTriangle;
+  const title = {
+    ok: "OK",
+    warning: health?.layout_changed ? "page layout changed — please review" : stale ? "data is out of date" : "needs a look",
+    action: "needs action — snapshot not updated",
+    unknown: "no check recorded yet",
+  }[level];
+  const warnings = [...(health?.warnings ?? [])];
+  if (stale && lastGood) warnings.push(`Last good snapshot ${formatCheckedAt(lastGood.ran_at)} (over 36 hours ago)`);
+  return (
+    <div className={cn("rounded-md border px-3 py-2 text-xs", styles)} data-testid="ticket-watch-status" data-level={level}>
+      <div className="flex items-start gap-2">
+        <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        <div className="min-w-0 space-y-0.5">
+          <p className="font-semibold">Ticket watch: {title}</p>
+          {health && (
+            <p className="opacity-80">
+              Checked {formatCheckedAt(health.ran_at)}
+              {health.tickets != null ? ` · ${health.tickets} tickets` : ""}
+              {health.dates != null ? ` · ${health.dates} dates` : ""}
+            </p>
+          )}
+          {warnings.map((w) => (
+            <p key={w} className="break-words">{w}</p>
+          ))}
+          {(level === "action" || stale) && (
+            <p className="opacity-80">The public panel keeps showing the last good snapshot until this is fixed.</p>
+          )}
+          {level === "warning" && !stale && (
+            <p className="opacity-80">Tickets were still read and the snapshot was updated — check that the panel looks right.</p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

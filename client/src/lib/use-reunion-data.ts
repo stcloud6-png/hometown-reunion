@@ -87,6 +87,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const [eventPlans, setEventPlans] = useState<EventPlan[]>([]);
   const [tickets, setTickets] = useState<TicketWatchRow[]>([]);
   const [ticketRun, setTicketRun] = useState<TicketWatchRun | null>(null);
+  const [ticketHealth, setTicketHealth] = useState<TicketWatchRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDemo, setIsDemo] = useState(false);
@@ -111,6 +112,17 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         setEventPlans([{ activity_id: "napoli", status: "open", event_date: "2027-01-20", start_time: "11:30am", venue: "Napoli", max_size: 50 }]);
         setTickets(DEMO_TICKETS);
         setTicketRun({ ran_at: DEMO_TICKETS[0].last_seen, ok: true, tickets: DEMO_TICKETS.length, sold_out: 3 });
+        // Stub-only QA hook: localStorage "czr-stub-ticket-health" = ok | warning | action | stale
+        const stubHealth = typeof localStorage !== "undefined" ? localStorage.getItem("czr-stub-ticket-health") : null;
+        const stubAt = stubHealth === "stale" ? new Date(Date.now() - 50 * 3_600_000).toISOString() : DEMO_TICKETS[0].last_seen;
+        if (stubHealth === "stale") setTicketRun({ ran_at: stubAt, ok: true, tickets: DEMO_TICKETS.length, sold_out: 3 });
+        setTicketHealth({
+          ran_at: stubHealth === "action" ? new Date().toISOString() : stubAt,
+          ok: stubHealth !== "action", tickets: DEMO_TICKETS.length, sold_out: 3, dates: 8,
+          health: stubHealth === "warning" ? "warning" : stubHealth === "action" ? "action" : "ok",
+          warnings: stubHealth === "warning" ? ["Page layout changed · added ep-new-row · removed ep-acc-row"] : stubHealth === "action" ? ["No tickets found — page layout may have changed"] : [],
+          layout_changed: stubHealth === "warning",
+        });
         setIsDemo(true);
         const stubMine = session ? DEMO_PEOPLE.find((p) => (p.email ?? "").toLowerCase() === session.email.toLowerCase()) ?? null : null;
         setMyEntry(stubMine);
@@ -148,10 +160,13 @@ export function useReunionData(options: { stub?: boolean } = {}) {
       void Promise.all([
         supabaseRest<TicketWatchRow[]>("/ticket_watch?select=*&order=event_date.asc", { accessToken: token }),
         supabaseRest<TicketWatchRun[]>("/ticket_watch_runs?select=ran_at,ok,tickets,sold_out&ok=eq.true&order=ran_at.desc&limit=1", { accessToken: token }),
+        // Latest run of any outcome (for the Maintenance health line).
+        supabaseRest<TicketWatchRun[]>("/ticket_watch_runs?select=ran_at,ok,tickets,sold_out,health,warnings,dates,layout_changed&order=ran_at.desc&limit=1", { accessToken: token }).catch(() => []),
       ])
-        .then(([rows, runs]) => {
+        .then(([rows, runs, latest]) => {
           setTickets(latestTickets(rows));
           setTicketRun(runs[0] ?? null);
+          setTicketHealth(latest[0] ?? null);
         })
         .catch(() => undefined);
       const [myRows, admin, tester, led] = mineRes;
@@ -562,6 +577,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     fetchMemberDirectory,
     tickets,
     ticketRun,
+    ticketHealth,
     setMemberHidden,
     signInTestAccount,
     entryEmailTaken,
