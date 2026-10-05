@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SlotTicketHint } from "@/components/ticket-watch";
+import { ticketsForSlot, type TicketWatchRow } from "@/lib/ticket-watch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,6 +48,7 @@ import {
   groupPlannedEventsForDate,
   initSlots,
   isGroupPlannedId,
+  applyGroupPlanDefaults,
   isYachtLockSlot,
   labelForTag,
   eventCategoryClass,
@@ -54,12 +57,17 @@ import {
   mieventoShoppingEvents,
   mieventoTicketTally,
   statusesForSlot,
+  suggestedMieventoEvents,
+  selectedSuggestedEvents,
+  applySuggestedEvents,
 } from "@/lib/reunion";
 
 interface EntryFormProps {
   initial?: Person | null;
   activities: Activity[];
   eventPlans: EventPlan[];
+  /** Latest MiEvento ticket snapshot, shown per timeslot. */
+  tickets?: TicketWatchRow[];
   onSave: (person: Person) => Promise<void>;
   onSuggestActivity: (id: string, label: string, suggestedBy: string) => Promise<void>;
   onGoToDashboard?: () => void;
@@ -76,6 +84,8 @@ interface EntryFormProps {
   onSignOut?: () => void;
   /** Set when a magic-link redirect failed to verify on page load. */
   linkError?: string | null;
+  /** Asks the database whether an entry already uses this email (yes/no only). */
+  onCheckEmailTaken?: (email: string) => Promise<boolean>;
 }
 
 function slugify(label: string): string {
@@ -115,13 +125,20 @@ const LEGEND_ITEMS: { status: SlotStatus; label: string; hint: string }[] = [
   { status: "private", label: "Private", hint: "Private / unavailable" },
 ];
 
-export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus, myIdentity, onSignOut, linkError }: EntryFormProps) {
+export default function EntryForm({ initial, activities, eventPlans, tickets = [], onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus, myIdentity, onSignOut, linkError, onCheckEmailTaken }: EntryFormProps) {
   const { toast } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
   const [arrival, setArrival] = useState(initial?.arrival ?? START_DATE);
   const [departure, setDeparture] = useState(initial?.departure ?? END_DATE);
-  const [slots, setSlots] = useState(initial?.slots ?? initSlots(START_DATE, END_DATE));
+  const [slots, setSlots] = useState(initial?.slots ?? applyGroupPlanDefaults(initSlots(START_DATE, END_DATE), eventPlans));
+  // Event plans may arrive after first render — pre-fill live plan slots once for a fresh entry.
+  const planDefaultsApplied = useRef(eventPlans.length > 0);
+  useEffect(() => {
+    if (planDefaultsApplied.current || initial || eventPlans.length === 0) return;
+    planDefaultsApplied.current = true;
+    setSlots((prev) => applyGroupPlanDefaults(prev, eventPlans));
+  }, [eventPlans, initial]);
   const [interests, setInterests] = useState<string[]>(initial?.interests ?? []);
   const [newActivityLabel, setNewActivityLabel] = useState("");
   const [attending, setAttending] = useState<boolean | null>(initial?.attending ?? null);
@@ -132,6 +149,15 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [suggestedChoices, setSuggestedChoices] = useState<string[]>(() =>
+    selectedSuggestedEvents(initial?.slots ?? {}, initial?.arrival ?? START_DATE, initial?.departure ?? END_DATE),
+  );
+  const [eventChoiceMade, setEventChoiceMade] = useState(Boolean(initial));
+  const [ticketCostsAcknowledged, setTicketCostsAcknowledged] = useState(false);
+  const [eventsReviewed, setEventsReviewed] = useState(false);
+  const suggestedEvents = suggestedMieventoEvents(arrival, departure);
+  const eventReviewRequired = suggestedEvents.length > 0 && !eventsReviewed;
+  const selectedEventCount = suggestedEvents.filter((event) => suggestedChoices.includes(event.id)).length;
 
   // --- Returning-user sign-in & repopulation -------------------------------
   // Signed in for real: a magic-link click resolved to a live Supabase Auth
@@ -151,7 +177,11 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     setEmail(initial.email ?? "");
     setArrival(initial.arrival ?? START_DATE);
     setDeparture(initial.departure ?? END_DATE);
-    setSlots(initial.slots ?? initSlots(initial.arrival ?? START_DATE, initial.departure ?? END_DATE));
+    setSlots(initial.slots ?? applyGroupPlanDefaults(initSlots(initial.arrival ?? START_DATE, initial.departure ?? END_DATE), eventPlans));
+    setSuggestedChoices(selectedSuggestedEvents(initial.slots ?? {}, initial.arrival ?? START_DATE, initial.departure ?? END_DATE));
+    setEventChoiceMade(true);
+    setTicketCostsAcknowledged(false);
+    setEventsReviewed(false);
     setInterests(initial.interests ?? []);
     setAttending(initial.attending ?? null);
     setVolunteerSupport(initial.volunteer_support ?? null);
@@ -162,18 +192,36 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   // Not signed in, but the name typed matches someone who already has a saved
   // entry (by name or by email) — their entry is protected: we load it for
   // review but block saving until they verify via the emailed sign-in link.
+  // Member emails are never sent to the browser, so matching is by name here;
+  // a typed email is checked separately with a yes/no database lookup.
   const matchedExisting = useMemo(() => {
     if (signedIn || !people) return null;
     const typedName = name.trim().toLowerCase();
-    const typedEmail = email.trim().toLowerCase();
-    return (
-      people.find(
-        (p) =>
-          (typedName && p.name.trim().toLowerCase() === typedName) ||
-          (typedEmail && (p.email ?? "").trim().toLowerCase() === typedEmail),
-      ) ?? null
-    );
-  }, [people, name, email, signedIn]);
+    return (typedName && people.find((p) => !p.is_test && p.name.trim().toLowerCase() === typedName)) || null;
+  }, [people, name, signedIn]);
+
+  const [emailTaken, setEmailTaken] = useState(false);
+  useEffect(() => {
+    const typed = email.trim();
+    if (signedIn || matchedExisting || !onCheckEmailTaken || !EMAIL_PATTERN.test(typed)) {
+      setEmailTaken(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      onCheckEmailTaken(typed)
+        .then((taken) => {
+          if (!cancelled) setEmailTaken(taken);
+        })
+        .catch(() => {
+          if (!cancelled) setEmailTaken(false);
+        });
+    }, 500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [email, signedIn, matchedExisting, onCheckEmailTaken]);
 
   const matchedHydratedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -181,13 +229,16 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
       matchedHydratedRef.current = null;
       return;
     }
-    const key = `${matchedExisting.name}|${matchedExisting.email ?? ""}`;
+    const key = matchedExisting.id ?? matchedExisting.name;
     if (matchedHydratedRef.current === key) return;
     matchedHydratedRef.current = key;
-    if (!email.trim() && matchedExisting.email) setEmail(matchedExisting.email);
     setArrival(matchedExisting.arrival ?? START_DATE);
     setDeparture(matchedExisting.departure ?? END_DATE);
-    setSlots(matchedExisting.slots ?? initSlots(matchedExisting.arrival ?? START_DATE, matchedExisting.departure ?? END_DATE));
+    setSlots(matchedExisting.slots ?? applyGroupPlanDefaults(initSlots(matchedExisting.arrival ?? START_DATE, matchedExisting.departure ?? END_DATE), eventPlans));
+    setSuggestedChoices(selectedSuggestedEvents(matchedExisting.slots ?? {}, matchedExisting.arrival ?? START_DATE, matchedExisting.departure ?? END_DATE));
+    setEventChoiceMade(true);
+    setTicketCostsAcknowledged(false);
+    setEventsReviewed(false);
     setInterests(matchedExisting.interests ?? []);
     setAttending(matchedExisting.attending ?? null);
     setVolunteerSupport(matchedExisting.volunteer_support ?? null);
@@ -195,7 +246,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
     setVolunteerPrompted((matchedExisting.interests ?? []).length > 0);
   }, [matchedExisting]);
 
-  const isProtected = Boolean(matchedExisting) && !signedIn;
+  const isProtected = (Boolean(matchedExisting) || emailTaken) && !signedIn;
 
   // --- Step-by-step gating for brand-new, first-time entries ---------------
   // Only a person with no known saved entry yet (no signed-in session, and
@@ -203,7 +254,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   // one section at a time. Anyone with an existing entry (signed in, or a
   // protected match found while typing) always sees the classic all-at-once
   // form so returning members aren't slowed down re-confirming old answers.
-  const gatingActive = !initial && !matchedExisting;
+  const gatingActive = !initial && !matchedExisting && !emailTaken;
   const nameReadyToConfirm = name.trim().length > 0 && EMAIL_PATTERN.test(email.trim());
   const [nameConfirmed, setNameConfirmed] = useState(false);
   const [datesConfirmed, setDatesConfirmed] = useState(false);
@@ -212,7 +263,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   const showDatesSection = !gatingActive || nameConfirmed;
   const showInterestsSection = !gatingActive || (nameConfirmed && datesConfirmed);
   const showSlotsSection = !gatingActive || (nameConfirmed && datesConfirmed && interestsConfirmed);
-  const showTicketAndSave = !gatingActive || (nameConfirmed && datesConfirmed && interestsConfirmed && slotsConfirmed);
+  const showTicketAndSave = !eventReviewRequired && (!gatingActive || (nameConfirmed && datesConfirmed && interestsConfirmed && slotsConfirmed));
 
   const [linkSending, setLinkSending] = useState(false);
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
@@ -265,8 +316,12 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   }, []);
 
   async function handleSendSignInLink() {
-    const target = (matchedExisting?.email ?? email).trim();
-    if (!target || !EMAIL_PATTERN.test(target) || !onSendSignInLink) return;
+    const target = email.trim();
+    if (!target || !EMAIL_PATTERN.test(target)) {
+      setLinkSendError("Enter the email you used when you first saved, then request the link.");
+      return;
+    }
+    if (!onSendSignInLink) return;
     setLinkSending(true);
     setLinkSendError(null);
     try {
@@ -282,10 +337,14 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   const days = useMemo(() => DAYS.filter((d) => d.iso >= arrival && d.iso <= departure), [arrival, departure]);
 
   function updateRange(nextArrival: string, nextDeparture: string) {
+    setEventsReviewed(false);
+    setTicketCostsAcknowledged(false);
+    setEventChoiceMade(false);
+    setSlotsConfirmed(false);
     setArrival(nextArrival);
     setDeparture(nextDeparture);
     setSlots((prev) => {
-      const fresh = initSlots(nextArrival, nextDeparture);
+      const fresh = applyGroupPlanDefaults(initSlots(nextArrival, nextDeparture), eventPlans);
       // Preserve any answers already given for days still in range.
       for (const iso of Object.keys(fresh)) {
         if (prev[iso]) fresh[iso] = { ...fresh[iso], ...prev[iso] };
@@ -396,6 +455,10 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
       setValidationError("Your arrival date must be before your departure date.");
       return;
     }
+    if (eventReviewRequired || (gatingActive && (!nameConfirmed || !datesConfirmed || !interestsConfirmed || !slotsConfirmed))) {
+      setValidationError("Please review the optional events and confirm your time slots before saving.");
+      return;
+    }
     if (attending === null) {
       setValidationError("Please choose Count me in or Not sure yet in the Ticket-check section below.");
       return;
@@ -421,10 +484,8 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
   }
 
   if (saved) {
-    const savedEmail = email.trim().toLowerCase();
-    const myPersonRow = savedEmail
-      ? people?.find((p) => (p.email ?? "").trim().toLowerCase() === savedEmail) ?? null
-      : null;
+    const savedName = name.trim().toLowerCase();
+    const myPersonRow = initial ?? people?.find((p) => p.name.trim().toLowerCase() === savedName) ?? null;
     const alreadyPaidYacht = Boolean(myPersonRow?.yacht_paid);
     return (
       <Card className="max-w-xl mx-auto" data-testid="card-confirmation">
@@ -605,7 +666,9 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
 
           {isProtected && (
             <p className="text-sm text-destructive" data-testid="text-protected-entry">
-              This entry is protected. If it's yours, use the sign-in link we email you below.
+              {emailTaken && !matchedExisting
+                ? "An entry already uses this email. If it's yours, request a sign-in link below to update it."
+                : "This entry is protected. If it's yours, enter the email you used and request a sign-in link below."}
             </p>
           )}
 
@@ -798,7 +861,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
           <CardTitle>Mark your time slots</CardTitle>
           <div className="text-sm text-muted-foreground space-y-1.5">
             <p>
-              Everything starts as <span className="font-medium text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]">Available</span>.{" "}
+              Unassigned time slots start as <span className="font-medium text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]">Available</span>.{" "}
               <span className="underline underline-offset-2">
                 Change any slot where you already have plans — choose <strong className="font-bold">MiEvento</strong> and pick from what's scheduled that day.
               </span>{" "}
@@ -808,10 +871,99 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
               Go through each block — a blank canvas of green reads as "free and ready to join," and the organizers
               will plan accordingly.
             </p>
+            {suggestedEvents.length === 0 && <p>
+              MiEvento events are optional and require separate tickets, not included in the Yacht Club dinner fee.
+              Selecting a time slot does not purchase a ticket.{" "}
+              <a href={MIEVENTO_TICKET_URL} target="_blank" rel="noreferrer" className="font-medium text-primary underline">
+                Check current prices and buy/reserve on MiEvento
+              </a>.
+            </p>}
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          <fieldset disabled={gatingActive && slotsConfirmed} className="space-y-3">
+          {suggestedEvents.length > 0 && (
+            <section className="space-y-4 rounded-md border border-primary/30 bg-primary/5 p-4" aria-labelledby="optional-events-heading" data-testid="optional-event-review">
+              <div className="space-y-2">
+                <h3 id="optional-events-heading" className="text-base font-semibold">Optional MiEvento events: choose before continuing</h3>
+                <p className="text-sm">
+                  These are suggestions, not automatic attendance. Choose individual events or select the displayed group, then confirm your plans.
+                  Selecting an event here does not buy or reserve a ticket.
+                </p>
+                <p className="text-sm font-medium">
+                  Separate paid tickets are required. These events are not included in the Yacht Club 87 Dinner/Dance fee.
+                </p>
+                <a className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary underline underline-offset-2"
+                  href={MIEVENTO_TICKET_URL} target="_blank" rel="noreferrer" data-testid="link-review-mievento">
+                  Check current prices and buy/reserve on MiEvento <ExternalLink className="h-4 w-4 shrink-0" />
+                </a>
+                <p className="text-xs text-muted-foreground">
+                  Prices and a reliable total are not available here. Check each event's current price, fees and ticket availability on MiEvento before committing.
+                  Ticket purchase status is tracked separately and is self-reported.
+                </p>
+              </div>
+              {eventsReviewed ? (
+                <div className="flex flex-wrap items-center justify-between gap-3" data-testid="event-review-complete">
+                  <p className="text-sm">Event choices reviewed. Only events you select are added to your draft schedule; save the form to record changes.</p>
+                  <Button type="button" variant="outline" className="min-h-11" data-testid="button-review-events"
+                    onClick={() => {
+                      setSuggestedChoices(selectedSuggestedEvents(slots, arrival, departure));
+                      setEventChoiceMade(true);
+                      setEventsReviewed(false);
+                      setTicketCostsAcknowledged(false);
+                      setSlotsConfirmed(false);
+                    }}>Review event choices</Button>
+                </div>
+              ) : (
+                <>
+                  {(initial || matchedExisting) && <p className="text-sm" data-testid="legacy-event-notice">
+                    Checked items reflect your previously saved schedule, which may include old defaults. Please verify them.
+                    Nothing on file changes until you save.
+                  </p>}
+                  <div className="space-y-2">
+                    {suggestedEvents.map((event) => (
+                      <label key={event.id} className="flex cursor-pointer items-start gap-3 rounded-md border bg-card p-3">
+                        <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-primary"
+                          data-testid={`review-event-${event.id}`}
+                          checked={suggestedChoices.includes(event.id)}
+                          onChange={(e) => {
+                            setSuggestedChoices((prev) => e.target.checked ? [...prev, event.id] : prev.filter((id) => id !== event.id));
+                            setEventChoiceMade(true);
+                          }} />
+                        <span className="space-y-1">
+                          <span className="block text-sm font-medium">{event.label}</span>
+                          <span className="block text-xs text-muted-foreground">{event.note?.split(" — ")[0]} · Separate ticket; check price on MiEvento</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" className="min-h-11 whitespace-normal" data-testid="button-select-all-events"
+                      onClick={() => { setSuggestedChoices(suggestedEvents.map((event) => event.id)); setEventChoiceMade(true); }}>
+                      Select all {suggestedEvents.length} displayed events
+                    </Button>
+                    <Button type="button" variant="outline" className="min-h-11" data-testid="button-no-events"
+                      onClick={() => { setSuggestedChoices([]); setEventChoiceMade(true); }}>None for now</Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Newly selected events will occupy their scheduled time slots. You can adjust conflicts in the grid before saving.</p>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm">
+                    <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-primary" data-testid="checkbox-ticket-costs"
+                      checked={ticketCostsAcknowledged} onChange={(e) => setTicketCostsAcknowledged(e.target.checked)} />
+                    <span>I understand these optional events cost extra, are not included in the Yacht Club fee, and require separate tickets through MiEvento.</span>
+                  </label>
+                  <Button type="button" className="min-h-11 h-auto whitespace-normal" data-testid="button-confirm-events"
+                    disabled={(!eventChoiceMade && selectedEventCount === 0) || !ticketCostsAcknowledged}
+                    onClick={() => {
+                      setSlots((prev) => applySuggestedEvents(prev, arrival, departure, suggestedChoices));
+                      setEventsReviewed(true);
+                    }}>
+                    {selectedEventCount ? `Confirm ${selectedEventCount} planned event${selectedEventCount === 1 ? "" : "s"} and edit time slots` : "Continue without these events"}
+                  </Button>
+                </>
+              )}
+            </section>
+          )}
+          {eventReviewRequired && <p className="text-sm text-muted-foreground">Review the optional events above to unlock the time-slot grid. Suggestions below are not selected attendance.</p>}
+          <fieldset disabled={eventReviewRequired || (gatingActive && slotsConfirmed)} className="space-y-3">
           <div className="flex flex-wrap gap-3 rounded-md border bg-muted/40 p-3 text-xs" data-testid="slot-legend">
             {LEGEND_ITEMS.map((item, i) => (
               <span key={`${item.status}-${i}`} className="flex items-center gap-1.5">
@@ -875,6 +1027,13 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                             </div>
                           ) : (
                             <div className="space-y-1">
+                              {eventReviewRequired && suggestedEvents.filter((event) =>
+                                event.days?.includes(day.iso) && event.autoSlots?.includes(period) && current.t !== event.id,
+                              ).map((event) => (
+                                <p key={event.id} className="rounded-md border border-dashed p-1.5 text-xs text-muted-foreground" data-testid={`suggestion-${day.iso}-${period}`}>
+                                  Suggested: {event.label}. Not selected.
+                                </p>
+                              ))}
                               <Select
                                 value={current.s}
                                 onValueChange={(value) => setSlotStatus(day.iso, period, value as SlotStatus, current.t)}
@@ -900,6 +1059,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                                   ))}
                                 </SelectContent>
                               </Select>
+                              <SlotTicketHint tickets={ticketsForSlot(tickets, day.iso, period)} testId={`slot-tickets-${day.iso}-${period}`} />
                               {current.s === "busy" && (current.t && isGroupPlannedId(current.t)
                                 ? <p className={cn("rounded-md px-2 py-1 text-xs", STATUS_COLOR.busy)}>{labelForTag(current.t, activities)}</p>
                                 : options.length > 0 && (() => {
@@ -944,11 +1104,11 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
               </div>
             ) : (
               <div className="border-t pt-3">
-                <Button type="button" onClick={() => setSlotsConfirmed(true)} data-testid="button-confirm-slots">
+                <Button type="button" disabled={eventReviewRequired} onClick={() => setSlotsConfirmed(true)} data-testid="button-confirm-slots">
                   Confirm my time slots
                 </Button>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Everything defaults to Available — that's fine to leave as-is. Just review and confirm to continue.
+                  Available means organizers may plan around you. Review each day, mark private or uncertain times, then confirm to continue.
                 </p>
               </div>
             )

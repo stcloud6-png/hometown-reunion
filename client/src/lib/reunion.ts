@@ -41,6 +41,8 @@ export interface Person {
   /** Per sub-event ticket status for the 4 "tickets coming soon" MiEvento events (keyed by ScheduledEvent id), e.g. `{ "mega-cruise-23": { status: "purchased" } }`. */
   mievento_ticket_status?: Record<string, MieventoTicketEntry> | null;
   updated_at?: string;
+  /** Private test-account entry — visible only to that account (and admins in the directory). */
+  is_test?: boolean;
 }
 
 export type MieventoTicketStatusValue = "not_registered" | "researching" | "purchased";
@@ -202,8 +204,10 @@ export const BASE_ACTIVITIES: Activity[] = [
 ];
 
 /** Typical time-of-day for an activity, used to auto-slot a group-planned sub-event. */
-const ACTIVITY_TIME_OF_DAY: Record<string, "evening" | "day" | "any"> = {
-  napoli: "evening",
+type TimeOfDay = "evening" | "afternoon" | "day" | "any";
+const ACTIVITY_TIME_OF_DAY: Record<string, TimeOfDay> = {
+  // Napoli lunch, Wed Jan 20 — reserves the Afternoon (12–5pm) slot.
+  napoli: "afternoon",
   casino: "evening",
   "cruise-87": "evening",
   karaoke: "evening",
@@ -228,21 +232,22 @@ const ACTIVITY_TIME_OF_DAY: Record<string, "evening" | "day" | "any"> = {
   pickleball: "day",
 };
 
-function activityTimeOfDay(activityId: string): "evening" | "day" | "any" {
+function activityTimeOfDay(activityId: string): TimeOfDay {
   return ACTIVITY_TIME_OF_DAY[activityId] ?? "any";
 }
 
-function autoSlotsForTimeOfDay(tod: "evening" | "day" | "any"): Period[] {
-  return tod === "evening" ? ["e"] : tod === "day" ? ["m", "a"] : ["m", "a", "e"];
+function autoSlotsForTimeOfDay(tod: TimeOfDay): Period[] {
+  return tod === "evening" ? ["e"] : tod === "afternoon" ? ["a"] : tod === "day" ? ["m", "a"] : ["m", "a", "e"];
 }
 
 /** The full locked/scheduled events calendar (immutable — organizers manage this list, not attendees). */
 export const SCHEDULED_EVENTS: ScheduledEvent[] = [
   { id: "yacht-club", label: "Yacht Club 87 Dinner/Dance", note: "Wed 20 evening", days: ["2027-01-20"] },
   { id: "bocas", label: "Bocas Del Toro", days: SHOULDER_START },
-  { id: "vulcan", label: "Vulcan", days: SHOULDER_START },
+  // Stable IDs preserve existing saved answers; only the displayed names change.
+  { id: "vulcan", label: "Volcán", days: [...SHOULDER_START, ...SHOULDER_END] },
   { id: "cerro-punta", label: "Cerro Punta", days: SHOULDER_START },
-  { id: "boquette", label: "Boquette", days: SHOULDER_START },
+  { id: "boquette", label: "Boquete", days: [...SHOULDER_START, ...SHOULDER_END] },
   { id: "transit-17", label: "Southbound Partial Transit", note: "Sun 17 morning & afternoon", days: ["2027-01-17"], autoSlots: ["m", "a"], blue: true },
   { id: "gold-coast-18", label: "Gold Coast Bus", note: "Mon 18 morning & afternoon", days: ["2027-01-18"], autoSlots: ["m", "a"], blue: true },
   { id: "chichipati-18", label: "Chichipati Fishing", note: "Mon 18, 6am-4pm", days: ["2027-01-18"], autoSlots: ["m", "a"], soft: true },
@@ -267,8 +272,8 @@ export const SCHEDULED_EVENTS: ScheduledEvent[] = [
   { id: "mega-cruise-23", label: "MEGA Cruise", note: "Sat 23 evening — tickets coming soon", days: ["2027-01-23"], autoSlots: ["e"], blue: true, soon: true },
   { id: "jamboree-23", label: "Jamboree", note: "Sat 23, 10am-6pm", days: ["2027-01-23"], autoSlots: ["m", "a"] },
   { id: "taboga-24", label: "Taboga Island", note: "Sun 24 all day", days: ["2027-01-24"], autoSlots: ["m", "a", "e"], blue: true },
-  { id: "coronado-25", label: "Coronado Beach", days: SHOULDER_END },
-  { id: "el-valle-26", label: "El Valle", days: SHOULDER_END },
+  { id: "coronado-25", label: "Coronado Beach", days: [...SHOULDER_START, "2027-01-17", ...SHOULDER_END] },
+  { id: "el-valle-26", label: "El Valle", days: [...SHOULDER_START, "2027-01-17", ...SHOULDER_END] },
   { id: "pool-day", label: "Drinking All Day at the Pool", days: POOL_DAY_DATES },
   // Applies to every shoulder date (both ends of the trip) but never during the
   // core Jan 17–24 MiEvento window — see the period filter in eventsForDate().
@@ -324,6 +329,52 @@ export function mieventoDays(): DayInfo[] {
 
 /** Where classmates go to actually buy MiEvento tickets. */
 export const MIEVENTO_TICKET_URL = "https://www.mieventos.com/event-multiple-detail/czr-2027";
+
+/** Suggestions, NOT default attendance. Keep ticket status separate from plans. */
+export const SUGGESTED_MIEVENTO_IDS = [
+  "coffee-house-19", "chicken-21", "railway-22", "pin-ding-22", "mega-cruise-23",
+];
+
+export function suggestedMieventoEvents(arrival: string, departure: string): ScheduledEvent[] {
+  return SUGGESTED_MIEVENTO_IDS.flatMap((id) =>
+    SCHEDULED_EVENTS.filter((event) =>
+      event.id === id && event.days?.some((day) => day >= arrival && day <= departure),
+    ),
+  );
+}
+
+export function selectedSuggestedEvents(slots: PersonSlots, arrival: string, departure: string): string[] {
+  return suggestedMieventoEvents(arrival, departure)
+    .filter((event) => event.days?.some((day) =>
+      PERIODS.some((period) => slots[day]?.[period]?.s === "busy" && slots[day]?.[period]?.t === event.id),
+    ))
+    .map((event) => event.id);
+}
+
+/** Only called after explicit review. Unrelated slots and the Yacht lock survive. */
+export function applySuggestedEvents(
+  slots: PersonSlots, arrival: string, departure: string, selected: string[],
+): PersonSlots {
+  const next: PersonSlots = Object.fromEntries(
+    Object.entries(slots).map(([day, periods]) => [day, { ...periods }]),
+  );
+  for (const event of suggestedMieventoEvents(arrival, departure)) {
+    for (const day of event.days ?? []) {
+      if (day < arrival || day > departure || !next[day]) continue;
+      for (const period of event.autoSlots ?? []) {
+        if (isYachtLockSlot(day, period)) continue;
+        if (selected.includes(event.id)) {
+          // Preserve existing partial-day answers when reconfirming an old choice.
+          const alreadySelected = PERIODS.some((p) => slots[day]?.[p]?.s === "busy" && slots[day]?.[p]?.t === event.id);
+          if (!alreadySelected) next[day][period] = { s: "busy", t: event.id };
+        } else if (next[day][period]?.t === event.id) {
+          next[day][period] = { s: "ok" };
+        }
+      }
+    }
+  }
+  return next;
+}
 
 export const MIEVENTO_TICKET_STATUSES: MieventoTicketStatusValue[] = ["not_registered", "researching", "purchased"];
 export const MIEVENTO_TICKET_STATUS_LABEL: Record<MieventoTicketStatusValue, string> = {
@@ -491,7 +542,8 @@ export function isPoolDayEligible(iso: string): boolean {
 /** Evening slots on these dates never offer "busy"/MiEvento as a status — those
  * evenings are exclusively Available/Maybe/Private — unless the slot is *already*
  * set to busy (so an existing pick doesn't silently disappear from the list). */
-const BUSY_HIDDEN_EVENING_DATES: string[] = ["2027-01-17", "2027-01-18", "2027-01-24"];
+// Jan 17 now offers El Valle and Coronado in every period.
+const BUSY_HIDDEN_EVENING_DATES: string[] = ["2027-01-18", "2027-01-24"];
 
 /**
  * The selectable statuses for a given day+period slot, in the exact order the
@@ -588,24 +640,33 @@ export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], 
  * unresolved "Which event?" prompt until the person picks one.
  */
 const DEFAULT_SLOT_OVERRIDES: Partial<Record<string, { period: Period; status: SlotStatus; tag?: string }[]>> = {
-  "2027-01-13": [{ period: "e", status: "busy", tag: "czr-napoli" }],
   "2027-01-17": [
     { period: "m", status: "busy" },
     { period: "a", status: "busy" },
   ],
-  "2027-01-19": [{ period: "e", status: "busy", tag: "coffee-house-19" }],
-  "2027-01-21": [{ period: "e", status: "busy", tag: "chicken-21" }],
-  "2027-01-22": [
-    { period: "m", status: "busy", tag: "railway-22" },
-    { period: "a", status: "busy", tag: "railway-22" },
-    { period: "e", status: "busy", tag: "pin-ding-22" },
-  ],
-  "2027-01-23": [{ period: "e", status: "busy", tag: "mega-cruise-23" }],
   "2027-01-24": [
     { period: "m", status: "busy" },
     { period: "a", status: "busy" },
   ],
 };
+
+/**
+ * Group-planned events pre-fill a fresh entry from the LIVE event plan (date +
+ * time of day), so a rescheduled event never leaves a stale "ghost" behind.
+ */
+export function applyGroupPlanDefaults(slots: PersonSlots, eventPlans: EventPlan[]): PersonSlots {
+  const next: PersonSlots = { ...slots };
+  for (const plan of eventPlans) {
+    if (plan.status !== "open" || !plan.event_date || !next[plan.event_date]) continue;
+    for (const period of autoSlotsForTimeOfDay(activityTimeOfDay(plan.activity_id))) {
+      if (isYachtLockSlot(plan.event_date, period)) continue;
+      const day = { ...next[plan.event_date] };
+      if (day[period]?.s === "ok") day[period] = { s: "busy", t: toGroupPlannedId(plan.activity_id) };
+      next[plan.event_date] = day;
+    }
+  }
+  return next;
+}
 
 /** Initializes a fresh person's slots as Available across the whole trip, with the known-event defaults and the Yacht Club lock applied. */
 export function initSlots(arrival: string, departure: string): PersonSlots {
@@ -899,14 +960,14 @@ export function autoSlotConflicts(person: Person): string[] {
 // CSV export
 // ---------------------------------------------------------------------------
 
-export function exportAvailabilityCsv(people: Person[], activities: Activity[]): void {
+export function exportAvailabilityCsv(people: Person[], activities: Activity[], emailById?: Map<string, string>): void {
   const header = [
     "Name", "Email", "In town from", "In town to", "Interests",
     ...DAYS.flatMap((day) => PERIODS.map((p) => `${day.short} ${PERIOD_SHORT[p]}`)),
   ];
   const rows = people.map((person) => [
     person.name,
-    person.email ?? "",
+    (person.id ? emailById?.get(person.id) : undefined) ?? person.email ?? "",
     person.arrival,
     person.departure,
     person.interests.join("; "),
@@ -1056,6 +1117,22 @@ export const supabaseAuth = {
     throw new Error("This sign-in link is invalid or has expired.");
   },
 
+  /**
+   * Password sign-in — used only by the private test account (created by an
+   * admin, no email verification). The database grants password sign-ins no
+   * rights over real member entries; only listed test accounts are honoured.
+   */
+  async signInWithPassword(email: string, password: string): Promise<{ access_token: string; refresh_token: string; user?: { email?: string } }> {
+    const { url, key } = requireEnv();
+    const res = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) throw new Error("Sign-in failed. Check the email and password.");
+    return res.json();
+  },
+
   async refreshSession(refreshToken: string): Promise<{ access_token: string; refresh_token: string }> {
     const { url, key } = requireEnv();
     const res = await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, {
@@ -1077,15 +1154,80 @@ export const supabaseAuth = {
   },
 };
 
+function jwtExpiry(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.exp === "number" ? payload.exp : null;
+  } catch {
+    return null;
+  }
+}
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+/**
+ * Returns a usable access token for the signed-in visitor, refreshing it with
+ * the stored refresh token when it is about to expire (Supabase tokens last
+ * about an hour). If the refresh fails the stored session is cleared and the
+ * request falls back to anonymous access, instead of failing the whole page.
+ */
+async function freshAccessToken(token: string): Promise<string | null> {
+  if (token === "stub-token") return token;
+  const stored = storage.get<string>(STORAGE_KEYS.accessToken);
+  const current = stored && stored !== token && (jwtExpiry(stored) ?? 0) > (jwtExpiry(token) ?? 0) ? stored : token;
+  const exp = jwtExpiry(current);
+  if (exp === null || exp - Date.now() / 1000 > 60) return current;
+  const refreshToken = storage.get<string>(STORAGE_KEYS.refreshToken);
+  if (!refreshToken) return null;
+  if (!refreshInFlight) {
+    refreshInFlight = supabaseAuth
+      .refreshSession(refreshToken)
+      .then((next) => {
+        storage.set(STORAGE_KEYS.accessToken, next.access_token);
+        storage.set(STORAGE_KEYS.refreshToken, next.refresh_token);
+        window.dispatchEvent(new CustomEvent("reunion-session-refreshed", { detail: next }));
+        return next.access_token;
+      })
+      .catch(() => {
+        storage.del(STORAGE_KEYS.accessToken);
+        storage.del(STORAGE_KEYS.refreshToken);
+        storage.del(STORAGE_KEYS.email);
+        window.dispatchEvent(new CustomEvent("reunion-session-expired"));
+        return null;
+      })
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
+/** Turns raw database/permission errors into plain-language messages. */
+export function friendlyError(error: unknown, fallback = "Something went wrong. Please try again."): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  if (/already has an Event Organizer/i.test(raw)) return "This event already has an Event Organizer.";
+  if (/test account cannot/i.test(raw)) return "The test account can't volunteer as a public Event Organizer.";
+  if (/Admin sign-in required/i.test(raw)) return "Admin sign-in required. Use the admin sign-in link first.";
+  if (/\(409\)|23505|duplicate key/i.test(raw)) return "That name is already on the list. Sign in with the email you used to update that entry.";
+  if (/\(401\)|\(403\)|42501|row-level security|permission denied|JWT/i.test(raw)) return "You don't have permission to make that change. Sign in with the right email and try again.";
+  return raw && raw.length < 160 && !/Supabase request failed/.test(raw) ? raw : fallback;
+}
+
+/** Calls a Postgres function exposed through PostgREST (`/rpc/<name>`). */
+export async function supabaseRpc<T = unknown>(name: string, args: Record<string, unknown> = {}, accessToken?: string | null): Promise<T> {
+  return supabaseRest<T>(`/rpc/${name}`, { method: "POST", body: args, accessToken });
+}
+
 /** Generic PostgREST fetch wrapper. Uses the signed-in session token when present, else the anon key only. */
 export async function supabaseRest<T = unknown>(
   path: string,
   options: { method?: string; body?: unknown; accessToken?: string | null; prefer?: string } = {},
 ): Promise<T> {
   const { url, key } = requireEnv();
+  const token = options.accessToken ? await freshAccessToken(options.accessToken) : null;
   const headers: Record<string, string> = {
     apikey: key,
-    Authorization: `Bearer ${options.accessToken || key}`,
+    Authorization: `Bearer ${token || key}`,
     "Content-Type": "application/json",
   };
   if (options.prefer) headers["Prefer"] = options.prefer;

@@ -6,6 +6,8 @@ import Dashboard from "@/components/dashboard";
 import RollCallBar from "@/components/roll-call-bar";
 import SettingsPopover from "@/components/settings-popover";
 import YearbookViewer from "@/components/yearbook-viewer";
+import { TicketWatchCard, TicketWatchMobile } from "@/components/ticket-watch";
+import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReunionData } from "@/lib/use-reunion-data";
 import { useDarkMode } from "@/hooks/use-dark-mode";
@@ -13,12 +15,22 @@ import { readMyIdentity, logVisit, type MyIdentity } from "@/lib/reunion";
 
 const STUB = import.meta.env.VITE_STUB_DATA === "true";
 
-// Reads the `tab` query param from the hash URL (e.g. #/?tab=dashboard) so a
-// direct link can land members straight on the Group dashboard without them
-// needing to click the nav button first.
-function initialTabFromUrl(): "entry" | "dashboard" {
+// Reads the `tab` query param from the hash URL (e.g. #/?tab=dashboard or
+// #/?tab=yearbook) so a direct link can land members straight on the Group
+// dashboard, or straight into the flipbook yearbook viewer, without them
+// needing to click a nav button first.
+function tabParamFromUrl(): "entry" | "dashboard" | "yearbook" | null {
   const query = window.location.hash.split("?")[1] ?? "";
-  return new URLSearchParams(query).get("tab") === "dashboard" ? "dashboard" : "entry";
+  const value = new URLSearchParams(query).get("tab");
+  return value === "dashboard" || value === "yearbook" || value === "entry" ? value : null;
+}
+
+function initialTabFromUrl(): "entry" | "dashboard" {
+  return tabParamFromUrl() === "dashboard" ? "dashboard" : "entry";
+}
+
+function initialYearbookOpenFromUrl(): boolean {
+  return tabParamFromUrl() === "yearbook";
 }
 
 export default function Home() {
@@ -29,7 +41,7 @@ export default function Home() {
   const [unlocked, setUnlocked] = useState(false);
   const [curtainOpen, setCurtainOpen] = useState(false);
   const [myIdentity, setMyIdentity] = useState<MyIdentity | null>(() => readMyIdentity());
-  const [yearbookOpen, setYearbookOpen] = useState(false);
+  const [yearbookOpen, setYearbookOpen] = useState(initialYearbookOpenFromUrl);
 
   // Log one anonymous page-visit per browser per day (Maintenance-mode traffic
   // indicator only) — never during stubbed/local QA runs.
@@ -112,6 +124,16 @@ export default function Home() {
               onUnlockedChange={setUnlocked}
               thresholds={data.appSettings}
               onThresholdsChange={data.updateAppSettings}
+              isAdmin={data.isAdmin}
+              isTestAccount={data.isTestAccount}
+              sessionEmail={data.sessionEmail}
+              onSendSignInLink={data.sendSignInLink}
+              onSignOut={data.signOut}
+              onFetchMemberDirectory={data.fetchMemberDirectory}
+              onSetMemberHidden={data.setMemberHidden}
+              onTestSignIn={data.signInTestAccount}
+              ticketHealth={data.ticketHealth}
+              ticketRun={data.ticketRun}
             />
             <Button variant="ghost" size="icon" aria-label="Toggle dark mode" onClick={toggle} data-testid="button-dark-mode">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -119,6 +141,15 @@ export default function Home() {
           </nav>
         </div>
       </header>
+
+      {data.isTestAccount && (
+        <div className="border-b border-dashed bg-muted/60 px-4 py-2 text-center text-xs text-muted-foreground" data-testid="banner-test-account">
+          Test account — your entries are private and left out of everyone else's results.{" "}
+          <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={data.signOut} data-testid="button-banner-test-sign-out">
+            Sign out
+          </button>
+        </div>
+      )}
 
       {tab === "dashboard" && (
         <RollCallBar
@@ -133,10 +164,11 @@ export default function Home() {
         />
       )}
 
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className={cn("mx-auto max-w-5xl px-4 py-8", tab === "entry" && data.tickets.length > 0 && "pb-24 lg:pb-8")}>
         {tab === "entry" ? (
           <>
-            <div className="mb-10 flex flex-col items-center gap-3 text-center">
+            <div className={cn("mb-10", data.tickets.length > 0 && "lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-8")}>
+            <div className="flex flex-col items-center gap-3 text-center lg:pt-6">
               <img src={`${import.meta.env.BASE_URL}reunion-logo.jpg`} alt="CZR BHS87 Reunion" className="h-20 w-20 rounded-full object-cover shadow-md" />
               <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">CZR BHS87</h1>
               <p className="font-serif text-lg italic text-muted-foreground">The Meetup &amp; Planning Organizer</p>
@@ -144,16 +176,49 @@ export default function Home() {
                 CZR January 17&ndash;24, 2027. Tell the group when you're around and what you're up for
                 &mdash; we'll find the times that work for the most of us.
               </p>
-              <Button asChild size="lg" className="mt-2 rounded-full px-8" data-testid="button-mark-availability">
-                <a href="#entry-form">Mark my availability</a>
-              </Button>
-              <p className="text-xs text-muted-foreground">Takes about two minutes</p>
+              {!(data.isAdmin && !data.isTestAccount) && (
+                <>
+                  <Button asChild size="lg" className="mt-2 rounded-full px-8" data-testid="button-mark-availability">
+                    <a href="#entry-form">Mark my availability</a>
+                  </Button>
+                  <p className="text-xs text-muted-foreground">Takes about two minutes</p>
+                </>
+              )}
             </div>
+            {data.tickets.length > 0 && (
+              <aside className="hidden lg:block" data-testid="aside-ticket-watch">
+                <TicketWatchCard
+                  tickets={data.tickets}
+                  run={data.ticketRun}
+                  onRegister={data.isAdmin && !data.isTestAccount ? undefined : () => document.getElementById("entry-form")?.scrollIntoView({ behavior: "smooth" })}
+                />
+              </aside>
+            )}
+            </div>
+            <TicketWatchMobile
+              tickets={data.tickets}
+              run={data.ticketRun}
+              onRegister={data.isAdmin && !data.isTestAccount ? undefined : () => document.getElementById("entry-form")?.scrollIntoView({ behavior: "smooth" })}
+            />
             <div id="entry-form" />
+            {data.isAdmin && !data.isTestAccount ? (
+              <div className="mx-auto max-w-xl rounded-lg border border-dashed bg-muted/40 p-5 text-center" data-testid="notice-admin-no-entry">
+                <p className="font-semibold">You're signed in with an admin account</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Admin accounts don't take part in availability, so there's no entry form here and
+                  nothing you do as admin is counted in the group results.
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  <Button size="sm" onClick={() => setTab("dashboard")} data-testid="button-admin-go-dashboard">Go to Group Dashboard</Button>
+                  <Button size="sm" variant="outline" onClick={data.signOut} data-testid="button-admin-sign-out">Sign out of admin</Button>
+                </div>
+              </div>
+            ) : (
             <EntryForm
               initial={data.myPerson(data.sessionEmail)}
               activities={data.activities}
               eventPlans={data.eventPlans}
+              tickets={data.tickets}
               onSave={async (person) => {
                 await data.savePerson(person);
                 setMyIdentity({ name: person.name, email: person.email ?? "" });
@@ -170,7 +235,9 @@ export default function Home() {
               myIdentity={myIdentity}
               onSignOut={data.signOut}
               linkError={data.linkError}
+              onCheckEmailTaken={data.entryEmailTaken}
             />
+            )}
           </>
         ) : (
           <Dashboard
@@ -188,6 +255,10 @@ export default function Home() {
             curtainOpen={curtainOpen}
             onCurtainOpenChange={setCurtainOpen}
             thresholds={data.appSettings}
+            isAdmin={data.isAdmin}
+            ledActivityIds={data.ledActivityIds}
+            onSaveChatLink={data.saveChatLink}
+            onFetchMemberDirectory={data.fetchMemberDirectory}
             onSuggestResource={data.suggestResource}
             onVolunteerLead={data.volunteerLead}
             onSaveEventPlan={data.saveEventPlan}
