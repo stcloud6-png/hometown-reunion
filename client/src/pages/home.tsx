@@ -167,8 +167,10 @@ export default function Home() {
       <main className={cn("mx-auto max-w-5xl px-4 py-8", tab === "entry" && data.tickets.length > 0 && "pb-24 lg:pb-8")}>
         {tab === "entry" ? (
           <>
-            <div className={cn("mb-10", data.tickets.length > 0 && "lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-8")}>
-            <div className="flex flex-col items-center gap-3 text-center lg:pt-6">
+            {/* Hero row: the side frame is pinned to the hero's height (list scrolls inside it),
+                so the sign-in / availability form always starts right below the button. */}
+            <div className={cn("mb-8", data.tickets.length > 0 && "lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-8")}>
+            <div className={cn("flex flex-col items-center gap-3 text-center", data.tickets.length > 0 && "lg:min-h-[480px] lg:justify-center")}>
               <img src={`${import.meta.env.BASE_URL}reunion-logo.jpg`} alt="CZR BHS87 Reunion" className="h-20 w-20 rounded-full object-cover shadow-md" />
               <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">CZR BHS87</h1>
               <p className="font-serif text-lg italic text-muted-foreground">The Meetup &amp; Planning Organizer</p>
@@ -178,20 +180,23 @@ export default function Home() {
               </p>
               {!(data.isAdmin && !data.isTestAccount) && (
                 <>
-                  <Button asChild size="lg" className="mt-2 rounded-full px-8" data-testid="button-mark-availability">
-                    <a href="#entry-form">Mark my availability</a>
+                  <Button
+                    size="lg"
+                    className="mt-2 rounded-full px-8"
+                    onClick={() => document.getElementById("entry-form")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    data-testid="button-mark-availability"
+                  >
+                    Mark my availability
                   </Button>
                   <p className="text-xs text-muted-foreground">Takes about two minutes</p>
                 </>
               )}
             </div>
             {data.tickets.length > 0 && (
-              <aside className="hidden lg:block" data-testid="aside-ticket-watch">
-                <TicketWatchCard
-                  tickets={data.tickets}
-                  run={data.ticketRun}
-                  onRegister={data.isAdmin && !data.isTestAccount ? undefined : () => document.getElementById("entry-form")?.scrollIntoView({ behavior: "smooth" })}
-                />
+              <aside className="hidden lg:relative lg:block" data-testid="aside-ticket-watch">
+                <div className="lg:absolute lg:inset-0">
+                  <TicketWatchCard tickets={data.tickets} run={data.ticketRun} fitHeight />
+                </div>
               </aside>
             )}
             </div>
@@ -200,7 +205,7 @@ export default function Home() {
               run={data.ticketRun}
               onRegister={data.isAdmin && !data.isTestAccount ? undefined : () => document.getElementById("entry-form")?.scrollIntoView({ behavior: "smooth" })}
             />
-            <div id="entry-form" />
+            <div id="entry-form" className="scroll-mt-20" />
             {data.isAdmin && !data.isTestAccount ? (
               <div className="mx-auto max-w-xl rounded-lg border border-dashed bg-muted/40 p-5 text-center" data-testid="notice-admin-no-entry">
                 <p className="font-semibold">You're signed in with an admin account</p>
