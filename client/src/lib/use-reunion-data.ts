@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DEMO_TICKETS, latestTickets, type TicketWatchRow, type TicketWatchRun } from "@/lib/ticket-watch";
 import {
   type Activity,
   type ClusterLead,
@@ -84,6 +85,8 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const [clusterResources, setClusterResources] = useState<ClusterResource[]>([]);
   const [clusterLeads, setClusterLeads] = useState<ClusterLead[]>([]);
   const [eventPlans, setEventPlans] = useState<EventPlan[]>([]);
+  const [tickets, setTickets] = useState<TicketWatchRow[]>([]);
+  const [ticketRun, setTicketRun] = useState<TicketWatchRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDemo, setIsDemo] = useState(false);
@@ -105,7 +108,9 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         setActivities(mergeActivities(stubActivities.current));
         setClusterResources([]);
         setClusterLeads([{ activity_id: "napoli", lead_name: "Demo Organizer" }]);
-        setEventPlans([{ activity_id: "napoli", status: "open", event_date: "2027-01-13", start_time: "11:30am", venue: "Napoli", max_size: 50 }]);
+        setEventPlans([{ activity_id: "napoli", status: "open", event_date: "2027-01-20", start_time: "11:30am", venue: "Napoli", max_size: 50 }]);
+        setTickets(DEMO_TICKETS);
+        setTicketRun({ ran_at: DEMO_TICKETS[0].last_seen, ok: true, tickets: DEMO_TICKETS.length, sold_out: 3 });
         setIsDemo(true);
         const stubMine = session ? DEMO_PEOPLE.find((p) => (p.email ?? "").toLowerCase() === session.email.toLowerCase()) ?? null : null;
         setMyEntry(stubMine);
@@ -139,6 +144,16 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         supabaseRest<AppSettingsRow[]>("/app_settings?select=*&id=eq.default", { accessToken: token }).catch(() => []),
         mine,
       ]);
+      // Ticket watch is optional extra info — never let it block the page.
+      void Promise.all([
+        supabaseRest<TicketWatchRow[]>("/ticket_watch?select=*&order=event_date.asc", { accessToken: token }),
+        supabaseRest<TicketWatchRun[]>("/ticket_watch_runs?select=ran_at,ok,tickets,sold_out&ok=eq.true&order=ran_at.desc&limit=1", { accessToken: token }),
+      ])
+        .then(([rows, runs]) => {
+          setTickets(latestTickets(rows));
+          setTicketRun(runs[0] ?? null);
+        })
+        .catch(() => undefined);
       const [myRows, admin, tester, led] = mineRes;
       setMyEntry(Array.isArray(myRows) && myRows[0] ? myRows[0] : null);
       setIsAdmin(admin === true);
@@ -545,6 +560,8 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     ledActivityIds,
     saveChatLink,
     fetchMemberDirectory,
+    tickets,
+    ticketRun,
     setMemberHidden,
     signInTestAccount,
     entryEmailTaken,

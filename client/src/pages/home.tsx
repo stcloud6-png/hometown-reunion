@@ -6,6 +6,8 @@ import Dashboard from "@/components/dashboard";
 import RollCallBar from "@/components/roll-call-bar";
 import SettingsPopover from "@/components/settings-popover";
 import YearbookViewer from "@/components/yearbook-viewer";
+import { TicketWatchCard, TicketWatchMobile } from "@/components/ticket-watch";
+import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReunionData } from "@/lib/use-reunion-data";
 import { useDarkMode } from "@/hooks/use-dark-mode";
@@ -160,10 +162,11 @@ export default function Home() {
         />
       )}
 
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className={cn("mx-auto max-w-5xl px-4 py-8", tab === "entry" && data.tickets.length > 0 && "pb-24 lg:pb-8")}>
         {tab === "entry" ? (
           <>
-            <div className="mb-10 flex flex-col items-center gap-3 text-center">
+            <div className={cn("mb-10", data.tickets.length > 0 && "lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-8")}>
+            <div className="flex flex-col items-center gap-3 text-center lg:pt-6">
               <img src={`${import.meta.env.BASE_URL}reunion-logo.jpg`} alt="CZR BHS87 Reunion" className="h-20 w-20 rounded-full object-cover shadow-md" />
               <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">CZR BHS87</h1>
               <p className="font-serif text-lg italic text-muted-foreground">The Meetup &amp; Planning Organizer</p>
@@ -180,6 +183,21 @@ export default function Home() {
                 </>
               )}
             </div>
+            {data.tickets.length > 0 && (
+              <aside className="hidden lg:block" data-testid="aside-ticket-watch">
+                <TicketWatchCard
+                  tickets={data.tickets}
+                  run={data.ticketRun}
+                  onRegister={data.isAdmin && !data.isTestAccount ? undefined : () => document.getElementById("entry-form")?.scrollIntoView({ behavior: "smooth" })}
+                />
+              </aside>
+            )}
+            </div>
+            <TicketWatchMobile
+              tickets={data.tickets}
+              run={data.ticketRun}
+              onRegister={data.isAdmin && !data.isTestAccount ? undefined : () => document.getElementById("entry-form")?.scrollIntoView({ behavior: "smooth" })}
+            />
             <div id="entry-form" />
             {data.isAdmin && !data.isTestAccount ? (
               <div className="mx-auto max-w-xl rounded-lg border border-dashed bg-muted/40 p-5 text-center" data-testid="notice-admin-no-entry">
@@ -198,6 +216,7 @@ export default function Home() {
               initial={data.myPerson(data.sessionEmail)}
               activities={data.activities}
               eventPlans={data.eventPlans}
+              tickets={data.tickets}
               onSave={async (person) => {
                 await data.savePerson(person);
                 setMyIdentity({ name: person.name, email: person.email ?? "" });

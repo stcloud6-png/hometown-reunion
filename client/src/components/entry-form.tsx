@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SlotTicketHint } from "@/components/ticket-watch";
+import { ticketsForSlot, type TicketWatchRow } from "@/lib/ticket-watch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,6 +66,8 @@ interface EntryFormProps {
   initial?: Person | null;
   activities: Activity[];
   eventPlans: EventPlan[];
+  /** Latest MiEvento ticket snapshot, shown per timeslot. */
+  tickets?: TicketWatchRow[];
   onSave: (person: Person) => Promise<void>;
   onSuggestActivity: (id: string, label: string, suggestedBy: string) => Promise<void>;
   onGoToDashboard?: () => void;
@@ -121,7 +125,7 @@ const LEGEND_ITEMS: { status: SlotStatus; label: string; hint: string }[] = [
   { status: "private", label: "Private", hint: "Private / unavailable" },
 ];
 
-export default function EntryForm({ initial, activities, eventPlans, onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus, myIdentity, onSignOut, linkError, onCheckEmailTaken }: EntryFormProps) {
+export default function EntryForm({ initial, activities, eventPlans, tickets = [], onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus, myIdentity, onSignOut, linkError, onCheckEmailTaken }: EntryFormProps) {
   const { toast } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
@@ -1055,6 +1059,7 @@ export default function EntryForm({ initial, activities, eventPlans, onSave, onS
                                   ))}
                                 </SelectContent>
                               </Select>
+                              <SlotTicketHint tickets={ticketsForSlot(tickets, day.iso, period)} testId={`slot-tickets-${day.iso}-${period}`} />
                               {current.s === "busy" && (current.t && isGroupPlannedId(current.t)
                                 ? <p className={cn("rounded-md px-2 py-1 text-xs", STATUS_COLOR.busy)}>{labelForTag(current.t, activities)}</p>
                                 : options.length > 0 && (() => {
