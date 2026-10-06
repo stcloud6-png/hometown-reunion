@@ -1368,8 +1368,10 @@ export const DEMO_PEOPLE: Person[] = [
     [8, "a", "busy", "transit-17"],
   ], ["napoli", "coronado", "casino"], {
     email: "danny.demo@example.com",
+    volunteer_support: true,
+    volunteer_lead: true,
     mievento_intents: { "2027-01-17": "very", "2027-01-18": "somewhat" },
     mievento_ticket_status: { "coffee-house-19": { status: "not_registered", note: "Waiting to see who else is going first." } },
   }),
-  buildDemoPerson("Jerry Pankow", 0, 21, [], ["napoli", "hiking", "escape-room"]),
+  buildDemoPerson("Jerry Pankow", 0, 21, [], ["napoli", "hiking", "escape-room"], { volunteer_support: true }),
 ];

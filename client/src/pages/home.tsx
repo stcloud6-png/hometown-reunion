@@ -161,6 +161,9 @@ export default function Home() {
           onConfirmYachtPaid={(paid) => data.updateMyPerson({ yacht_paid: paid })}
           onSaveMieventoTicketStatus={(status) => data.updateMyPerson({ mievento_ticket_status: status })}
           variant="header"
+          showVolunteerNames={unlocked}
+          activities={data.activities}
+          clusterLeads={data.clusterLeads}
         />
       )}
 
