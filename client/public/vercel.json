@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/(yearbook|dashboard|availability|entry)/?",
+      "destination": "/index.html"
+    }
+  ]
+}

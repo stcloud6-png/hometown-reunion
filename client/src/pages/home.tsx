@@ -29,6 +29,10 @@ function initialTabFromUrl(): "entry" | "dashboard" {
   return tabParamFromUrl() === "dashboard" ? "dashboard" : "entry";
 }
 
+// Visitors who arrive on a direct link (yearbook / dashboard) shouldn't get the
+// ticket popup on top of what they came for.
+const arrivedViaDirectLink = tabParamFromUrl() === "yearbook" || tabParamFromUrl() === "dashboard";
+
 function initialYearbookOpenFromUrl(): boolean {
   return tabParamFromUrl() === "yearbook";
 }
@@ -204,6 +208,7 @@ export default function Home() {
             )}
             </div>
             <TicketWatchMobile
+              autoOpen={!yearbookOpen && !arrivedViaDirectLink}
               tickets={data.tickets}
               run={data.ticketRun}
               onRegister={data.isAdmin && !data.isTestAccount ? undefined : () => document.getElementById("entry-form")?.scrollIntoView({ behavior: "smooth" })}
