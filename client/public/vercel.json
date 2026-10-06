@@ -1,7 +1,19 @@
 {
   "rewrites": [
     {
-      "source": "/(yearbook|dashboard|availability|entry)/?",
+      "source": "/yearbook",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/availability",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/entry",
       "destination": "/index.html"
     }
   ]
