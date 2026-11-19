@@ -23,7 +23,9 @@ for (let day = 9; day <= 17; day++) {
     const ids = eventsForDate(iso, period).map((e) => e.id);
     if (day === 17) assert(!ids.includes("el-valle-26") && !ids.includes("coronado-25"));
     else assert(ids.includes("el-valle-26") && ids.includes("coronado-25"));
-    assert(statusesForSlot(iso, period).includes("busy"));
+    // Sun 17 evening mirrors Mon 18 evening: no "MiEvento" (busy) choice.
+    if (day === 17 && period === "e") assert.deepEqual(statusesForSlot(iso, period), ["ok", "maybe", "private"]);
+    else assert(statusesForSlot(iso, period).includes("busy"));
   }
 }
 assert(!eventsForDate("2027-01-24").some((e) => e.id === "vulcan"));
@@ -52,3 +54,7 @@ const restricted = applySuggestedEvents(narrowed, "2027-01-22", "2027-01-22", SU
 assert.deepEqual(Object.keys(restricted), ["2027-01-22"]);
 assert.deepEqual(selectedSuggestedEvents(restricted, "2027-01-22", "2027-01-22"), ["railway-22", "pin-ding-22"]);
 console.log("PASS: names, all requested date boundaries/periods, empty defaults, individual/all/none confirmation, no mutation, legacy partial preservation, date filtering, Yacht lock");
+
+// Sun 17 evening and Mon 18 evening offer the same choices; an existing busy pick is kept.
+assert.deepEqual(statusesForSlot("2027-01-17", "e"), statusesForSlot("2027-01-18", "e"));
+assert(statusesForSlot("2027-01-17", "e", "busy").includes("busy"));
