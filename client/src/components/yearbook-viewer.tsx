@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, forwardRef } from "react";
 import HTMLFlipBook from "react-pageflip";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, BookOpen, Stamp } from "lucide-react";
@@ -8,23 +8,41 @@ import { cn } from "@/lib/utils";
 import type { YearbookOverlay } from "@/lib/use-reunion-data";
 
 /** Border colour per category (Honor Graduates + teams from the sports pages). */
+/** Fixed colours (owner, 2026-11-19). */
 export const BORDER_COLORS: Record<string, string> = {
-  Title: "#8e24aa",
-  Honor: "#d4a017",
-  Football: "#8b5a2b",
-  Cheerleading: "#e84393",
-  Basketball: "#e4572e",
-  Baseball: "#2e6fd8",
-  Tennis: "#2e9e57",
-  Swimming: "#0aa3a3",
-  Track: "#3949ab",
-  "Computer Club": "#263238",
-  "Biological Honor Society": "#9e9d24",
+  Title: "#8e24aa",                      // purple
+  Honor: "#f2c200",                      // yellow
+  "Biological Honor Society": "#1b5e20", // dark green
+  "Computer Club": "#111111",            // black
+  "Other Sports": "#0aa3a3",             // teal: Tennis, Swimming, Track
 };
+/** Team sports (Football, Basketball, Cheerleading, Baseball) take the team's colour. */
+export const TEAM_COLORS: Record<string, string> = {
+  Cougars: "#7b4a2a",  // brown
+  Red: "#d32f2f",      // red ("Red Machine")
+  Devils: "#22c55e",   // bright green
+  Bulldogs: "#7cc4ff", // light blue
+};
+const TEAM_SPORTS = ["Football", "Cheerleading", "Basketball", "Baseball"];
+const OTHER_SPORTS = ["Tennis", "Swimming", "Track"];
+/** Button order in the chip row. */
+const BUTTONS = ["Title", "Honor", "Football", "Cheerleading", "Basketball", "Baseball", "Other Sports", "Biological Honor Society", "Computer Club"];
+/** Which button a frame kind belongs to. */
+const buttonFor = (kind: string) => (OTHER_SPORTS.includes(kind) ? "Other Sports" : kind);
+function colorFor(kind: string, detail: string | null): string {
+  if (TEAM_SPORTS.includes(kind)) return (detail && TEAM_COLORS[detail]) || "#666";
+  return BORDER_COLORS[buttonFor(kind)] ?? "#666";
+}
+/** Dark text on light colours (yellow, light blue, bright green), white text otherwise. */
+function textOn(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#111" : "#fff";
+}
 const CLUBS = ["Computer Club", "Biological Honor Society"];
 const CATEGORY_LABEL: Record<string, string> = { Honor: "Honor Graduates", Title: "Class Title Winners" };
 /** Short chip text for the compact button row. */
-const SHORT_LABEL: Record<string, string> = { Title: "Titles", Honor: "Honor Grads", Cheerleading: "Cheer", "Biological Honor Society": "Bio Honor Soc.", "Computer Club": "Computer" };
+const SHORT_LABEL: Record<string, string> = { Title: "Titles", Honor: "Honor Grads", Cheerleading: "Cheer", "Biological Honor Society": "Bio Honor Soc.", "Computer Club": "Computer", "Other Sports": "Other Sports" };
 const slug = (c: string) => c.toLowerCase().replace(/[^a-z]+/g, "-");
 
 /**
@@ -49,7 +67,7 @@ function frameLabel(kind: string, detail: string | null): string {
 const PRIORITY = (kind: string) => (kind === "Title" ? 0 : kind === "Honor" ? 3 : CLUBS.includes(kind) ? 2 : 1);
 
 /** Show/hide rules for every frame kind, generated so a new category only needs a colour above. */
-const FRAME_CSS = Object.keys(BORDER_COLORS)
+const FRAME_CSS = BUTTONS
   .map((k) => `.yearbook-stage.show-${slug(k)} .yb-ring-${slug(k)}{display:block}`)
   .join("\n");
 
@@ -82,11 +100,12 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
             .map((raw) => parseCat(raw))
             .sort((x, y) => PRIORITY(x.kind) - PRIORITY(y.kind));
           const labelStyle = (f: { kind: string; detail: string | null }) => ({
-            backgroundColor: BORDER_COLORS[f.kind] ?? "#888",
+            backgroundColor: colorFor(f.kind, f.detail),
+            color: textOn(colorFor(f.kind, f.detail)),
             fontSize: `max(5px, min(6.2cqw, ${(112 / Math.max(1, frameLabel(f.kind, f.detail).length)).toFixed(2)}cqw))`,
           });
           const label = (f: { kind: string; detail: string | null }, key: string) => (
-            <span key={key} className={`yb-ring yb-ring-${slug(f.kind)} yb-label`} style={labelStyle(f)} data-testid="yearbook-frame-label">
+            <span key={key} className={`yb-ring yb-ring-${slug(buttonFor(f.kind))} yb-label`} style={labelStyle(f)} data-testid="yearbook-frame-label">
               {frameLabel(f.kind, f.detail)}
             </span>
           );
@@ -103,20 +122,22 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
             <div key={i} className="pointer-events-none absolute" style={{ left: `${o.box[0]}%`, top: `${o.box[1]}%`, width: `${o.box[2]}%`, height: `${o.box[3]}%`, containerType: "inline-size" }}>
               {/* One frame per category, inside the photo edge; each shows only while its own button is on. */}
               {frames.map((f, k) => (
-                <div key={`r-${k}`} className={`yb-ring yb-ring-${slug(f.kind)} absolute rounded-[1px] border-[3px]`}
-                  style={{ inset: `${3 * k}px`, borderColor: BORDER_COLORS[f.kind] ?? "#888" }} />
+                <div key={`r-${k}`} className={`yb-ring yb-ring-${slug(buttonFor(f.kind))} absolute rounded-[1px] border-[3px]`}
+                  style={{ inset: `${3 * k}px`, borderColor: colorFor(f.kind, f.detail) }} />
               ))}
               <div className="absolute inset-x-[5%] top-0 flex -translate-y-[35%] flex-col items-stretch gap-[1.5cqw]">
                 {[...title, ...clubs].map((f, k) => label(f, `t-${k}`))}
               </div>
               {honor.length > 0 && (
-                <span className="yb-ring yb-ring-honor yb-label yb-label-side absolute right-0 top-1/2 translate-x-[35%] -translate-y-1/2" style={labelStyle(honor[0])} data-testid="yearbook-honor-label">
+                <span className="yb-ring yb-ring-honor yb-label yb-label-side absolute right-0 top-1/2 translate-x-[30%] -translate-y-1/2"
+                  style={{ ...labelStyle(honor[0]), fontSize: "max(5px, 5cqw)" }} data-testid="yearbook-honor-label">
                   Honor Grad
                 </span>
               )}
-              <div className="absolute inset-x-[5%] bottom-0 flex translate-y-[35%] flex-col-reverse items-stretch gap-[1.5cqw]">
-                {/* At least one row is always kept free under the watermark for these labels. */}
-                <div className="flex min-h-[7.5cqw] flex-col-reverse items-stretch gap-[1.5cqw]">
+              {/* Bottom stack sits inside the photo so it never covers the classmate's printed name. */}
+              <div className="absolute inset-x-[5%] bottom-[3%] flex flex-col-reverse items-stretch gap-[1.5cqw]">
+                {/* Two rows are always kept free under the watermark for team labels. */}
+                <div className="flex min-h-[17cqw] flex-col-reverse items-stretch gap-[1.5cqw]">
                   {[...fbCheer, ...otherSports].map((f, k) => label(f, `b-${k}`))}
                 </div>
                 {o.watermark && (
@@ -172,8 +193,8 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
   }, [overlays]);
   const legend = useMemo(() => {
     const seen = new Set<string>();
-    for (const o of overlays ?? []) { if (o.honor) seen.add("Honor"); o.categories.forEach((c) => seen.add(parseCat(c).kind)); }
-    return Object.keys(BORDER_COLORS).filter((k) => seen.has(k));
+    for (const o of overlays ?? []) { if (o.honor) seen.add("Honor"); o.categories.forEach((c) => seen.add(buttonFor(parseCat(c).kind))); }
+    return BUTTONS.filter((k) => seen.has(k));
   }, [overlays]);
 
   const pages = useMemo(() => Array.from({ length: TOTAL_PAGES }, (_, i) => i + 1), []);
@@ -200,16 +221,38 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-testid="dialog-yearbook-viewer"
-        className="flex max-h-[92vh] w-[96vw] max-w-4xl flex-col gap-3 overflow-hidden p-4 sm:p-6"
+        className="flex h-[96vh] max-h-[96vh] w-[98vw] max-w-5xl flex-col gap-1.5 overflow-hidden p-2.5 sm:p-3"
       >
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <BookOpen className="h-5 w-5" /> Balboa &quot;Panama&quot; Yearbook &mdash; Eighty-Seven
+        {/* One slim bar: title + page controls, so the yearbook gets the height. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pr-8">
+          <DialogTitle className="mr-auto flex items-center gap-1.5 text-sm font-semibold">
+            <BookOpen className="h-4 w-4" /> Panama &rsquo;87 Yearbook
           </DialogTitle>
-        </DialogHeader>
+          <Button variant="outline" size="icon" className="h-7 w-7" onClick={goPrev} aria-label="Previous page" data-testid="button-yearbook-prev">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-xs tabular-nums text-muted-foreground" data-testid="text-yearbook-page-count">
+            {currentPage + 1} / {TOTAL_PAGES}
+          </span>
+          <Button variant="outline" size="icon" className="h-7 w-7" onClick={goNext} aria-label="Next page" data-testid="button-yearbook-next">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Input
+            type="number"
+            min={1}
+            max={TOTAL_PAGES}
+            placeholder="Page"
+            value={jumpValue}
+            onChange={(e) => setJumpValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && jumpToPage()}
+            className="h-7 w-16 px-2 text-xs"
+            data-testid="input-yearbook-jump"
+          />
+          <Button size="sm" className="h-7 px-2 text-xs" onClick={jumpToPage} data-testid="button-yearbook-jump">Go</Button>
+        </div>
 
         <div
-          className={cn("yearbook-stage flex flex-1 items-center justify-center overflow-hidden rounded-md bg-muted/40 py-2", showWatermarks && "show-wm", activeCats.map((c) => `show-${slug(c)}`))}
+          className={cn("yearbook-stage flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md bg-muted/40 py-1", showWatermarks && "show-wm", activeCats.map((c) => `show-${slug(c)}`))}
           data-testid="yearbook-stage"
         >
           <style>{FRAME_CSS}</style>
@@ -251,38 +294,9 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={goPrev} data-testid="button-yearbook-prev">
-              <ChevronLeft className="h-4 w-4" /> Prev
-            </Button>
-            <Button variant="outline" size="sm" onClick={goNext} data-testid="button-yearbook-next">
-              Next <ChevronRight className="h-4 w-4" />
-            </Button>
-            <span className="text-sm text-muted-foreground" data-testid="text-yearbook-page-count">
-              Page {currentPage + 1} of {TOTAL_PAGES}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={1}
-              max={TOTAL_PAGES}
-              placeholder="Page #"
-              value={jumpValue}
-              onChange={(e) => setJumpValue(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && jumpToPage()}
-              className="h-9 w-24 sm:w-32"
-              data-testid="input-yearbook-jump"
-            />
-            <Button size="sm" onClick={jumpToPage} data-testid="button-yearbook-jump">
-              Go
-            </Button>
-          </div>
-        </div>
         {(overlays?.length ?? 0) > 0 && (
           // One compact row of small chips, so the flipbook keeps its full size.
-          <div className="-mt-1 flex flex-wrap items-center gap-1" data-testid="yearbook-overlay-buttons">
+          <div className="flex flex-wrap items-center gap-1" data-testid="yearbook-overlay-buttons">
             <button type="button" aria-pressed={showWatermarks} onClick={() => setShowWatermarks((v) => !v)}
               className={cn("yb-chip", showWatermarks && "yb-chip-on")} style={showWatermarks ? { backgroundColor: "#ffd400", borderColor: "#c9a800", color: "#222" } : undefined}
               data-testid="button-yearbook-watermarks">
@@ -298,9 +312,15 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
               return (
                 <button key={c} type="button" aria-pressed={on} onClick={() => toggleCat(c)}
                   className={cn("yb-chip", on && "yb-chip-on")}
-                  style={on ? { borderColor: BORDER_COLORS[c], backgroundColor: `${BORDER_COLORS[c]}26` } : undefined}
+                  style={on ? { borderColor: BORDER_COLORS[c] ?? "#555", backgroundColor: `${BORDER_COLORS[c] ?? "#777777"}22` } : undefined}
                   data-testid={`button-yearbook-cat-${slug(c)}`}>
-                  <span className="inline-block h-2 w-2 shrink-0 rounded-[2px] border-[1.5px]" style={{ borderColor: BORDER_COLORS[c], backgroundColor: on ? BORDER_COLORS[c] : "transparent" }} />
+                  {TEAM_SPORTS.includes(c) ? (
+                    <span className="inline-flex shrink-0 overflow-hidden rounded-[2px]" aria-hidden="true">
+                      {Object.values(TEAM_COLORS).map((tc) => <span key={tc} className="h-2 w-[3px]" style={{ backgroundColor: tc }} />)}
+                    </span>
+                  ) : (
+                    <span className="inline-block h-2 w-2 shrink-0 rounded-[2px] border-[1.5px]" style={{ borderColor: BORDER_COLORS[c], backgroundColor: on ? BORDER_COLORS[c] : "transparent" }} />
+                  )}
                   {SHORT_LABEL[c] ?? CATEGORY_LABEL[c] ?? c}
                 </button>
               );
