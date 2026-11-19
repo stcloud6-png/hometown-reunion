@@ -627,8 +627,8 @@ export function isPoolDayEligible(iso: string): boolean {
 /** Evening slots on these dates never offer "busy"/MiEvento as a status — those
  * evenings are exclusively Available/Maybe/Private — unless the slot is *already*
  * set to busy (so an existing pick doesn't silently disappear from the list). */
-// Jan 17 now offers El Valle and Coronado in every period.
-const BUSY_HIDDEN_EVENING_DATES: string[] = ["2027-01-18", "2027-01-24"];
+// Sun 17 evening mirrors Mon 18 evening: Available / Maybe / Private only (owner, 2026-11-19).
+const BUSY_HIDDEN_EVENING_DATES: string[] = ["2027-01-17", "2027-01-18", "2027-01-24"];
 
 /**
  * The selectable statuses for a given day+period slot, in the exact order the
