@@ -16,11 +16,13 @@ for (let day = 25; day <= 30; day++) {
     assert(ids.includes("vulcan") && ids.includes("boquette"));
   }
 }
+// Shoulder days 9–16 offer El Valle / Coronado; Sun 17 no longer does (owner, 2026-11-19).
 for (let day = 9; day <= 17; day++) {
   const iso = `2027-01-${String(day).padStart(2, "0")}`;
   for (const period of PERIODS) {
     const ids = eventsForDate(iso, period).map((e) => e.id);
-    assert(ids.includes("el-valle-26") && ids.includes("coronado-25"));
+    if (day === 17) assert(!ids.includes("el-valle-26") && !ids.includes("coronado-25"));
+    else assert(ids.includes("el-valle-26") && ids.includes("coronado-25"));
     assert(statusesForSlot(iso, period).includes("busy"));
   }
 }

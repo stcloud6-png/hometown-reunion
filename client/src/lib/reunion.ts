@@ -311,8 +311,9 @@ export const SCHEDULED_EVENTS: ScheduledEvent[] = [
   { id: "vip-bay-cruise-20", label: "VIP Bay Cruise", note: "Wed 20, 7-10pm", days: ["2027-01-20"], autoSlots: ["e"] },
   { id: "napoli-lunch-20", label: "Napoli Lunch (BHS '87)", note: "Wed 20 afternoon", days: ["2027-01-20"], autoSlots: ["a"] },
   { id: "move-causeway-23", label: "Move & Mingle Down The Causeway", note: "Sat 23, 8:30-9:30am", days: ["2027-01-23"], autoSlots: ["m"] },
-  { id: "coronado-25", label: "Coronado Beach", days: [...SHOULDER_START, "2027-01-17", ...SHOULDER_END] },
-  { id: "el-valle-26", label: "El Valle", days: [...SHOULDER_START, "2027-01-17", ...SHOULDER_END] },
+  // Not offered on Sun 17 (owner, 2026-11-19): that day belongs to MiEvento's Partial Transit.
+  { id: "coronado-25", label: "Coronado Beach", days: [...SHOULDER_START, ...SHOULDER_END] },
+  { id: "el-valle-26", label: "El Valle", days: [...SHOULDER_START, ...SHOULDER_END] },
   { id: "pool-day", label: "Drinking All Day at the Pool", days: POOL_DAY_DATES },
   // Applies to every shoulder date (both ends of the trip) but never during the
   // core Jan 17–24 MiEvento window — see the period filter in eventsForDate().
@@ -322,6 +323,45 @@ export const SCHEDULED_EVENTS: ScheduledEvent[] = [
 const EVENT_LABEL_BY_ID: Record<string, string> = Object.fromEntries(
   SCHEDULED_EVENTS.map((e) => [e.id, e.label]),
 );
+
+// ---------------------------------------------------------------------------
+// Live MiEvento status (from the daily ticket check), registered when tickets load.
+// ---------------------------------------------------------------------------
+
+export type LiveTicketStatus = "available" | "low" | "sold_out";
+const LIVE_STATUS = new Map<string, LiveTicketStatus>();
+let LIVE_EXTRAS: ScheduledEvent[] = [];
+
+/**
+ * Called with the latest daily ticket check:
+ * - `status`: calendar event id → MiEvento status. Sold-out events stop being offered in the
+ *   timeslot picker (except where that slot already holds it), and "tickets coming soon"
+ *   placeholders switch off once a listing exists.
+ * - `extras`: MiEvento listings with no hand-kept calendar entry yet (e.g. a newly released
+ *   Tue 19 / Sat 23 evening event). They join the timeslot picker on their date and slots.
+ */
+export function setLiveEvents(status: Record<string, LiveTicketStatus>, extras: ScheduledEvent[]): void {
+  LIVE_STATUS.clear();
+  for (const [id, st] of Object.entries(status)) LIVE_STATUS.set(id, st);
+  LIVE_EXTRAS = extras;
+  for (const e of extras) { EVENT_LABEL_BY_ID[e.id] = e.label; SCHEDULED_EVENT_BY_ID[e.id] = e; }
+}
+
+/** MiEvento status for a calendar event id, if MiEvento lists it. */
+export function liveStatusFor(id: string): LiveTicketStatus | undefined {
+  return LIVE_STATUS.get(id);
+}
+
+/** Placeholder "tickets coming soon" only while MiEvento hasn't listed the event yet. */
+function isStillSoon(e: ScheduledEvent): boolean {
+  return !!e.soon && !LIVE_STATUS.has(e.id);
+}
+
+/** Note text without the "tickets coming soon" tail once tickets are on sale. */
+function liveNote(e: ScheduledEvent): string | undefined {
+  if (!e.note || isStillSoon(e)) return e.note;
+  return e.note.replace(/\s*[—-]\s*tickets coming soon/i, "");
+}
 
 /** Curated venue/booking links per activity id, shown under each interest cluster. */
 export const CLUSTER_RESOURCE_LINKS: Record<string, { label: string; url: string }[]> = {
@@ -550,7 +590,7 @@ export function mieventoOrEventLabel(iso: string): "MiEvento" | "Event/Activity"
 
 /** Whether a scheduled event applies to a given date. */
 export function eventAppliesToDate(eventId: string, iso: string): boolean {
-  const event = SCHEDULED_EVENTS.find((e) => e.id === eventId);
+  const event = SCHEDULED_EVENTS.find((e) => e.id === eventId) ?? LIVE_EXTRAS.find((e) => e.id === eventId);
   return !!event?.days.includes(iso);
 }
 
@@ -565,13 +605,19 @@ export function eventAppliesToDate(eventId: string, iso: string): boolean {
  * so a morning-only tour never leaks into the afternoon dropdown and vice versa. Events with
  * no autoSlots restriction (no fixed time) are always offered.
  */
-export function eventsForDate(iso: string, period?: Period): ScheduledEvent[] {
-  return SCHEDULED_EVENTS.filter((e) => {
+/**
+ * Events offered in a day/slot's picker. Sold-out MiEvento events are left out (the daily ticket
+ * check decides), unless `keepId` — the slot's current pick — is that event, so an existing
+ * answer never disappears. Newly listed MiEvento events (no hand-kept entry yet) are included.
+ */
+export function eventsForDate(iso: string, period?: Period, keepId?: string): ScheduledEvent[] {
+  return [...SCHEDULED_EVENTS, ...LIVE_EXTRAS].filter((e) => {
     if (e.id === "yacht-club" || e.id === "pool-day") return false;
-    if (!eventAppliesToDate(e.id, iso)) return false;
+    if (LIVE_STATUS.get(e.id) === "sold_out" && e.id !== keepId) return false;
+    if (!e.days.includes(iso)) return false;
     if (!period || !e.autoSlots) return true;
     return e.autoSlots.includes(period);
-  });
+  }).map((e) => (liveNote(e) === e.note ? e : { ...e, note: liveNote(e), soon: false }));
 }
 
 export function isPoolDayEligible(iso: string): boolean {
@@ -625,7 +671,8 @@ export function labelForTag(rawTag: string, activities: Activity[]): string {
   return EVENT_LABEL_BY_ID[tag] ?? tag;
 }
 
-const SCHEDULED_EVENT_BY_ID: Record<string, ScheduledEvent> = Object.fromEntries(
+// eslint-disable-next-line prefer-const -- extended at runtime by setLiveEvents()
+let SCHEDULED_EVENT_BY_ID: Record<string, ScheduledEvent> = Object.fromEntries(
   SCHEDULED_EVENTS.map((e) => [e.id, e]),
 );
 
@@ -637,7 +684,8 @@ export function labelWithNoteForTag(tag: string, activities: Activity[]): string
   if (isGroupPlannedId(tag)) return labelForTag(tag, activities);
   const event = SCHEDULED_EVENT_BY_ID[tag];
   if (!event) return labelForTag(tag, activities);
-  return event.note ? `${event.label} (${event.note})` : event.label;
+  const note = liveNote(event);
+  return note ? `${event.label} (${note})` : event.label;
 }
 
 /** Color/weight category for a resolved MiEvento sub-event tag, matched to the live reference
@@ -649,7 +697,7 @@ export function eventCategoryClass(tag: string | undefined): string | undefined 
   const event = SCHEDULED_EVENT_BY_ID[tag];
   if (!event) return undefined;
   if (event.blue) return "text-blue-event";
-  if (event.soon) return "text-soon-event";
+  if (isStillSoon(event)) return "text-soon-event";
   if (event.soft) return "text-soft-event";
   return "text-muted-foreground";
 }

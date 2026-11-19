@@ -184,6 +184,9 @@ export const DEMO_TICKETS: TicketWatchRow[] = (
     ["2027-01-20", "Summit Gardens Adventure Bus Tour", 35, "8am-1:30pm", "sold_out", null],
     ["2027-01-20", "El Prado Walking Tour", 25, "8:30am-10:30am", "available", 10],
     ["2027-01-20", "VIP Bay Cruise", 75, "7pm-10pm", "sold_out", null],
+    ["2027-01-22", "Panama Canal Railway Experience - DOME Car", 70, "Panama Canal Railway Experience (DOME Car) - 9am", "sold_out", null],
+    ["2027-01-22", "Panama Canal Railway Experience (Regular Car)", 50, "Panama Canal Railway Experience (Regular Car) - 9am", "available", 10],
+    ["2027-01-23", "Mega Bay Cruise", 45, "7:30pm-11:30pm", "available", 10],
     ["2027-01-24", "Taboga Island Cruise", 90, "10am-4pm", "available", 9],
   ] as const
 ).map(([event_date, name, price, time, status, max]) => ({

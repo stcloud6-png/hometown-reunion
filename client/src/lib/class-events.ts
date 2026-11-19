@@ -11,8 +11,8 @@
  * - Two picked events clash when they share a day and a slot.
  */
 import {
-  PERIODS, SCHEDULED_EVENTS,
-  type Period, type PersonSlots, type ScheduledEvent,
+  PERIODS, SCHEDULED_EVENTS, setLiveEvents,
+  type LiveTicketStatus, type Period, type PersonSlots, type ScheduledEvent,
 } from "@/lib/reunion";
 import { parseTimeRange, ticketLevel, ticketTimeLabel, type TicketWatchRow } from "@/lib/ticket-watch";
 
@@ -49,6 +49,8 @@ const MAP: { date: string; re: RegExp; id: string }[] = [
   { date: "2027-01-19", re: /reprosa/i, id: "reprosa-19" },
   { date: "2027-01-19", re: /prado/i, id: "prado-19" },
   { date: "2027-01-19", re: /carima/i, id: "carimanola-19" },
+  // Not on sale yet (Nov 19): when MiEvento lists it, it lands on the existing Tue 19 evening entry.
+  { date: "2027-01-19", re: /coffee/i, id: "coffee-house-19" },
   { date: "2027-01-20", re: /prado/i, id: "prado-20" },
   { date: "2027-01-20", re: /summit/i, id: "summit-20" },
   { date: "2027-01-20", re: /sprague/i, id: "sprague-20" },
@@ -71,6 +73,64 @@ const MAP: { date: string; re: RegExp; id: string }[] = [
 ];
 
 const SCHEDULED_BY_ID = new Map<string, ScheduledEvent>(SCHEDULED_EVENTS.map((e) => [e.id, e]));
+/** Calendar ids that stand for a MiEvento ticket. */
+const MIEVENTO_IDS = new Set(MAP.map((m) => m.id));
+
+/**
+ * Feed the daily ticket check into the timeslot picker: sold-out events stop being offered,
+ * "coming soon" placeholders switch off once listed, and brand-new listings (no hand-kept
+ * entry yet) become pickable on their own date and slots.
+ */
+export function registerLiveTickets(tickets: TicketWatchRow[]): void {
+  const status: Record<string, LiveTicketStatus> = {};
+  const extras: ScheduledEvent[] = [];
+  for (const t of tickets) {
+    const level = ticketLevel(t);
+    const st: LiveTicketStatus = level === "sold_out" ? "sold_out" : level === "low" ? "low" : "available";
+    const id = calendarIdForTicket(t);
+    if (id) {
+      // Several listings on one id (rare): it's sold out only if every one is.
+      status[id] = status[id] && status[id] !== "sold_out" ? status[id] : st;
+      continue;
+    }
+    const key = `mv:${t.watch_key}`;
+    status[key] = st;
+    if (extras.some((e) => e.id === key)) continue;
+    extras.push({
+      id: key,
+      label: t.name.replace(/\s+/g, " ").trim(),
+      note: ticketTimeLabel(t) ?? undefined,
+      days: [t.event_date],
+      autoSlots: periodsForTimeText(t.time_text),
+    });
+  }
+  setLiveEvents(status, extras);
+}
+
+/**
+ * Answers implied by a calendar filled in before the events list existed: a MiEvento event on
+ * someone's calendar means they already have the ticket (owner, 2026-11-19); Napoli means
+ * planning (it has no ticket).
+ */
+export function answersFromCalendar(slots: PersonSlots | null | undefined): EventAnswers {
+  const out: EventAnswers = {};
+  for (const day of Object.values(slots ?? {})) {
+    for (const slot of Object.values(day ?? {})) {
+      const t = slot?.t;
+      if (!t) continue;
+      if (t === NAPOLI_KEY) out[t] = "planning";
+      else if (MIEVENTO_IDS.has(t) || t.startsWith("mv:")) out[t] = "purchased";
+    }
+  }
+  return out;
+}
+
+/** Everything we know: calendar-implied answers, Napoli pill = planning, then saved answers win. */
+export function effectiveAnswers(p: { slots?: PersonSlots | null; interests?: string[] | null; event_answers?: EventAnswers | null }): EventAnswers {
+  const a: EventAnswers = answersFromCalendar(p.slots);
+  if (p.interests?.includes("napoli") && !a[NAPOLI_KEY]) a[NAPOLI_KEY] = "planning";
+  return { ...a, ...(p.event_answers ?? {}) };
+}
 
 export function calendarIdForTicket(t: Pick<TicketWatchRow, "event_date" | "name">): string | null {
   return MAP.find((m) => m.date === t.event_date && m.re.test(t.name))?.id ?? null;
@@ -296,7 +356,7 @@ export function slotIdLabel(id: string): string {
 // ---------------------------------------------------------------------------
 
 export interface WhoGoing { purchased: string[]; planning: string[] }
-interface WhoPerson { name: string; is_test?: boolean | null; event_answers?: EventAnswers | null; yacht_status?: string | null; interests?: string[] | null }
+interface WhoPerson { name: string; is_test?: boolean | null; event_answers?: EventAnswers | null; yacht_status?: string | null; interests?: string[] | null; slots?: PersonSlots | null }
 
 /**
  * Names per event key: who has a ticket and who plans to go. Test entries and the signed-in
@@ -313,10 +373,10 @@ export function whoIsGoing(people: WhoPerson[], selfName?: string | null): Recor
   for (const p of people) {
     const name = p.name?.trim();
     if (!name || p.is_test || name.toLowerCase() === self) continue;
-    for (const [key, answer] of Object.entries(p.event_answers ?? {})) add(key, answer === "purchased" ? "purchased" : "planning", name);
-    if (p.interests?.includes("napoli") && !p.event_answers?.[NAPOLI_KEY]) add(NAPOLI_KEY, "planning", name);
+    // Includes calendars filled in before the events list existed (see effectiveAnswers).
+    for (const [key, answer] of Object.entries(effectiveAnswers(p))) add(key, answer === "purchased" ? "purchased" : "planning", name);
+    // Yacht Club: only who has paid is shared; planning / can't make it stay private.
     if (p.yacht_status === "paid") add(YACHT_KEY, "purchased", name);
-    else if (p.yacht_status === "planning") add(YACHT_KEY, "planning", name);
   }
   for (const w of Object.values(out)) { w.purchased.sort((a, b) => a.localeCompare(b)); w.planning.sort((a, b) => a.localeCompare(b)); }
   return out;

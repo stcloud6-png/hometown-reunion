@@ -84,6 +84,8 @@ function withCanonicalSlots(p: Person): Person {
   return p.slots ? { ...p, slots: canonicalSlots(p.slots) } : p;
 }
 
+import { registerLiveTickets } from "./class-events";
+
 const PHOTO_BUCKET = "missing-photos";
 const newPhotoPath = () => `uploads/${crypto.randomUUID()}.jpg`;
 
@@ -193,6 +195,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
           // Demo: an organizer has set Karaoke for Fri 22 evening.
           { activity_id: "karaoke", status: "open", event_date: "2027-01-22", start_time: "8pm", venue: "Demo venue", max_size: 20 },
         ]);
+        registerLiveTickets(DEMO_TICKETS);
         setTickets(DEMO_TICKETS);
         setTicketRun({ ran_at: DEMO_TICKETS[0].last_seen, ok: true, tickets: DEMO_TICKETS.length, sold_out: 3 });
         // Stub-only QA hook: localStorage "czr-stub-ticket-health" = ok | warning | action | stale
@@ -253,7 +256,10 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         supabaseRest<TicketWatchRun[]>("/ticket_watch_runs?select=ran_at,ok,tickets,sold_out,health,warnings,dates,layout_changed&order=ran_at.desc&limit=1", { accessToken: token }).catch(() => []),
       ])
         .then(([rows, runs, latest]) => {
-          setTickets(latestTickets(rows));
+          const latestRows = latestTickets(rows);
+          // Sold-out events leave the timeslot picker; new listings join it (see registerLiveTickets).
+          registerLiveTickets(latestRows);
+          setTickets(latestRows);
           setTicketRun(runs[0] ?? null);
           setTicketHealth(latest[0] ?? null);
         })

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import {
   buildClassEvents, checkChoice, toggleChoice, applyAnswersToSlots, answersAfterCalendarEdit,
-  applyYachtToSlots, openSlots, periodsForTimeText, calendarIdForTicket, whoIsGoing, whoPicksPills, NAPOLI_KEY, YACHT_KEY,
+  applyYachtToSlots, openSlots, periodsForTimeText, calendarIdForTicket, whoIsGoing, whoPicksPills, registerLiveTickets, answersFromCalendar, effectiveAnswers, NAPOLI_KEY, YACHT_KEY,
   type CheckContext,
 } from "../client/src/lib/class-events";
 import { findRepeat, words, type DedupeTarget } from "../client/src/lib/pill-dedupe";
-import { initSlots, labelForTag, BASE_ACTIVITIES, canonicalSlots, eventsForDate, groupPlannedEventsForDate, applyGroupPlanDefaults, plannedSlotIds, DASHBOARD_HIDDEN_IDS, HIDDEN_PILL_IDS } from "../client/src/lib/reunion";
+import { initSlots, labelForTag, BASE_ACTIVITIES, liveStatusFor, canonicalSlots, eventsForDate, groupPlannedEventsForDate, applyGroupPlanDefaults, plannedSlotIds, DASHBOARD_HIDDEN_IDS, HIDDEN_PILL_IDS } from "../client/src/lib/reunion";
 import type { TicketWatchRow } from "../client/src/lib/ticket-watch";
 
 // Live MiEvento snapshot as of 2026-11-19.
@@ -179,7 +179,7 @@ assert.deepEqual(words("Exclusive Bay Cruise for 87"), ["bay", "cruise"]);
   ];
   const who = whoIsGoing(ppl, "me");
   assert.deepEqual(who["golf-21"], { purchased: ["Ann"], planning: ["Bob"] });
-  assert.deepEqual(who[YACHT_KEY], { purchased: ["Ann"], planning: ["Bob"] });
+  assert.deepEqual(who[YACHT_KEY], { purchased: ["Ann"], planning: [] }); // Yacht: paid only, planning stays private
   assert.deepEqual(who[NAPOLI_KEY], { purchased: ["Bob"], planning: ["Ann"] }); // Ann's Napoli pill counts as planning
   const pills = whoPicksPills(ppl, "Me");
   assert.deepEqual(pills.byPill.karaoke, ["Ann", "Bob"]);
@@ -203,5 +203,41 @@ assert.deepEqual(plannedSlotIds("karaoke", [{ activity_id: "karaoke", status: "o
 assert.deepEqual(plannedSlotIds("karaoke", [{ activity_id: "karaoke", status: "cancelled", event_date: "2027-01-22", start_time: null, venue: null, max_size: null }]), []);
 for (const id of ["railway-87", "chicken-coup"]) { assert.ok(HIDDEN_PILL_IDS.includes(id)); assert.ok(DASHBOARD_HIDDEN_IDS.includes(id)); }
 assert.ok(!DASHBOARD_HIDDEN_IDS.includes("cruise-87"));
+
+// Old calendars count as answers: MiEvento on the calendar = have the ticket; saved answers win.
+{
+  const slots = { "2027-01-19": { m: { s: "busy" as const, t: "gatun-cruise-19" }, a: { s: "ok" as const }, e: { s: "busy" as const, t: "coffee-house-19" } },
+                  "2027-01-20": { m: { s: "ok" as const }, a: { s: "busy" as const, t: NAPOLI_KEY }, e: { s: "ok" as const } },
+                  "2027-01-17": { m: { s: "busy" as const, t: "vulcan" }, a: { s: "ok" as const }, e: { s: "ok" as const } } };
+  assert.deepEqual(answersFromCalendar(slots), { "gatun-cruise-19": "purchased", "coffee-house-19": "purchased", [NAPOLI_KEY]: "planning" });
+  assert.equal(effectiveAnswers({ slots, event_answers: { "gatun-cruise-19": "planning" } })["gatun-cruise-19"], "planning");
+  const who = whoIsGoing([{ name: "Old Timer", slots }], null);
+  assert.deepEqual(who["gatun-cruise-19"], { purchased: ["Old Timer"], planning: [] });
+}
+
+// Daily ticket check drives the timeslot picker: sold out leaves (unless already picked), new listings join.
+{
+  const row = (event_date: string, name: string, status: string, time_text: string, watch_key = `${event_date}|${name}`) =>
+    ({ watch_key, ticket_id: "1", event_date, name, price: 50, time_text, status, status_label: null, max_qty: status === "sold_out" ? null : 10,
+       prev_status: null, prev_max_qty: null, first_seen: "", sold_out_since: null, last_seen: "", updated_at: "" }) as never;
+  registerLiveTickets([
+    row("2027-01-22", "Panama Canal Railway Experience - DOME Car", "sold_out", "Panama Canal Railway Experience (DOME Car) - 9am"),
+    row("2027-01-22", "Panama Canal Railway Experience (Regular Car)", "available", "Panama Canal Railway Experience (Regular Car) - 9am"),
+    row("2027-01-23", "Mega Bay Cruise", "available", "(Saturday) Mega Bay Cruise 7:30pm-11:30pm"),
+    row("2027-01-23", "Starlight Social", "available", "(Saturday) Starlight Social 7pm-10pm", "x|starlight"),
+  ]);
+  const ids = (iso: string, p: "m" | "a" | "e", keep?: string) => eventsForDate(iso, p, keep).map((e) => e.id);
+  assert.ok(!ids("2027-01-22", "m").includes("dome-car-22"));            // sold out: gone
+  assert.ok(ids("2027-01-22", "m", "dome-car-22").includes("dome-car-22")); // ...unless already picked
+  assert.ok(ids("2027-01-22", "m").includes("railway-22"));
+  assert.equal(liveStatusFor("dome-car-22"), "sold_out");
+  const mega = eventsForDate("2027-01-23", "e").find((e) => e.id === "mega-cruise-23");
+  assert.ok(mega && !/coming soon/i.test(mega.note ?? ""));                // listed now: no "coming soon"
+  assert.ok(ids("2027-01-23", "e").includes("mv:x|starlight"));            // brand-new listing joins its evening
+  assert.ok(!ids("2027-01-23", "m").includes("mv:x|starlight"));
+  assert.equal(labelForTag("mv:x|starlight", BASE_ACTIVITIES), "Starlight Social");
+  assert.ok(!ids("2027-01-17", "m").some((id) => id === "coronado-25" || id === "el-valle-26"));
+  registerLiveTickets([]);
+}
 
 console.log("class-events + pill-dedupe tests passed");
