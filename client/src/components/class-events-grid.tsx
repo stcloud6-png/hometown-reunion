@@ -1,13 +1,64 @@
 import { Fragment, useState } from "react";
-import { AlertTriangle, Anchor, CheckCircle2, ExternalLink, Info, Ticket } from "lucide-react";
+import { AlertTriangle, Anchor, CheckCircle2, ExternalLink, Info, Ticket, Users } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import {
   checkChoice, toggleChoice, NAPOLI_KEY,
-  type ClassEvent, type EventAnswer, type EventAnswers, type YachtStatus,
+  type ClassEvent, type EventAnswer, type EventAnswers, type WhoGoing, type YachtStatus,
 } from "@/lib/class-events";
 import { MIEVENTO_TICKETS_URL, formatTicketDay } from "@/lib/ticket-watch";
+
+// ---------------------------------------------------------------------------
+// "Who's going" — hover (or tap) an event to see classmates' answers before choosing
+// ---------------------------------------------------------------------------
+
+function NameList({ title, names, tone }: { title: string; names: string[]; tone: "ticket" | "plan" }) {
+  return (
+    <div>
+      <p className={cn("text-xs font-semibold", tone === "ticket" ? "text-[hsl(155_48%_28%)] dark:text-[hsl(150_40%_70%)]" : "text-primary")}>
+        {title} ({names.length})
+      </p>
+      {names.length === 0 ? <p className="text-xs text-muted-foreground">No one yet</p>
+        : <p className="text-xs leading-relaxed">{names.join(", ")}</p>}
+    </div>
+  );
+}
+
+/** Wraps an event's title: hovering (desktop) or tapping (phone) shows who has tickets and who plans to go. */
+function WhoPopover({ who, ticketLabel = "Have tickets", children, testId }: { who?: WhoGoing; ticketLabel?: string; children: React.ReactNode; testId: string }) {
+  const [open, setOpen] = useState(false);
+  const w = who ?? { purchased: [], planning: [] };
+  const total = w.purchased.length + w.planning.length;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <div
+          role="button"
+          tabIndex={0}
+          className="cursor-help rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true); }}
+          data-testid={testId}
+        >
+          {children}
+          <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground underline decoration-dotted underline-offset-2">
+            <Users className="h-3 w-3" />
+            {total === 0 ? "No classmates yet" : `${w.purchased.length} with tickets · ${w.planning.length} planning`}
+          </span>
+        </div>
+      </PopoverTrigger>
+      <PopoverContent side="right" align="start" className="w-72 space-y-2 p-3" onOpenAutoFocus={(e) => e.preventDefault()}
+        onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} data-testid={`${testId}-list`}>
+        <NameList title={ticketLabel} names={w.purchased} tone="ticket" />
+        <NameList title="Planning to go" names={w.planning} tone="plan" />
+        <p className="border-t pt-1.5 text-[10px] text-muted-foreground">From what classmates have entered on this site.</p>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Step: Yacht Club gate
@@ -19,11 +70,13 @@ const YACHT_OPTIONS: { value: YachtStatus; title: string; hint: string }[] = [
   { value: "not_attending", title: "Can't make it", hint: "I won't be at the Wed 20 dinner/dance." },
 ];
 
-export function YachtGate({ value, onChange, disabled }: { value: YachtStatus | null; onChange: (v: YachtStatus) => void; disabled?: boolean }) {
+export function YachtGate({ value, onChange, disabled, who }: { value: YachtStatus | null; onChange: (v: YachtStatus) => void; disabled?: boolean; who?: WhoGoing }) {
   return (
     <Card data-testid="card-yacht-gate">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Anchor className="h-5 w-5" /> Yacht Club '87 Dinner/Dance — Wed Jan 20, evening</CardTitle>
+        <WhoPopover who={who} ticketLabel="Paid" testId="who-yacht">
+          <CardTitle className="flex items-center gap-2"><Anchor className="h-5 w-5" /> Yacht Club '87 Dinner/Dance — Wed Jan 20, evening</CardTitle>
+        </WhoPopover>
         <p className="text-sm text-muted-foreground">
           The class event everyone should be at. Let us know where you stand — you can change this later.
         </p>
@@ -67,11 +120,13 @@ interface GridProps {
   /** Shown under the grid until pressed; after that, changes go straight to the calendar. */
   done: boolean;
   onDone: () => void;
+  /** Classmates' answers per event key (names only). */
+  who?: Record<string, WhoGoing>;
 }
 
 interface Note { key: string; col: EventAnswer; text: string; tone: "block" | "warn" }
 
-export function ClassEventsGrid({ catalog, answers, yacht, arrival, departure, onChange, done, onDone }: GridProps) {
+export function ClassEventsGrid({ catalog, answers, yacht, arrival, departure, onChange, done, onDone, who }: GridProps) {
   const [note, setNote] = useState<Note | null>(null);
   const ctx = { answers, yacht, catalog, arrival, departure };
 
@@ -131,12 +186,14 @@ export function ClassEventsGrid({ catalog, answers, yacht, arrival, departure, o
                     )}
                     <tr key={event.key} className={cn("border-b align-top last:border-0", out && "opacity-50")} data-testid={`row-event-${event.key}`}>
                       <td className="px-3 py-2">
+                        <WhoPopover who={who?.[event.key]} ticketLabel={event.planOnly ? "Going" : "Have tickets"} testId={`who-${event.key}`}>
                         <p className={cn("font-medium leading-snug", event.soldOut && "text-muted-foreground")}>{event.name}</p>
                         <p className="text-xs text-muted-foreground">
                           {[event.timeLabel, event.price != null ? (event.price === 0 ? "Free" : `$${event.price}`) : null].filter(Boolean).join(" · ")}
                           {event.soldOut && <span className="ml-1.5 rounded-full border border-red-200 bg-red-100 px-1.5 text-[10px] font-semibold text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">Sold out</span>}
                           {event.lowStock != null && <span className="ml-1.5 rounded-full border border-amber-200 bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-800 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-300">Only {event.lowStock} left</span>}
                         </p>
+                        </WhoPopover>
                         {rowNote && (
                           <p
                             role="status"

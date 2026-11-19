@@ -178,7 +178,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     setError(null);
     try {
       if (stub) {
-        setPeople(DEMO_PEOPLE);
+        setPeople(withDemoAnswers(DEMO_PEOPLE));
         setActivities(mergeActivities(stubActivities.current));
         setClusterResources([]);
         setClusterLeads([{ activity_id: "napoli", lead_name: "Demo Organizer" }]);
@@ -816,6 +816,28 @@ const DEMO_WEATHER: WeatherRow[] = [
   { city: "Orlando, FL", observed_on: "2026-11-19", temp_f: 68.7, high_f: 71.3, low_f: 68.1, weather_code: 63, fetched_at: "2026-11-19T09:23:09Z" },
   { city: "Panama City", observed_on: "2026-11-19", temp_f: 77.6, high_f: 88.5, low_f: 77.1, weather_code: 2, fetched_at: "2026-11-19T09:23:09Z" },
 ];
+
+/** Demo only: give a few stand-in people event answers and pill timeslots so the "who's going" lists have content. */
+function withDemoAnswers(people: Person[]): Person[] {
+  const answers: Person["event_answers"][] = [
+    { "transit-17": "purchased", "gold-coast-18": "planning", "napoli-lunch-20": "planning" },
+    { "transit-17": "planning", "prado-20": "purchased", "napoli-lunch-20": "purchased" },
+    { "gold-coast-18": "purchased", "summit-20": "planning" },
+    { "transit-17": "purchased" },
+  ];
+  const yacht: Person["yacht_status"][] = ["paid", "planning", "paid", "planning"];
+  return people.map((p, i) => {
+    if (i >= answers.length) return p;
+    const karaoke = (p.interests ?? []).includes("karaoke");
+    return {
+      ...p,
+      event_answers: answers[i],
+      yacht_status: p.yacht_status ?? yacht[i],
+      interests: karaoke ? p.interests : [...(p.interests ?? []), "karaoke"],
+      pill_slots: { ...(p.pill_slots ?? {}), karaoke: i % 2 ? ["2027-01-21:e"] : ["2027-01-21:e", "2027-01-22:e"] },
+    };
+  });
+}
 
 const DEMO_ROSTER: RosterEntry[] = [
   { id: "r-1", display_name: "Shelly Mickelson (McQuary)", search_names: ["Michelle McQuary"], status: "unclaimed", person_id: null },

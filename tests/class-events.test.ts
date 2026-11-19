@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildClassEvents, checkChoice, toggleChoice, applyAnswersToSlots, answersAfterCalendarEdit,
-  applyYachtToSlots, openSlots, periodsForTimeText, calendarIdForTicket, NAPOLI_KEY, YACHT_KEY,
+  applyYachtToSlots, openSlots, periodsForTimeText, calendarIdForTicket, whoIsGoing, whoPicksPills, NAPOLI_KEY, YACHT_KEY,
   type CheckContext,
 } from "../client/src/lib/class-events";
 import { findRepeat, words, type DedupeTarget } from "../client/src/lib/pill-dedupe";
@@ -167,5 +167,24 @@ for (const [s, id] of rejects) {
 const accepts = ["Salsa lessons", "Sunset sail", "Poker", "Zip lining", "Tango", "Kayaking", "Wine tasting"];
 for (const s of accepts) assert.equal(findRepeat(s, targets), null, `should accept "${s}" (hit: ${JSON.stringify(findRepeat(s, targets))})`);
 assert.deepEqual(words("Exclusive Bay Cruise for 87"), ["bay", "cruise"]);
+
+// Who's going / who picked a pill: names only, self and test entries left out.
+{
+  const ppl = [
+    { name: "Ann", event_answers: { "golf-21": "purchased" as const }, yacht_status: "paid", interests: ["karaoke", "napoli"], pill_slots: { karaoke: ["2027-01-21:evening"], bowling: ["2027-01-22:evening"] } },
+    { name: "Bob", event_answers: { "golf-21": "planning" as const, [NAPOLI_KEY]: "purchased" as const }, yacht_status: "planning", interests: ["karaoke"], pill_slots: { karaoke: ["2027-01-21:evening", "2027-01-22:afternoon"] } },
+    { name: "Me", event_answers: { "golf-21": "purchased" as const }, yacht_status: "paid", interests: ["karaoke"], pill_slots: { karaoke: ["2027-01-21:evening"] } },
+    { name: "Tester", is_test: true, event_answers: { "golf-21": "purchased" as const }, yacht_status: "paid", interests: ["karaoke"] },
+    { name: "Cy", yacht_status: "not_attending", interests: [] },
+  ];
+  const who = whoIsGoing(ppl, "me");
+  assert.deepEqual(who["golf-21"], { purchased: ["Ann"], planning: ["Bob"] });
+  assert.deepEqual(who[YACHT_KEY], { purchased: ["Ann"], planning: ["Bob"] });
+  assert.deepEqual(who[NAPOLI_KEY], { purchased: ["Bob"], planning: ["Ann"] }); // Ann's Napoli pill counts as planning
+  const pills = whoPicksPills(ppl, "Me");
+  assert.deepEqual(pills.byPill.karaoke, ["Ann", "Bob"]);
+  assert.deepEqual(pills.bySlot.karaoke["2027-01-21:evening"], ["Ann", "Bob"]);
+  assert.equal(pills.bySlot.bowling, undefined); // slot picks for a pill they no longer have are ignored
+}
 
 console.log("class-events + pill-dedupe tests passed");

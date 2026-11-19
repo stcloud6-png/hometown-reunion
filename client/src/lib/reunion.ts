@@ -213,7 +213,14 @@ export const BASE_ACTIVITIES: Activity[] = [
  * Pills no longer shown or offered: the first five duplicate MiEvento events, and Napoli is now
  * a class event in the events grid. Existing picks stay in the database untouched.
  */
-export const HIDDEN_PILL_IDS = ["railway-87", "pin-ding", "golf", "bay-cruise-87", "chicken-coup", "napoli"];
+export const HIDDEN_PILL_IDS = ["railway-87", "pin-ding", "golf", "bay-cruise-87", "chicken-coup", "napoli", "poolside-87"];
+
+/**
+ * "Exclusive for 87" activities kept out of the Group dashboard's interest clusters and filter
+ * (owner, 2026-11-19): MiEvento already runs these, so showing them would confuse people.
+ * Chiva 87 ("cruise-87") is the one exclusive that stays.
+ */
+export const DASHBOARD_HIDDEN_IDS = ["railway-87", "bay-cruise-87", "golf", "pin-ding", "poolside-87"];
 
 /** Typical time-of-day for an activity, used to auto-slot a group-planned sub-event. */
 type TimeOfDay = "evening" | "afternoon" | "day" | "any";

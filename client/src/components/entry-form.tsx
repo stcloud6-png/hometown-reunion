@@ -13,7 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CalendarRange, CheckCircle2, ExternalLink, Lock, LogIn, Pencil, Sparkles, Ticket } from "lucide-react";
+import { CalendarRange, CheckCircle2, ExternalLink, Lock, LogIn, Pencil, Sparkles, Ticket, Users } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import VolunteerPromptDialog from "@/components/volunteer-prompt-dialog";
 import EventPickerField from "@/components/event-picker-field";
@@ -23,7 +24,7 @@ import { RosterClaim, YearbookConfirm } from "@/components/roster-claim";
 import { MissingPhotoUpload } from "@/components/missing-photos";
 import {
   buildClassEvents, applyAnswersToSlots, answersAfterCalendarEdit, applyYachtToSlots, checkChoice, clashesWith,
-  openSlots, slotIdLabel, yachtEvent, NAPOLI_KEY, YACHT_KEY,
+  openSlots, slotIdLabel, yachtEvent, whoIsGoing, whoPicksPills, NAPOLI_KEY, YACHT_KEY,
   type EventAnswers, type YachtStatus,
 } from "@/lib/class-events";
 import { findRepeat, type DedupeHit } from "@/lib/pill-dedupe";
@@ -170,6 +171,10 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
   const [attending, setAttending] = useState<boolean | null>(initial?.attending ?? null);
   // --- 2026-11 revamp: Yacht gate, events grid, pill timeslots -------------
   const catalog = useMemo(() => buildClassEvents(tickets), [tickets]);
+  // Who else has tickets / plans to go, per event (names only; yourself and test entries left out).
+  const whoGoing = useMemo(() => whoIsGoing(people ?? [], initial?.name ?? myRoster?.display_name), [people, initial?.name, myRoster?.display_name]);
+  // Same idea for the interest pills: who picked each pill, and which timeslots they picked for it.
+  const pillPeople = useMemo(() => whoPicksPills(people ?? [], initial?.name ?? myRoster?.display_name), [people, initial?.name, myRoster?.display_name]);
   const [yachtStatus, setYachtStatus] = useState<YachtStatus | null>(() => yachtFrom(initial));
   const [eventAnswers, setEventAnswers] = useState<EventAnswers>(() => answersFrom(initial));
   const [eventsDone, setEventsDone] = useState(Boolean(initial));
@@ -880,7 +885,7 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
       </Card>
       )}
 
-      {showYachtSection && <YachtGate value={yachtStatus} onChange={changeYacht} />}
+      {showYachtSection && <YachtGate value={yachtStatus} onChange={changeYacht} who={whoGoing[YACHT_KEY]} />}
 
       {showGridSection && (
         <ClassEventsGrid
@@ -892,6 +897,7 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
           onChange={changeAnswers}
           done={eventsDone}
           onDone={finishEvents}
+          who={whoGoing}
         />
       )}
 
@@ -1170,10 +1176,12 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
           <div className="flex flex-wrap gap-2">
             {visiblePills.map((activity) => {
               const active = interests.includes(activity.id);
+              const fans = pillPeople.byPill[activity.id] ?? [];
               return (
+                <Tooltip key={activity.id}>
+                <TooltipTrigger asChild>
                 <button
                   type="button"
-                  key={activity.id}
                   onClick={() => toggleInterest(activity.id)}
                   disabled={gatingActive && interestsConfirmed}
                   data-testid={`pill-interest-${activity.id}`}
@@ -1184,13 +1192,27 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
                 >
                   {activity.label}
                   {active && (pillSlots[activity.id]?.length ?? 0) > 0 && <span className="ml-1.5 rounded-full bg-primary-foreground/20 px-1.5 text-xs">{pillSlots[activity.id].length}</span>}
+                  {fans.length > 0 && (
+                    <span className={cn("ml-1.5 inline-flex items-center gap-0.5 text-xs", active ? "text-primary-foreground/80" : "text-muted-foreground")} data-testid={`pill-fans-${activity.id}`}>
+                      <Users className="h-3 w-3" />{fans.length}
+                    </span>
+                  )}
                 </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[260px] text-xs" data-testid={`pill-fans-tip-${activity.id}`}>
+                  {fans.length === 0 ? "No classmates have picked this yet." : <><strong>Interested ({fans.length}):</strong> {fans.join(", ")}</>}
+                </TooltipContent>
+                </Tooltip>
               );
             })}
           </div>
           {interests.filter((id) => visiblePills.some((a) => a.id === id)).length > 0 && (
             <div className="space-y-2 rounded-md border bg-muted/30 p-3" data-testid="pill-slot-picker">
               <p className="text-sm font-medium">When could you join?</p>
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="inline-block h-3 w-5 rounded-full border bg-background ring-2 ring-[hsl(43_85%_45%)]" aria-hidden="true" />
+                Gold ring + number = classmates who picked that time for the same activity (hover to see who).
+              </p>
               {freeSlots.length === 0 && <p className="text-xs text-muted-foreground">You have no Available or Maybe slots on your calendar — mark some above to pick times.</p>}
               {interests.filter((id) => visiblePills.some((a) => a.id === id)).map((id) => {
                 const label = visiblePills.find((a) => a.id === id)!.label;
@@ -1209,12 +1231,27 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
                         {freeSlots.map((slotId) => {
                           const on = chosen.includes(slotId);
                           const maybe = slots[slotId.split(":")[0]]?.[slotId.split(":")[1] as Period]?.s === "maybe";
-                          return (
+                          const others = pillPeople.bySlot[id]?.[slotId] ?? [];
+                          const btn = (
                             <button key={slotId} type="button" onClick={() => togglePillSlot(id, slotId)} aria-pressed={on}
-                              data-testid={`pill-slot-${id}-${slotId}`}
-                              className={cn("rounded-full border px-2.5 py-1 text-xs", on ? "border-primary bg-primary text-primary-foreground" : maybe ? "status-maybe" : "status-ok")}>
+                              data-testid={`pill-slot-${id}-${slotId}`} data-others={others.length || undefined}
+                              className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs",
+                                on ? "border-primary bg-primary text-primary-foreground" : maybe ? "status-maybe" : "status-ok",
+                                // Timeslots other classmates picked for this pill stand out with a gold ring.
+                                others.length > 0 && !on && (others.length >= 3 ? "ring-2 ring-[hsl(43_85%_45%)]" : "ring-1 ring-[hsl(43_85%_50%)]"))}>
                               {slotIdLabel(slotId)}{maybe ? " (maybe)" : ""}
+                              {others.length > 0 && (
+                                <span className={cn("rounded-full px-1.5 text-[10px] font-semibold", on ? "bg-primary-foreground/25" : "bg-[hsl(43_85%_50%)] text-black")}>
+                                  +{others.length}
+                                </span>
+                              )}
                             </button>
+                          );
+                          return others.length === 0 ? btn : (
+                            <Tooltip key={slotId}>
+                              <TooltipTrigger asChild>{btn}</TooltipTrigger>
+                              <TooltipContent className="max-w-[240px] text-xs"><strong>Also picked this time:</strong> {others.join(", ")}</TooltipContent>
+                            </Tooltip>
                           );
                         })}
                       </div>
