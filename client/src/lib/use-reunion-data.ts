@@ -17,6 +17,9 @@ import {
   supabaseAuth,
   supabaseRest,
   supabaseRpc,
+  supabaseSignedUrls,
+  supabaseUpload,
+  shrinkImage,
   parseAuthHashFragment,
 } from "./reunion";
 
@@ -51,6 +54,32 @@ export interface YearbookOverlay {
   honor: boolean;
   categories: string[];
 }
+
+/** A classmate's own photo, for those with no senior portrait (public once approved). */
+export interface MissingPhoto {
+  id: string;
+  display_name: string;
+  url: string;
+  /** Same internal labels as the yearbook: "2026" (paid) / "2026 - Unconfirmed" / null. */
+  watermark: string | null;
+}
+/** The signed-in classmate's own photo status. */
+export interface MyMissingPhoto {
+  eligible: boolean;
+  status: "pending" | "approved" | null;
+  url: string | null;
+}
+/** Admin list row (incl. photos waiting for approval). */
+export interface AdminMissingPhoto {
+  id: string;
+  roster_id: string;
+  display_name: string;
+  status: "pending" | "approved";
+  created_at: string;
+  url: string | null;
+}
+const PHOTO_BUCKET = "missing-photos";
+const newPhotoPath = () => `uploads/${crypto.randomUUID()}.jpg`;
 
 const PENDING_CLAIM_KEY = "czr-pending-claim";
 export interface PendingClaim { rosterId: string | null; name: string }
@@ -142,6 +171,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const [weather, setWeather] = useState<WeatherRow[]>([]);
   const [myRoster, setMyRoster] = useState<MyRoster | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [myMissingPhoto, setMyMissingPhoto] = useState<MyMissingPhoto | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -178,6 +208,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         setIsTestAccount(stubTest);
         setLedActivityIds(session ? ["napoli"] : []);
         setMyRoster(session ? stubMyRoster(session.email, readPendingClaim()) : null);
+        setMyMissingPhoto(session && !stubAdmin ? stubMyMissingPhoto(session.email) : null);
         return;
       }
       const token = session?.accessToken ?? null;
@@ -227,7 +258,15 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         void supabaseRpc<MyRoster[]>("my_roster", {}, token)
           .then((rows) => setMyRoster(Array.isArray(rows) && rows[0] ? rows[0] : null))
           .catch(() => setMyRoster(null));
-      } else setMyRoster(null);
+        void supabaseRpc<{ eligible: boolean; storage_path: string | null; status: "pending" | "approved" | null }[]>("my_missing_photo", {}, token)
+          .then(async (rows) => {
+            const row = Array.isArray(rows) ? rows[0] : null;
+            if (!row) { setMyMissingPhoto(null); return; }
+            const urls = row.storage_path ? await supabaseSignedUrls(PHOTO_BUCKET, [row.storage_path], token) : {};
+            setMyMissingPhoto({ eligible: row.eligible, status: row.status, url: row.storage_path ? urls[row.storage_path] ?? null : null });
+          })
+          .catch(() => setMyMissingPhoto(null));
+      } else { setMyRoster(null); setMyMissingPhoto(null); }
       const [myRows, admin, tester, led] = mineRes;
       setMyEntry(Array.isArray(myRows) && myRows[0] ? myRows[0] : null);
       setIsAdmin(admin === true);
@@ -646,9 +685,78 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     return supabaseRpc<YearbookOverlay[]>("yearbook_overlays", {}, session?.accessToken ?? null);
   }, [stub, session]);
 
+  /** Approved missing-classmate photos for the yearbook pop-up (public). */
+  const fetchMissingPhotos = useCallback(async (): Promise<MissingPhoto[]> => {
+    if (stub) return stubPhotos.filter((p) => p.status === "approved").map(({ id, display_name, url, watermark }) => ({ id, display_name, url, watermark }));
+    const token = session?.accessToken ?? null;
+    const rows = await supabaseRpc<{ id: string; display_name: string; storage_path: string; watermark: string | null }[]>("missing_photos_public", {}, token);
+    const urls = await supabaseSignedUrls(PHOTO_BUCKET, rows.map((r) => r.storage_path), token);
+    return rows.filter((r) => urls[r.storage_path]).map((r) => ({ id: r.id, display_name: r.display_name, url: urls[r.storage_path], watermark: r.watermark }));
+  }, [stub, session]);
+
+  /** Signed-in classmate with no senior portrait: upload their own photo (waits for admin approval). */
+  const uploadMyMissingPhoto = useCallback(async (file: File) => {
+    if (!session) throw new Error("sign-in required");
+    const blob = await shrinkImage(file);
+    if (stub) {
+      const url = URL.createObjectURL(blob);
+      const name = myRoster?.display_name ?? "You";
+      stubPhotos = stubPhotos.filter((p) => !(p.display_name === name && p.status === "pending"));
+      stubPhotos.push({ id: `s-${Date.now()}`, roster_id: myRoster?.id ?? "r-me", display_name: name, url, watermark: "2026 - Unconfirmed", status: "pending", created_at: new Date().toISOString() });
+      setMyMissingPhoto({ eligible: true, status: "pending", url });
+      return;
+    }
+    const path = newPhotoPath();
+    await supabaseUpload(PHOTO_BUCKET, path, blob, session.accessToken);
+    await supabaseRpc("submit_missing_photo", { p_path: path }, session.accessToken);
+    await load();
+  }, [session, stub, load, myRoster]);
+
+  const fetchAdminMissingPhotos = useCallback(async (): Promise<AdminMissingPhoto[]> => {
+    if (stub) return stubPhotos.map(({ id, roster_id, display_name, status, created_at, url }) => ({ id, roster_id, display_name, status, created_at, url }));
+    if (!session) return [];
+    const rows = await supabaseRpc<(Omit<AdminMissingPhoto, "url"> & { storage_path: string })[]>("admin_missing_photos", {}, session.accessToken);
+    const urls = await supabaseSignedUrls(PHOTO_BUCKET, rows.map((r) => r.storage_path), session.accessToken);
+    return rows.map(({ storage_path, ...r }) => ({ ...r, url: urls[storage_path] ?? null }));
+  }, [stub, session]);
+
+  /** Admin: upload a photo for any classmate on the list (shows right away). */
+  const adminAddMissingPhoto = useCallback(async (rosterId: string, file: File) => {
+    if (!session) throw new Error("sign-in required");
+    const blob = await shrinkImage(file);
+    if (stub) {
+      const name = roster.find((r) => r.id === rosterId)?.display_name ?? "Classmate";
+      stubPhotos = stubPhotos.filter((p) => p.roster_id !== rosterId);
+      stubPhotos.push({ id: `s-${Date.now()}`, roster_id: rosterId, display_name: name, url: URL.createObjectURL(blob), watermark: "2026 - Unconfirmed", status: "approved", created_at: new Date().toISOString() });
+      return;
+    }
+    const path = newPhotoPath();
+    await supabaseUpload(PHOTO_BUCKET, path, blob, session.accessToken);
+    await supabaseRpc("admin_add_missing_photo", { p_roster_id: rosterId, p_path: path }, session.accessToken);
+  }, [session, stub, roster]);
+
+  /** Admin: approve (show in the pop-up) or remove a photo. */
+  const adminReviewMissingPhoto = useCallback(async (id: string, approve: boolean) => {
+    if (stub) {
+      const target = stubPhotos.find((p) => p.id === id);
+      stubPhotos = stubPhotos
+        .filter((p) => !(approve && target && p.roster_id === target.roster_id && p.status === "approved" && p.id !== id))
+        .flatMap((p) => (p.id !== id ? [p] : approve ? [{ ...p, status: "approved" as const }] : []));
+      return;
+    }
+    if (!session) throw new Error("sign-in required");
+    await supabaseRpc("admin_review_missing_photo", { p_id: id, p_approve: approve }, session.accessToken);
+  }, [session, stub]);
+
   return {
     weather,
     roster,
+    myMissingPhoto,
+    fetchMissingPhotos,
+    uploadMyMissingPhoto,
+    fetchAdminMissingPhotos,
+    adminAddMissingPhoto,
+    adminReviewMissingPhoto,
     myRoster,
     claimError,
     claimPending,
@@ -725,6 +833,22 @@ function stubMyRoster(email: string, pending?: PendingClaim | null): MyRoster | 
   if (picked) return { id: picked.id, display_name: picked.display_name, status: "claimed", yearbook_name: null, yearbook_confirmed: true, page: null, box: null };
   if (pending && !pending.rosterId) return { id: "r-new", display_name: pending.name, status: "pending_review", yearbook_name: null, yearbook_confirmed: false, page: null, box: null };
   return null;
+}
+
+/** Demo placeholder "photo" (a plain silhouette card — never a real person). */
+function demoPhoto(initials: string, hue: number): string {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='380'><rect width='300' height='380' fill='hsl(${hue},35%,78%)'/><circle cx='150' cy='150' r='70' fill='hsl(${hue},25%,55%)'/><rect x='55' y='235' width='190' height='160' rx='90' fill='hsl(${hue},25%,55%)'/><text x='150' y='365' font-family='Georgia' font-size='34' text-anchor='middle' fill='white'>${initials}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+type StubPhoto = AdminMissingPhoto & { url: string; watermark: string | null };
+let stubPhotos: StubPhoto[] = [
+  { id: "s-1", roster_id: "r-bell", display_name: "Robert Bell", url: demoPhoto("RB", 205), watermark: "2026 - Unconfirmed", status: "approved", created_at: "2026-11-19T16:00:00Z" },
+  { id: "s-2", roster_id: "r-bolton", display_name: "Venus Bolton", url: demoPhoto("VB", 330), watermark: "2026", status: "approved", created_at: "2026-11-19T16:05:00Z" },
+  { id: "s-3", roster_id: "r-hutto", display_name: "Celeste Hutto", url: demoPhoto("CH", 140), watermark: "2026 - Unconfirmed", status: "pending", created_at: "2026-11-19T16:10:00Z" },
+];
+/** Demo: "photo@…" signs in as a classmate with no senior portrait (can add a photo). */
+function stubMyMissingPhoto(email: string): MyMissingPhoto | null {
+  return /^photo@/i.test(email) ? { eligible: true, status: null, url: null } : { eligible: false, status: null, url: null };
 }
 
 const DEMO_OVERLAYS: YearbookOverlay[] = [

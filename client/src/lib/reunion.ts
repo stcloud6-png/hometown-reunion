@@ -1266,6 +1266,47 @@ export async function supabaseRest<T = unknown>(
 
 export { STORAGE_KEYS };
 
+/** Upload one file to a Supabase Storage bucket as the signed-in user (bucket policies decide who may). */
+export async function supabaseUpload(bucket: string, path: string, file: Blob, accessToken: string): Promise<void> {
+  const { url, key } = requireEnv();
+  const token = await freshAccessToken(accessToken);
+  if (!token) throw new Error("sign-in required");
+  const res = await fetch(`${url}/storage/v1/object/${bucket}/${path}`, {
+    method: "POST",
+    headers: { apikey: key, Authorization: `Bearer ${token}`, "Content-Type": file.type || "image/jpeg", "x-upsert": "false" },
+    body: file,
+  });
+  if (!res.ok) throw new Error(`Upload failed (${res.status}): ${await res.text().catch(() => "")}`);
+}
+
+/** Short-lived links for files in a private bucket. Only files the caller may read come back with a link. */
+export async function supabaseSignedUrls(bucket: string, paths: string[], accessToken?: string | null, expiresIn = 3600): Promise<Record<string, string>> {
+  if (paths.length === 0) return {};
+  const { url, key } = requireEnv();
+  const token = accessToken ? await freshAccessToken(accessToken) : null;
+  const res = await fetch(`${url}/storage/v1/object/sign/${bucket}`, {
+    method: "POST",
+    headers: { apikey: key, Authorization: `Bearer ${token || key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ expiresIn, paths }),
+  });
+  if (!res.ok) return {};
+  const rows = (await res.json()) as { path?: string; signedURL?: string | null; error?: string | null }[];
+  const out: Record<string, string> = {};
+  for (const r of rows) if (r.path && r.signedURL) out[r.path] = `${url}/storage/v1${r.signedURL}`;
+  return out;
+}
+
+/** Shrink a photo in the browser before upload (longest side ≤ maxSide, JPEG). Keeps uploads small and strips camera metadata. */
+export async function shrinkImage(file: File, maxSide = 1200): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Couldn't read that image."))), "image/jpeg", 0.88));
+}
+
 const VISITOR_KEY_STORAGE = "hr-visitor-key";
 
 // Deliberately raw `localStorage`, not the window.name-based `storage` helper

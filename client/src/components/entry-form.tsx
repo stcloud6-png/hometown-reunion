@@ -20,13 +20,14 @@ import EventPickerField from "@/components/event-picker-field";
 import RollCallBar from "@/components/roll-call-bar";
 import { ClassEventsGrid, YachtGate } from "@/components/class-events-grid";
 import { RosterClaim, YearbookConfirm } from "@/components/roster-claim";
+import { MissingPhotoUpload } from "@/components/missing-photos";
 import {
   buildClassEvents, applyAnswersToSlots, answersAfterCalendarEdit, applyYachtToSlots, checkChoice, clashesWith,
   openSlots, slotIdLabel, yachtEvent, NAPOLI_KEY, YACHT_KEY,
   type EventAnswers, type YachtStatus,
 } from "@/lib/class-events";
 import { findRepeat, type DedupeHit } from "@/lib/pill-dedupe";
-import type { MyRoster, RosterEntry } from "@/lib/use-reunion-data";
+import type { MyMissingPhoto, MyRoster, RosterEntry } from "@/lib/use-reunion-data";
 import { useToast } from "@/hooks/use-toast";
 import {
   type Activity,
@@ -95,6 +96,8 @@ interface EntryFormProps {
   /** Class roster for "find your name" (2026-11 revamp). */
   roster?: RosterEntry[];
   myRoster?: MyRoster | null;
+  myMissingPhoto?: MyMissingPhoto | null;
+  onUploadMissingPhoto?: (file: File) => Promise<void>;
   claimError?: string | null;
   onConfirmYearbook?: (yes: boolean) => Promise<void>;
 }
@@ -148,7 +151,7 @@ const LEGEND_ITEMS: { status: SlotStatus; label: string; hint: string }[] = [
   { status: "private", label: "Private", hint: "Private / unavailable" },
 ];
 
-export default function EntryForm({ initial, activities, eventPlans, tickets = [], onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus, myIdentity, onSignOut, linkError, onCheckEmailTaken, roster = [], myRoster = null, claimError, onConfirmYearbook }: EntryFormProps) {
+export default function EntryForm({ initial, activities, eventPlans, tickets = [], onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus, myIdentity, onSignOut, linkError, onCheckEmailTaken, roster = [], myRoster = null, claimError, onConfirmYearbook, myMissingPhoto = null, onUploadMissingPhoto }: EntryFormProps) {
   const { toast } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
@@ -801,6 +804,10 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
       </Card>
       )}
       {myRoster && onConfirmYearbook && <YearbookConfirm mine={myRoster} onAnswer={onConfirmYearbook} />}
+      {/* No senior portrait (and no open "Is this you?" question): offer to add their own photo. */}
+      {myRoster && myMissingPhoto && onUploadMissingPhoto && !(myRoster.yearbook_name && !myRoster.yearbook_confirmed) && (
+        <MissingPhotoUpload mine={myMissingPhoto} onUpload={onUploadMissingPhoto} />
+      )}
       {!myRoster && claimError && <p className="text-sm text-destructive" data-testid="text-claim-error">{claimError}</p>}
 
       {showDatesSection && (
