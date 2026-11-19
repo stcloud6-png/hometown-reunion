@@ -10,12 +10,17 @@ import type { YearbookOverlay } from "@/lib/use-reunion-data";
 /** Border colour per category (Honor Graduates + teams from the sports pages). */
 export const BORDER_COLORS: Record<string, string> = {
   Honor: "#d4a017",
+  Football: "#8b5a2b",
+  Cheerleading: "#e84393",
   Basketball: "#e4572e",
   Baseball: "#2e6fd8",
   Tennis: "#2e9e57",
   Swimming: "#0aa3a3",
-  "Sports Shorts": "#8e44ad",
+  Track: "#6c5ce7",
+  "Sports Shorts": "#7f8c8d",
 };
+const CATEGORY_LABEL: Record<string, string> = { Honor: "Honor Graduates" };
+const slug = (c: string) => c.toLowerCase().replace(/[^a-z]+/g, "-");
 
 const TOTAL_PAGES = 173;
 
@@ -41,11 +46,14 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
           draggable={false}
         />
         {overlays?.map((o, i) => {
-          const cats = [...(o.honor ? ["Honor"] : []), ...o.categories].slice(0, 3);
-          const ring = cats.map((c, k) => `0 0 0 ${(k + 1) * 3}px ${BORDER_COLORS[c] ?? "#888"}`).join(", ");
+          const cats = [...(o.honor ? ["Honor"] : []), ...o.categories];
           return (
             <div key={i} className="pointer-events-none absolute" style={{ left: `${o.box[0]}%`, top: `${o.box[1]}%`, width: `${o.box[2]}%`, height: `${o.box[3]}%` }}>
-              {ring && <div className="yb-border absolute inset-0 rounded-[2px]" style={{ boxShadow: ring }} />}
+              {/* One frame per category, nested outward; each shows only while its own button is on. */}
+              {cats.map((c, k) => (
+                <div key={c} className={`yb-ring yb-ring-${slug(c)} absolute rounded-[2px] border-[3px]`}
+                  style={{ inset: `${-3 * (k + 1)}px`, borderColor: BORDER_COLORS[c] ?? "#888" }} />
+              ))}
               {o.watermark && (
                 // Level, yellow, in a bottom band no taller than 15% of the photo.
                 <div className="yb-wm absolute inset-x-0 bottom-0 h-[15%] items-center justify-center overflow-hidden" style={{ containerType: "size" }}>
@@ -78,7 +86,9 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
   const [jumpValue, setJumpValue] = useState("");
   const [overlays, setOverlays] = useState<YearbookOverlay[] | null>(fetchOverlays ? null : []);
   const [showWatermarks, setShowWatermarks] = useState(false);
-  const [showBorders, setShowBorders] = useState(false);
+  // Honor Graduates frames are on when the yearbook opens; every team is its own button, off until clicked.
+  const [activeCats, setActiveCats] = useState<string[]>(["Honor"]);
+  const toggleCat = (c: string) => setActiveCats((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
   // Load overlay data once, the first time the yearbook opens. The flipbook waits for it
   // (or for a failure) so pages render with their overlays from the start.
@@ -133,7 +143,7 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
         </DialogHeader>
 
         <div
-          className={cn("yearbook-stage flex flex-1 items-center justify-center overflow-hidden rounded-md bg-muted/40 py-2", showWatermarks && "show-wm", showBorders && "show-borders")}
+          className={cn("yearbook-stage flex flex-1 items-center justify-center overflow-hidden rounded-md bg-muted/40 py-2", showWatermarks && "show-wm", activeCats.map((c) => `show-${slug(c)}`))}
           data-testid="yearbook-stage"
         >
           {overlays === null ? (
@@ -185,18 +195,6 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
             <span className="text-sm text-muted-foreground" data-testid="text-yearbook-page-count">
               Page {currentPage + 1} of {TOTAL_PAGES}
             </span>
-            {(overlays?.length ?? 0) > 0 && (
-              <>
-                <Button variant={showWatermarks ? "default" : "outline"} size="sm" aria-pressed={showWatermarks}
-                  onClick={() => setShowWatermarks((v) => !v)} data-testid="button-yearbook-watermarks">
-                  <Stamp className="mr-1 h-4 w-4" /> 2026
-                </Button>
-                <Button variant={showBorders ? "default" : "outline"} size="sm" aria-pressed={showBorders}
-                  onClick={() => setShowBorders((v) => !v)} data-testid="button-yearbook-borders">
-                  <Award className="mr-1 h-4 w-4" /> Honors &amp; teams
-                </Button>
-              </>
-            )}
           </div>
           <div className="flex items-center gap-2">
             <Input
@@ -215,14 +213,24 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
             </Button>
           </div>
         </div>
-        {showBorders && legend.length > 0 && (
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground" data-testid="yearbook-border-legend">
-            {legend.map((k) => (
-              <span key={k} className="flex items-center gap-1.5">
-                <span className="inline-block h-3 w-3 rounded-sm border-2" style={{ borderColor: BORDER_COLORS[k] }} />
-                {k === "Honor" ? "Honor Graduate" : k}
-              </span>
-            ))}
+        {(overlays?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" data-testid="yearbook-overlay-buttons">
+            <Button variant={showWatermarks ? "default" : "outline"} size="sm" className="h-8" aria-pressed={showWatermarks}
+              onClick={() => setShowWatermarks((v) => !v)} data-testid="button-yearbook-watermarks">
+              <Stamp className="mr-1 h-4 w-4" /> 2026
+            </Button>
+            {legend.map((c) => {
+              const on = activeCats.includes(c);
+              return (
+                <Button key={c} variant="outline" size="sm" aria-pressed={on} onClick={() => toggleCat(c)}
+                  className={cn("h-8 gap-1.5", on && "font-semibold")}
+                  style={on ? { borderColor: BORDER_COLORS[c], backgroundColor: `${BORDER_COLORS[c]}22` } : undefined}
+                  data-testid={`button-yearbook-cat-${slug(c)}`}>
+                  {c === "Honor" ? <Award className="h-4 w-4" style={{ color: BORDER_COLORS[c] }} /> : <span className="inline-block h-3 w-3 rounded-sm border-2" style={{ borderColor: BORDER_COLORS[c] }} />}
+                  {CATEGORY_LABEL[c] ?? c}
+                </Button>
+              );
+            })}
           </div>
         )}
       </DialogContent>
