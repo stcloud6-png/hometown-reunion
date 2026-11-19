@@ -27,10 +27,15 @@ function NameList({ title, names, tone }: { title: string; names: string[]; tone
 }
 
 /** Wraps an event's title: hovering (desktop) or tapping (phone) shows who has tickets and who plans to go. */
-function WhoPopover({ who, ticketLabel = "Have tickets", children, testId }: { who?: WhoGoing; ticketLabel?: string; children: React.ReactNode; testId: string }) {
+function WhoPopover({ who, ticketLabel = "Have tickets", paidOnly = false, children, testId }: {
+  who?: WhoGoing; ticketLabel?: string;
+  /** Show only the ticket/paid list (Yacht Club: planning and can't-make-it stay private). */
+  paidOnly?: boolean;
+  children: React.ReactNode; testId: string;
+}) {
   const [open, setOpen] = useState(false);
   const w = who ?? { purchased: [], planning: [] };
-  const total = w.purchased.length + w.planning.length;
+  const total = paidOnly ? w.purchased.length : w.purchased.length + w.planning.length;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -46,14 +51,14 @@ function WhoPopover({ who, ticketLabel = "Have tickets", children, testId }: { w
           {children}
           <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground underline decoration-dotted underline-offset-2">
             <Users className="h-3 w-3" />
-            {total === 0 ? "No classmates yet" : `${w.purchased.length} with tickets · ${w.planning.length} planning`}
+            {total === 0 ? "No classmates yet" : paidOnly ? `${w.purchased.length} ${ticketLabel.toLowerCase()}` : `${w.purchased.length} with tickets · ${w.planning.length} planning`}
           </span>
         </div>
       </PopoverTrigger>
       <PopoverContent side="right" align="start" className="w-72 space-y-2 p-3" onOpenAutoFocus={(e) => e.preventDefault()}
         onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} data-testid={`${testId}-list`}>
         <NameList title={ticketLabel} names={w.purchased} tone="ticket" />
-        <NameList title="Planning to go" names={w.planning} tone="plan" />
+        {!paidOnly && <NameList title="Planning to go" names={w.planning} tone="plan" />}
         <p className="border-t pt-1.5 text-[10px] text-muted-foreground">From what classmates have entered on this site.</p>
       </PopoverContent>
     </Popover>
@@ -74,7 +79,7 @@ export function YachtGate({ value, onChange, disabled, who }: { value: YachtStat
   return (
     <Card data-testid="card-yacht-gate">
       <CardHeader>
-        <WhoPopover who={who} ticketLabel="Paid" testId="who-yacht">
+        <WhoPopover who={who} ticketLabel="Paid" paidOnly testId="who-yacht">
           <CardTitle className="flex items-center gap-2"><Anchor className="h-5 w-5" /> Yacht Club '87 Dinner/Dance — Wed Jan 20, evening</CardTitle>
         </WhoPopover>
         <p className="text-sm text-muted-foreground">
@@ -163,7 +168,7 @@ export function ClassEventsGrid({ catalog, answers, yacht, arrival, departure, o
               <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 <th className="px-3 py-2">Event</th>
                 <th className="w-24 px-2 py-2 text-center sm:w-36">Plan / want to attend</th>
-                <th className="w-24 px-2 py-2 text-center sm:w-36">Have my ticket</th>
+                <th className="w-24 px-2 py-2 text-center sm:w-36">ALREADY HAVE MY TICKET</th>
               </tr>
             </thead>
             <tbody>

@@ -24,7 +24,7 @@ import { RosterClaim, YearbookConfirm } from "@/components/roster-claim";
 import { MissingPhotoUpload } from "@/components/missing-photos";
 import {
   buildClassEvents, applyAnswersToSlots, answersAfterCalendarEdit, applyYachtToSlots, checkChoice, clashesWith,
-  openSlots, slotIdLabel, yachtEvent, whoIsGoing, whoPicksPills, NAPOLI_KEY, YACHT_KEY,
+  openSlots, slotIdLabel, yachtEvent, whoIsGoing, whoPicksPills, effectiveAnswers, NAPOLI_KEY, YACHT_KEY,
   type EventAnswers, type YachtStatus,
 } from "@/lib/class-events";
 import { findRepeat, type DedupeHit } from "@/lib/pill-dedupe";
@@ -111,10 +111,9 @@ function yachtFrom(p?: Person | null): YachtStatus | null {
 }
 
 /** Saved grid answers; the Napoli pill carries over as "plan to attend" Napoli lunch (owner, 2026-11-19). */
+/** Starting answers: saved ones, plus what an older calendar implies (MiEvento on it = have the ticket). */
 function answersFrom(p?: Person | null): EventAnswers {
-  const a: EventAnswers = { ...(p?.event_answers ?? {}) };
-  if (p?.interests?.includes("napoli") && !a[NAPOLI_KEY]) a[NAPOLI_KEY] = "planning";
-  return a;
+  return p ? effectiveAnswers(p) : {};
 }
 
 /** Pill timeslot shades: 1, 2, 3+ classmates also picked that time (light → dark gold). */
@@ -1061,7 +1060,7 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
                       const current = slots[day.iso]?.[period] ?? { s: "ok" as SlotStatus };
                       const statusOptions = statusesForSlot(day.iso, period, current.s);
                       const options = [
-                        ...eventsForDate(day.iso, period).map((e) => ({ id: e.id, label: e.label, note: e.note, autoSlots: e.autoSlots })),
+                        ...eventsForDate(day.iso, period, current.t).map((e) => ({ id: e.id, label: e.label, note: e.note, autoSlots: e.autoSlots })),
                         ...groupPlannedEventsForDate(day.iso, eventPlans, activities, period),
                       ];
                       return (
