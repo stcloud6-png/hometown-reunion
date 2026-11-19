@@ -47,10 +47,14 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
             <div key={i} className="pointer-events-none absolute" style={{ left: `${o.box[0]}%`, top: `${o.box[1]}%`, width: `${o.box[2]}%`, height: `${o.box[3]}%` }}>
               {ring && <div className="yb-border absolute inset-0 rounded-[2px]" style={{ boxShadow: ring }} />}
               {o.watermark && (
-                <div className="yb-wm absolute inset-0 items-center justify-center overflow-hidden">
-                  <span className="flex -rotate-[28deg] flex-col items-center font-serif font-bold leading-none tracking-wide text-white/90 [text-shadow:0_1px_3px_rgba(0,0,0,.85)]">
-                    <span className="text-[clamp(14px,3vw,28px)]">2026</span>
-                    {o.watermark !== "2026" && <span className="mt-0.5 text-[clamp(6px,0.95vw,10px)] uppercase tracking-normal">{o.watermark.replace(/^2026\s*-\s*/, "")}</span>}
+                // Level, yellow, in a bottom band no taller than 15% of the photo.
+                <div className="yb-wm absolute inset-x-0 bottom-0 h-[15%] items-center justify-center overflow-hidden" style={{ containerType: "size" }}>
+                  <span
+                    className="whitespace-nowrap font-sans font-bold leading-none text-[#ffd400] [text-shadow:0_0_2px_rgba(0,0,0,.9),0_1px_2px_rgba(0,0,0,.9)]"
+                    style={{ fontSize: o.watermark === "2026" ? "62cqh" : "min(52cqh, 7.6cqw)" }}
+                    data-testid="yearbook-watermark"
+                  >
+                    {o.watermark === "2026" ? "2026" : "2026 \u2013 Unconfirmed"}
                   </span>
                 </div>
               )}
