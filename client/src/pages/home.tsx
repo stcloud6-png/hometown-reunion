@@ -6,6 +6,7 @@ import Dashboard from "@/components/dashboard";
 import RollCallBar from "@/components/roll-call-bar";
 import SettingsPopover from "@/components/settings-popover";
 import YearbookViewer from "@/components/yearbook-viewer";
+import { AdminMissingPhotos } from "@/components/missing-photos";
 import { TicketWatchCard, TicketWatchMobile } from "@/components/ticket-watch";
 import { WeatherCorner } from "@/components/weather-corner";
 import { cn } from "@/lib/utils";
@@ -218,6 +219,7 @@ export default function Home() {
             />
             <div id="entry-form" className="scroll-mt-20" />
             {data.isAdmin && !data.isTestAccount ? (
+              <>
               <div className="mx-auto max-w-xl rounded-lg border border-dashed bg-muted/40 p-5 text-center" data-testid="notice-admin-no-entry">
                 <p className="font-semibold">You're signed in with an admin account</p>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -229,6 +231,8 @@ export default function Home() {
                   <Button size="sm" variant="outline" onClick={data.signOut} data-testid="button-admin-sign-out">Sign out of admin</Button>
                 </div>
               </div>
+              <AdminMissingPhotos roster={data.roster} fetchAll={data.fetchAdminMissingPhotos} onAdd={data.adminAddMissingPhoto} onReview={data.adminReviewMissingPhoto} />
+              </>
             ) : (
             <EntryForm
               initial={data.myPerson(data.sessionEmail)}
@@ -256,6 +260,8 @@ export default function Home() {
               myRoster={data.myRoster}
               claimError={data.claimError}
               onConfirmYearbook={data.confirmMyYearbook}
+              myMissingPhoto={data.myMissingPhoto}
+              onUploadMissingPhoto={data.uploadMyMissingPhoto}
             />
             )}
           </>
@@ -291,7 +297,7 @@ export default function Home() {
         CZR BHS87 Reunion &middot; Jan 9 &ndash; 30, 2027 &middot; Mark once, meet more.
       </footer>
 
-      <YearbookViewer open={yearbookOpen} onOpenChange={setYearbookOpen} fetchOverlays={data.fetchYearbookOverlays} />
+      <YearbookViewer open={yearbookOpen} onOpenChange={setYearbookOpen} fetchOverlays={data.fetchYearbookOverlays} fetchMissingPhotos={data.fetchMissingPhotos} />
     </div>
   );
 }

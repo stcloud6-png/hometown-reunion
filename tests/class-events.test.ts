@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import {
   buildClassEvents, checkChoice, toggleChoice, applyAnswersToSlots, answersAfterCalendarEdit,
-  applyYachtToSlots, openSlots, periodsForTimeText, calendarIdForTicket, NAPOLI_KEY, YACHT_KEY,
+  applyYachtToSlots, openSlots, periodsForTimeText, calendarIdForTicket, whoIsGoing, whoPicksPills, NAPOLI_KEY, YACHT_KEY,
   type CheckContext,
 } from "../client/src/lib/class-events";
 import { findRepeat, words, type DedupeTarget } from "../client/src/lib/pill-dedupe";
-import { initSlots, labelForTag, BASE_ACTIVITIES } from "../client/src/lib/reunion";
+import { initSlots, labelForTag, BASE_ACTIVITIES, canonicalSlots, eventsForDate, groupPlannedEventsForDate, applyGroupPlanDefaults } from "../client/src/lib/reunion";
 import type { TicketWatchRow } from "../client/src/lib/ticket-watch";
 
 // Live MiEvento snapshot as of 2026-11-19.
@@ -167,5 +167,35 @@ for (const [s, id] of rejects) {
 const accepts = ["Salsa lessons", "Sunset sail", "Poker", "Zip lining", "Tango", "Kayaking", "Wine tasting"];
 for (const s of accepts) assert.equal(findRepeat(s, targets), null, `should accept "${s}" (hit: ${JSON.stringify(findRepeat(s, targets))})`);
 assert.deepEqual(words("Exclusive Bay Cruise for 87"), ["bay", "cruise"]);
+
+// Who's going / who picked a pill: names only, self and test entries left out.
+{
+  const ppl = [
+    { name: "Ann", event_answers: { "golf-21": "purchased" as const }, yacht_status: "paid", interests: ["karaoke", "napoli"], pill_slots: { karaoke: ["2027-01-21:evening"], bowling: ["2027-01-22:evening"] } },
+    { name: "Bob", event_answers: { "golf-21": "planning" as const, [NAPOLI_KEY]: "purchased" as const }, yacht_status: "planning", interests: ["karaoke"], pill_slots: { karaoke: ["2027-01-21:evening", "2027-01-22:afternoon"] } },
+    { name: "Me", event_answers: { "golf-21": "purchased" as const }, yacht_status: "paid", interests: ["karaoke"], pill_slots: { karaoke: ["2027-01-21:evening"] } },
+    { name: "Tester", is_test: true, event_answers: { "golf-21": "purchased" as const }, yacht_status: "paid", interests: ["karaoke"] },
+    { name: "Cy", yacht_status: "not_attending", interests: [] },
+  ];
+  const who = whoIsGoing(ppl, "me");
+  assert.deepEqual(who["golf-21"], { purchased: ["Ann"], planning: ["Bob"] });
+  assert.deepEqual(who[YACHT_KEY], { purchased: ["Ann"], planning: ["Bob"] });
+  assert.deepEqual(who[NAPOLI_KEY], { purchased: ["Bob"], planning: ["Ann"] }); // Ann's Napoli pill counts as planning
+  const pills = whoPicksPills(ppl, "Me");
+  assert.deepEqual(pills.byPill.karaoke, ["Ann", "Bob"]);
+  assert.deepEqual(pills.bySlot.karaoke["2027-01-21:evening"], ["Ann", "Bob"]);
+  assert.equal(pills.bySlot.bowling, undefined); // slot picks for a pill they no longer have are ignored
+}
+
+// One Napoli: Wed 20 afternoon offers only "Napoli Lunch (BHS '87)"; old "czr-napoli" tags read as it.
+{
+  const plans = [{ activity_id: "napoli", status: "open" as const, event_date: "2027-01-20", start_time: "11:30am", venue: "Napoli", max_size: 50 }];
+  const opts = [...eventsForDate("2027-01-20", "a").map((e) => e.label), ...groupPlannedEventsForDate("2027-01-20", plans, BASE_ACTIVITIES, "a").map((e) => e.label)];
+  assert.deepEqual(opts.filter((l) => /napoli/i.test(l)), ["Napoli Lunch (BHS '87)"]);
+  assert.equal(labelForTag("czr-napoli", BASE_ACTIVITIES), "Napoli Lunch (BHS '87)");
+  assert.equal(canonicalSlots({ "2027-01-20": { m: { s: "ok" }, a: { s: "busy", t: "czr-napoli" }, e: { s: "ok" } } })["2027-01-20"].a.t, NAPOLI_KEY);
+  const fresh = applyGroupPlanDefaults(initSlots("2027-01-17", "2027-01-24"), plans);
+  assert.notEqual(fresh["2027-01-20"].a.t, "czr-napoli"); // Napoli comes from the events list, not a default
+}
 
 console.log("class-events + pill-dedupe tests passed");

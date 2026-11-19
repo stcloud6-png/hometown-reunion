@@ -27,6 +27,7 @@ import {
   type Person,
   CLUSTER_RESOURCE_LINKS,
   CLUSTER_THRESHOLDS,
+  DASHBOARD_HIDDEN_IDS,
   DAYS,
   EVENT_PLAN_STATUS_LABEL,
   EXPECTED_HEADCOUNT,
@@ -165,11 +166,13 @@ export default function Dashboard({
     exportAvailabilityCsv(people, activities, emails);
   }
   const [interestFilter, setInterestFilter] = useState<string | null>(null);
-  const pillCounts = useMemo(() => interestPillCounts(people, activities), [people, activities]);
+  // MiEvento-duplicate "exclusive 87" activities are left out of the dashboard (Chiva 87 stays).
+  const dashActivities = useMemo(() => activities.filter((a) => !DASHBOARD_HIDDEN_IDS.includes(a.id)), [activities]);
+  const pillCounts = useMemo(() => interestPillCounts(people, dashActivities), [people, dashActivities]);
   const filteredPeople = useMemo(() => scopeByInterest(people, interestFilter), [people, interestFilter]);
 
   const rankedWindows = useMemo(() => bestWindowsRanked(filteredPeople, 6), [filteredPeople]);
-  const clusters = useMemo(() => clusterSummaries(filteredPeople, activities), [filteredPeople, activities]);
+  const clusters = useMemo(() => clusterSummaries(filteredPeople, dashActivities), [filteredPeople, dashActivities]);
   const commitments = useMemo(() => sharedCommitments(people), [people]);
   const lastEditor = useMemo(() => mostRecentEditor(people), [people]);
   const lastFiveEditors = useMemo(() => recentEditors(people, 5), [people]);
@@ -447,7 +450,7 @@ export default function Dashboard({
             <tbody>
               {filteredPeople.map((p) => {
                 const interestLabels = p.interests
-                  .map((id) => activities.find((a) => a.id === id)?.label)
+                  .map((id) => dashActivities.find((a) => a.id === id)?.label)
                   .filter((l): l is string => !!l);
                 const mieventoLabels = new Set<string>();
                 for (const day of Object.values(p.slots ?? {})) {

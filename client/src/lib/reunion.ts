@@ -185,7 +185,8 @@ export const CLUSTER_THRESHOLDS: ClusterThresholds = {
 
 /** Baseline interest/activity pills (BHS87-only activities the group can organize). */
 export const BASE_ACTIVITIES: Activity[] = [
-  { id: "napoli", label: "Napoli Restaurant" },
+  // One Napoli everywhere (owner, 2026-11-19): same name as the class event "napoli-lunch-20".
+  { id: "napoli", label: "Napoli Lunch (BHS '87)" },
   { id: "casino", label: "Casino Night" },
   { id: "deep-sea-fishing", label: "Charter Deep-Sea Fishing but send catch to restaurant" },
   { id: "coronado", label: "Coronado Beach" },
@@ -213,7 +214,14 @@ export const BASE_ACTIVITIES: Activity[] = [
  * Pills no longer shown or offered: the first five duplicate MiEvento events, and Napoli is now
  * a class event in the events grid. Existing picks stay in the database untouched.
  */
-export const HIDDEN_PILL_IDS = ["railway-87", "pin-ding", "golf", "bay-cruise-87", "chicken-coup", "napoli"];
+export const HIDDEN_PILL_IDS = ["railway-87", "pin-ding", "golf", "bay-cruise-87", "chicken-coup", "napoli", "poolside-87"];
+
+/**
+ * "Exclusive for 87" activities kept out of the Group dashboard's interest clusters and filter
+ * (owner, 2026-11-19): MiEvento already runs these, so showing them would confuse people.
+ * Chiva 87 ("cruise-87") is the one exclusive that stays.
+ */
+export const DASHBOARD_HIDDEN_IDS = ["railway-87", "bay-cruise-87", "golf", "pin-ding", "poolside-87"];
 
 /** Typical time-of-day for an activity, used to auto-slot a group-planned sub-event. */
 type TimeOfDay = "evening" | "afternoon" | "day" | "any";
@@ -596,7 +604,8 @@ export function fromGroupPlannedId(id: string): string {
 }
 
 /** Human label for any busy-slot tag id, prefixing "(BHS87 event)" for czr- ids. */
-export function labelForTag(tag: string, activities: Activity[]): string {
+export function labelForTag(rawTag: string, activities: Activity[]): string {
+  const tag = canonicalTag(rawTag) ?? rawTag;
   if (isGroupPlannedId(tag)) {
     const activityId = fromGroupPlannedId(tag);
     const base = activities.find((a) => a.id === activityId)?.label ?? BASE_ACTIVITIES.find((a) => a.id === activityId)?.label ?? activityId;
@@ -638,9 +647,36 @@ export function eventCategoryClass(tag: string | undefined): string | undefined 
  * When `period` is given, applies the same evening-only/day-only restriction as
  * `eventsForDate()` so a group-planned evening activity doesn't leak into Morning/Afternoon
  * (and vice versa). */
+/**
+ * Group plans already covered by a fixed class event, so they never show a second, look-alike option:
+ * the Napoli plan IS the "Napoli Lunch (BHS '87)" event (napoli-lunch-20).
+ */
+const PLAN_COVERED_BY_EVENT: Record<string, string> = { napoli: "napoli-lunch-20" };
+
+/** Old saved tags that now mean a fixed class event (e.g. "czr-napoli" → "napoli-lunch-20"). */
+export function canonicalTag(tag: string | undefined): string | undefined {
+  if (!tag || !isGroupPlannedId(tag)) return tag;
+  return PLAN_COVERED_BY_EVENT[fromGroupPlannedId(tag)] ?? tag;
+}
+
+/** Rewrites old look-alike tags in a person's calendar to the one canonical event id (read-time only). */
+export function canonicalSlots(slots: PersonSlots | null | undefined): PersonSlots {
+  const out: PersonSlots = {};
+  for (const [day, periods] of Object.entries(slots ?? {})) {
+    const d: PersonSlots[string] = { ...periods };
+    for (const per of Object.keys(d) as Period[]) {
+      const slot = d[per];
+      const t = canonicalTag(slot?.t);
+      if (slot && t !== slot.t) d[per] = { ...slot, t };
+    }
+    out[day] = d;
+  }
+  return out;
+}
+
 export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], activities: Activity[], period?: Period): { id: string; label: string; note?: string; autoSlots: Period[] }[] {
   return eventPlans
-    .filter((p) => p.status === "open" && p.event_date === iso)
+    .filter((p) => p.status === "open" && p.event_date === iso && !PLAN_COVERED_BY_EVENT[p.activity_id])
     .map((p) => {
       const base = activities.find((a) => a.id === p.activity_id) ?? BASE_ACTIVITIES.find((a) => a.id === p.activity_id);
       return {
@@ -678,6 +714,8 @@ export function applyGroupPlanDefaults(slots: PersonSlots, eventPlans: EventPlan
   const next: PersonSlots = { ...slots };
   for (const plan of eventPlans) {
     if (plan.status !== "open" || !plan.event_date || !next[plan.event_date]) continue;
+    // Napoli is picked in the events list (Plan to attend), not pre-filled for everyone.
+    if (PLAN_COVERED_BY_EVENT[plan.activity_id]) continue;
     for (const period of autoSlotsForTimeOfDay(activityTimeOfDay(plan.activity_id))) {
       if (isYachtLockSlot(plan.event_date, period)) continue;
       const day = { ...next[plan.event_date] };
@@ -1265,6 +1303,47 @@ export async function supabaseRest<T = unknown>(
 }
 
 export { STORAGE_KEYS };
+
+/** Upload one file to a Supabase Storage bucket as the signed-in user (bucket policies decide who may). */
+export async function supabaseUpload(bucket: string, path: string, file: Blob, accessToken: string): Promise<void> {
+  const { url, key } = requireEnv();
+  const token = await freshAccessToken(accessToken);
+  if (!token) throw new Error("sign-in required");
+  const res = await fetch(`${url}/storage/v1/object/${bucket}/${path}`, {
+    method: "POST",
+    headers: { apikey: key, Authorization: `Bearer ${token}`, "Content-Type": file.type || "image/jpeg", "x-upsert": "false" },
+    body: file,
+  });
+  if (!res.ok) throw new Error(`Upload failed (${res.status}): ${await res.text().catch(() => "")}`);
+}
+
+/** Short-lived links for files in a private bucket. Only files the caller may read come back with a link. */
+export async function supabaseSignedUrls(bucket: string, paths: string[], accessToken?: string | null, expiresIn = 3600): Promise<Record<string, string>> {
+  if (paths.length === 0) return {};
+  const { url, key } = requireEnv();
+  const token = accessToken ? await freshAccessToken(accessToken) : null;
+  const res = await fetch(`${url}/storage/v1/object/sign/${bucket}`, {
+    method: "POST",
+    headers: { apikey: key, Authorization: `Bearer ${token || key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ expiresIn, paths }),
+  });
+  if (!res.ok) return {};
+  const rows = (await res.json()) as { path?: string; signedURL?: string | null; error?: string | null }[];
+  const out: Record<string, string> = {};
+  for (const r of rows) if (r.path && r.signedURL) out[r.path] = `${url}/storage/v1${r.signedURL}`;
+  return out;
+}
+
+/** Shrink a photo in the browser before upload (longest side ≤ maxSide, JPEG). Keeps uploads small and strips camera metadata. */
+export async function shrinkImage(file: File, maxSide = 1200): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Couldn't read that image."))), "image/jpeg", 0.88));
+}
 
 const VISITOR_KEY_STORAGE = "hr-visitor-key";
 

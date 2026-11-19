@@ -290,3 +290,60 @@ export function slotIdLabel(id: string): string {
   const [day, p] = id.split(":");
   return `${dayFmt(day)} ${PERIOD_WORD[p as Period]}`;
 }
+
+// ---------------------------------------------------------------------------
+// Who else is going (shown when hovering an event, to help people decide)
+// ---------------------------------------------------------------------------
+
+export interface WhoGoing { purchased: string[]; planning: string[] }
+interface WhoPerson { name: string; is_test?: boolean | null; event_answers?: EventAnswers | null; yacht_status?: string | null; interests?: string[] | null }
+
+/**
+ * Names per event key: who has a ticket and who plans to go. Test entries and the signed-in
+ * person themselves are left out. Napoli pill holders count as "planning" (owner rule).
+ * The Yacht Club dinner is under YACHT_KEY ("paid" counts as having a ticket).
+ */
+export function whoIsGoing(people: WhoPerson[], selfName?: string | null): Record<string, WhoGoing> {
+  const out: Record<string, WhoGoing> = {};
+  const add = (key: string, col: keyof WhoGoing, name: string) => {
+    const w = (out[key] ??= { purchased: [], planning: [] });
+    if (!w[col].includes(name)) w[col].push(name);
+  };
+  const self = selfName?.trim().toLowerCase();
+  for (const p of people) {
+    const name = p.name?.trim();
+    if (!name || p.is_test || name.toLowerCase() === self) continue;
+    for (const [key, answer] of Object.entries(p.event_answers ?? {})) add(key, answer === "purchased" ? "purchased" : "planning", name);
+    if (p.interests?.includes("napoli") && !p.event_answers?.[NAPOLI_KEY]) add(NAPOLI_KEY, "planning", name);
+    if (p.yacht_status === "paid") add(YACHT_KEY, "purchased", name);
+    else if (p.yacht_status === "planning") add(YACHT_KEY, "planning", name);
+  }
+  for (const w of Object.values(out)) { w.purchased.sort((a, b) => a.localeCompare(b)); w.planning.sort((a, b) => a.localeCompare(b)); }
+  return out;
+}
+
+interface PillPerson { name: string; is_test?: boolean | null; interests?: string[] | null; pill_slots?: Record<string, string[]> | null }
+
+/**
+ * For the interest pills: who picked each pill, and who picked each timeslot for it.
+ * Test entries and the signed-in person themselves are left out.
+ */
+export function whoPicksPills(people: PillPerson[], selfName?: string | null): {
+  byPill: Record<string, string[]>;
+  bySlot: Record<string, Record<string, string[]>>;
+} {
+  const byPill: Record<string, string[]> = {};
+  const bySlot: Record<string, Record<string, string[]>> = {};
+  const self = selfName?.trim().toLowerCase();
+  for (const p of people) {
+    const name = p.name?.trim();
+    if (!name || p.is_test || name.toLowerCase() === self) continue;
+    for (const pill of p.interests ?? []) (byPill[pill] ??= []).push(name);
+    for (const [pill, slotIds] of Object.entries(p.pill_slots ?? {})) {
+      if (!(p.interests ?? []).includes(pill)) continue;
+      for (const slotId of slotIds) ((bySlot[pill] ??= {})[slotId] ??= []).push(name);
+    }
+  }
+  for (const names of Object.values(byPill)) names.sort((a, b) => a.localeCompare(b));
+  return { byPill, bySlot };
+}

@@ -3,9 +3,10 @@ import HTMLFlipBook from "react-pageflip";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, BookOpen, Stamp } from "lucide-react";
+import { ChevronLeft, ChevronRight, BookOpen, Stamp, Users } from "lucide-react";
+import { MissingPhotosDialog } from "@/components/missing-photos";
 import { cn } from "@/lib/utils";
-import type { YearbookOverlay } from "@/lib/use-reunion-data";
+import type { MissingPhoto, YearbookOverlay } from "@/lib/use-reunion-data";
 
 /** Border colour per category (Honor Graduates + teams from the sports pages). */
 /** Fixed colours (owner, 2026-11-19). */
@@ -26,6 +27,10 @@ export const TEAM_COLORS: Record<string, string> = {
 const TEAM_SPORTS = ["Football", "Cheerleading", "Basketball", "Baseball"];
 const OTHER_SPORTS = ["Tennis", "Swimming", "Track"];
 /** Button order in the chip row. */
+/** Buttons switched on when the yearbook opens. */
+const DEFAULT_CATS = ["Title", "Honor", "Football", "Cheerleading"];
+/** The Jan 27 watermarks start switched on until 1 Feb 2027, 00:00 Eastern (owner, 2026-11-19). */
+const WATERMARKS_ON_UNTIL = Date.parse("2027-02-01T00:00:00-05:00");
 const BUTTONS = ["Title", "Honor", "Football", "Cheerleading", "Basketball", "Baseball", "Other Sports", "Biological Honor Society", "Computer Club"];
 /** Which button a frame kind belongs to. */
 const buttonFor = (kind: string) => (OTHER_SPORTS.includes(kind) ? "Other Sports" : kind);
@@ -84,11 +89,17 @@ interface YearbookViewerProps {
   onOpenChange: (open: boolean) => void;
   /** Public overlay data (watermarks + borders). Optional so the viewer still works without it. */
   fetchOverlays?: () => Promise<YearbookOverlay[]>;
+  /** Approved photos of classmates with no senior portrait (pop-up). */
+  fetchMissingPhotos?: () => Promise<MissingPhoto[]>;
 }
+
+/** The last senior portrait in the book (Lori Nickisher, viewer page 33): the Missing Photos link sits just after it. */
+const MISSING_LINK_PAGE = 33;
+const MISSING_LINK_BOX = { left: 74.8, top: 12.46 + 18.53 + 4.6, width: 17.14 };
 
 /** A single flip-able page — react-pageflip clones this as a forwardRef so the
  * page element itself is what gets the flip transform applied. */
-const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: YearbookOverlay[] }>(({ pageNumber, overlays }, ref) => {
+const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: YearbookOverlay[]; onMissingPhotos?: () => void }>(({ pageNumber, overlays, onMissingPhotos }, ref) => {
   return (
     <div className="yearbook-page flex items-center justify-center bg-[#f4ecd8]" ref={ref}>
       {/* Same aspect as the scans, so overlay boxes (in % of the page) line up. */}
@@ -164,6 +175,19 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
             </div>
           );
         })}
+        {pageNumber === MISSING_LINK_PAGE && onMissingPhotos && (
+          <button
+            type="button"
+            className="absolute z-10 flex items-center justify-center whitespace-nowrap rounded-sm border border-[#8a6d3b] bg-[#fff8e6]/95 px-[1.2%] py-[0.5%] font-serif text-[clamp(8px,1.6vh,13px)] font-semibold text-[#5b4320] shadow hover:bg-white"
+            style={{ left: `${MISSING_LINK_BOX.left}%`, top: `${MISSING_LINK_BOX.top}%` }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onMissingPhotos(); }}
+            data-testid="link-missing-photos-page"
+          >
+            Missing photos &rarr;
+          </button>
+        )}
       </div>
     </div>
   );
@@ -175,14 +199,16 @@ Page.displayName = "Page";
  * flipbook (react-pageflip) over the 163 pre-rendered page images in
  * /public/yearbook/. Opened from the Yearbook logo in the sticky header.
  */
-export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: YearbookViewerProps) {
+export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetchMissingPhotos }: YearbookViewerProps) {
+  const [missingOpen, setMissingOpen] = useState(false);
   const flipBookRef = useRef<any>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [jumpValue, setJumpValue] = useState("");
   const [overlays, setOverlays] = useState<YearbookOverlay[] | null>(fetchOverlays ? null : []);
-  const [showWatermarks, setShowWatermarks] = useState(false);
+  const [showWatermarks, setShowWatermarks] = useState(() => Date.now() < WATERMARKS_ON_UNTIL);
   // Honor Graduates frames are on when the yearbook opens; every team is its own button, off until clicked.
-  const [activeCats, setActiveCats] = useState<string[]>(["Honor"]);
+  // On by default (owner, 2026-11-19): Titles, Honor Grads, Football, Cheer.
+  const [activeCats, setActiveCats] = useState<string[]>(DEFAULT_CATS);
   const toggleCat = (c: string) => setActiveCats((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
   // Load overlay data once, the first time the yearbook opens. The flipbook waits for it
@@ -296,7 +322,7 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
             onFlip={(e: any) => setCurrentPage(e.data)}
           >
             {pages.map((p) => (
-              <Page key={p} pageNumber={p} overlays={byPage.get(p)} />
+              <Page key={p} pageNumber={p} overlays={byPage.get(p)} onMissingPhotos={fetchMissingPhotos ? () => setMissingOpen(true) : undefined} />
             ))}
           </HTMLFlipBook>
           )}
@@ -314,6 +340,12 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
               className="yb-chip cursor-not-allowed opacity-50" data-testid="button-yearbook-jul-2027">
               <Stamp className="h-3 w-3" /> Jul 2027
             </button>
+            {fetchMissingPhotos && (
+              <button type="button" onClick={() => setMissingOpen(true)} className="yb-chip" title="Classmates with no senior portrait"
+                data-testid="button-yearbook-missing-photos">
+                <Users className="h-3 w-3" /> Missing photos
+              </button>
+            )}
             <span className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden="true" />
             {legend.map((c) => {
               const on = activeCats.includes(c);
@@ -336,6 +368,7 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
           </div>
         )}
       </DialogContent>
+      <MissingPhotosDialog open={missingOpen} onOpenChange={setMissingOpen} fetchPhotos={fetchMissingPhotos} showWatermarks={showWatermarks} />
     </Dialog>
   );
 }
