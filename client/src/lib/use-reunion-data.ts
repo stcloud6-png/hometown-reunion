@@ -172,7 +172,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         setIsAdmin(Boolean(session) && !stubTest);
         setIsTestAccount(stubTest);
         setLedActivityIds(session ? ["napoli"] : []);
-        setMyRoster(session && !stubTest ? stubMyRoster(session.email) : null);
+        setMyRoster(session ? stubMyRoster(session.email, readPendingClaim()) : null);
         return;
       }
       const token = session?.accessToken ?? null;

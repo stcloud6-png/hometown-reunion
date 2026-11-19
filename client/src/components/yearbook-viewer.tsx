@@ -48,13 +48,9 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
               {ring && <div className="yb-border absolute inset-0 rounded-[2px]" style={{ boxShadow: ring }} />}
               {o.watermark && (
                 <div className="yb-wm absolute inset-0 items-center justify-center overflow-hidden">
-                  <span
-                    className={cn(
-                      "-rotate-[28deg] whitespace-nowrap rounded px-1 font-serif font-bold tracking-wider text-white/90 [text-shadow:0_1px_3px_rgba(0,0,0,.8)]",
-                      o.watermark === "2026" ? "text-[clamp(14px,3.2vw,30px)]" : "text-[clamp(8px,1.5vw,14px)]",
-                    )}
-                  >
-                    {o.watermark}
+                  <span className="flex -rotate-[28deg] flex-col items-center font-serif font-bold leading-none tracking-wide text-white/90 [text-shadow:0_1px_3px_rgba(0,0,0,.85)]">
+                    <span className="text-[clamp(14px,3vw,28px)]">2026</span>
+                    {o.watermark !== "2026" && <span className="mt-0.5 text-[clamp(6px,0.95vw,10px)] uppercase tracking-normal">{o.watermark.replace(/^2026\s*-\s*/, "")}</span>}
                   </span>
                 </div>
               )}
