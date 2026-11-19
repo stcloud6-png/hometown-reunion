@@ -719,5 +719,7 @@ const DEMO_OVERLAYS: YearbookOverlay[] = [
   { page: 14, box: [69.29, 10.41, 19.59, 21.45], watermark: null, honor: false, categories: ["Basketball"] },
   { page: 14, box: [5.51, 36.04, 19.59, 21.45], watermark: "2026 - Unconfirmed", honor: true, categories: ["Basketball"] },
   { page: 14, box: [5.51, 61.44, 19.59, 21.45], watermark: "2026", honor: false, categories: ["Basketball", "Baseball"] },
-  { page: 28, box: [68.57, 10.57, 19.29, 20.74], watermark: "2026", honor: true, categories: ["Baseball", "Basketball"] },
+  { page: 28, box: [68.57, 10.57, 19.29, 20.74], watermark: "2026", honor: true, categories: ["Baseball", "Basketball", "Football"] },
+  { page: 14, box: [47.86, 10.41, 19.59, 21.45], watermark: null, honor: true, categories: ["Cheerleading"] },
+  { page: 14, box: [26.73, 61.44, 19.59, 21.45], watermark: null, honor: false, categories: ["Football", "Track"] },
 ];
