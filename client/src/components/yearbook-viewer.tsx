@@ -80,7 +80,7 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
               {/* Labels sit on the top frame line, all in the same spot. They're drawn lowest priority first,
                   so the highest-priority label that's switched on covers the others. */}
               {[...frames].reverse().map((f, k) => (
-                <span key={`l-${k}`} className={`yb-ring yb-ring-${slug(f.kind)} absolute left-1/2 top-0 max-w-[96%] -translate-x-1/2 -translate-y-1/2 overflow-hidden text-ellipsis whitespace-nowrap rounded-sm px-[3%] py-px font-sans font-semibold leading-tight text-white shadow`}
+                <span key={`l-${k}`} className={`yb-ring yb-ring-${slug(f.kind)} absolute inset-x-[6%] top-0 -translate-y-1/2 overflow-hidden text-ellipsis whitespace-nowrap rounded-sm px-[2%] py-px text-center font-sans font-semibold leading-tight text-white shadow`}
                   style={{ backgroundColor: BORDER_COLORS[f.kind] ?? "#888", fontSize: `max(6px, min(6.8cqw, ${(118 / Math.max(1, frameLabel(f.kind, f.detail).length)).toFixed(2)}cqw))` }}
                   data-testid="yearbook-frame-label">
                   {frameLabel(f.kind, f.detail)}
