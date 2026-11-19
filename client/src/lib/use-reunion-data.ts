@@ -732,6 +732,8 @@ const DEMO_OVERLAYS: YearbookOverlay[] = [
   { page: 14, box: [5.51, 36.04, 19.59, 21.45], watermark: "2026 - Unconfirmed", honor: true, categories: ["Basketball:Bulldogs"] },
   { page: 14, box: [5.51, 61.44, 19.59, 21.45], watermark: "2026", honor: false, categories: ["Basketball:Cougars"] },
   { page: 14, box: [47.86, 10.41, 19.59, 21.45], watermark: null, honor: true, categories: ["Cheerleading:Red"] },
-  { page: 14, box: [26.73, 61.44, 19.59, 21.45], watermark: null, honor: false, categories: ["Football:Red", "Track", "Title:Most Likely To Succeed"] },
+  // Real positions (page 15): Karen Fahlgren — Honor Graduate + Most Likely To Succeed; Heather Erickson — Honor + Swimming.
+  { page: 15, box: [30.82, 60.8, 19.49, 21.21], watermark: null, honor: true, categories: ["Title:Most Likely To Succeed"] },
+  { page: 15, box: [73.47, 35.49, 19.49, 21.21], watermark: null, honor: true, categories: ["Swimming"] },
   { page: 28, box: [68.57, 10.57, 19.29, 20.74], watermark: "2026", honor: true, categories: ["Baseball:Red", "Basketball:Bulldogs", "Football:Cougars"] },
 ];
