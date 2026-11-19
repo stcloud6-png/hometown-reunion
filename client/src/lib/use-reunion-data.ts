@@ -735,10 +735,10 @@ const DEMO_OVERLAYS: YearbookOverlay[] = [
   // Pages 18–19: real frames/titles/teams from the yearbook; watermarks are made up for the demo.
   { page: 18, box: [47.96, 10.8, 19.29, 20.66], watermark: null, honor: true, categories: ["Biological Honor Society"] },
   { page: 18, box: [69.49, 10.8, 19.29, 20.66], watermark: "2026", honor: true, categories: [] },
-  { page: 18, box: [5.92, 36.28, 19.29, 20.66], watermark: "2026 - Unconfirmed", honor: true, categories: ["Title:Friendliest"] },
+  { page: 18, box: [5.92, 36.28, 19.29, 20.66], watermark: "2026 - Unconfirmed", honor: true, categories: ["Cheerleading:Bulldogs", "Title:Friendliest"] },
   { page: 18, box: [27.04, 36.28, 19.29, 20.66], watermark: null, honor: true, categories: ["Computer Club"] },
   { page: 18, box: [69.49, 61.67, 19.29, 20.66], watermark: "2026", honor: false, categories: ["Baseball:Devils", "Football:Bulldogs"] },
-  { page: 19, box: [10.41, 10.65, 19.29, 20.66], watermark: null, honor: true, categories: ["Baseball:Cougars", "Cheerleading:Devils"] },
+  { page: 19, box: [10.41, 10.65, 19.29, 20.66], watermark: null, honor: true, categories: ["Baseball:Cougars"] },
   { page: 19, box: [31.63, 10.65, 19.29, 20.66], watermark: null, honor: true, categories: ["Computer Club"] },
   { page: 19, box: [53.06, 10.65, 19.29, 20.66], watermark: "2026 - Unconfirmed", honor: false, categories: ["Football:Devils"] },
   { page: 19, box: [74.08, 10.65, 19.29, 20.66], watermark: "2026", honor: true, categories: ["Biological Honor Society", "Computer Club", "Football:Devils"] },

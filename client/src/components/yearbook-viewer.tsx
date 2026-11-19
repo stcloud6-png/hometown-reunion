@@ -56,9 +56,11 @@ function parseCat(raw: string): { kind: string; detail: string | null } {
 
 /** Label written on the frame line. */
 function frameLabel(kind: string, detail: string | null): string {
-  if (kind === "Honor") return "Honor Grad";
+  if (kind === "Honor") return "HONOR GRAD";
   if (kind === "Title") return detail ?? "Class Title";
   if (kind === "Biological Honor Society") return "Bio Honor Society";
+  // Football stands out in capitals (owner, 2026-11-19).
+  if (kind === "Football") return detail ? `FOOTBALL · ${detail.toUpperCase()}` : "FOOTBALL";
   return detail ? `${kind} · ${detail}` : kind;
 }
 
@@ -130,8 +132,8 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
               </div>
               {honor.length > 0 && (
                 <span className="yb-ring yb-ring-honor yb-label yb-label-side absolute right-0 top-1/2 translate-x-[30%] -translate-y-1/2"
-                  style={{ ...labelStyle(honor[0]), fontSize: "max(5px, 5cqw)" }} data-testid="yearbook-honor-label">
-                  Honor Grad
+                  style={{ ...labelStyle(honor[0]), fontSize: "max(5.5px, 5.6cqw)", fontWeight: 800 }} data-testid="yearbook-honor-label">
+                  HONOR GRAD
                 </span>
               )}
               {/* Bottom stack sits inside the photo so it never covers the classmate's printed name. */}
