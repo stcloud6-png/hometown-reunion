@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { WeatherRow } from "@/components/weather-corner";
 import { DEMO_TICKETS, latestTickets, type TicketWatchRow, type TicketWatchRun } from "@/lib/ticket-watch";
 import {
   type Activity,
@@ -21,7 +22,45 @@ import {
 
 /** Public columns only — member emails are never readable by the public API. */
 const PEOPLE_COLUMNS =
-  "id,name,arrival,departure,slots,interests,updated_at,attending,volunteer_support,volunteer_lead,yacht_paid,mievento_intents,mievento_ticket_status,is_test";
+  "id,name,arrival,departure,slots,interests,updated_at,attending,volunteer_support,volunteer_lead,yacht_paid,mievento_intents,mievento_ticket_status,yacht_status,event_answers,pill_slots,is_test";
+/** A class roster name (pre-created account). Emails are never readable by the public. */
+export interface RosterEntry {
+  id: string;
+  display_name: string;
+  search_names: string[];
+  status: "unclaimed" | "claimed" | "pending_review";
+  person_id: string | null;
+}
+
+/** The signed-in person's own roster row, incl. a suggested yearbook photo to confirm. */
+export interface MyRoster {
+  id: string;
+  display_name: string;
+  status: RosterEntry["status"];
+  yearbook_name: string | null;
+  yearbook_confirmed: boolean;
+  page: number | null;
+  box: number[] | null;
+}
+
+/** One portrait overlay in the yearbook (public): position, watermark, border categories. */
+export interface YearbookOverlay {
+  page: number;
+  box: [number, number, number, number];
+  watermark: string | null;
+  honor: boolean;
+  categories: string[];
+}
+
+const PENDING_CLAIM_KEY = "czr-pending-claim";
+export interface PendingClaim { rosterId: string | null; name: string }
+export function readPendingClaim(): PendingClaim | null {
+  try { return JSON.parse(localStorage.getItem(PENDING_CLAIM_KEY) ?? "null"); } catch { return null; }
+}
+export function writePendingClaim(c: PendingClaim | null) {
+  try { if (c) localStorage.setItem(PENDING_CLAIM_KEY, JSON.stringify(c)); else localStorage.removeItem(PENDING_CLAIM_KEY); } catch { /* storage blocked */ }
+}
+
 const LEAD_COLUMNS = "id,activity_id,lead_name,chat_link,created_at";
 
 /** Member directory row — returned only to verified admins. */
@@ -99,6 +138,10 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const [isTestAccount, setIsTestAccount] = useState(false);
   const [ledActivityIds, setLedActivityIds] = useState<string[]>([]);
   const stubActivities = useRef<Activity[]>([]);
+  const [roster, setRoster] = useState<RosterEntry[]>([]);
+  const [weather, setWeather] = useState<WeatherRow[]>([]);
+  const [myRoster, setMyRoster] = useState<MyRoster | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,13 +166,18 @@ export function useReunionData(options: { stub?: boolean } = {}) {
           warnings: stubHealth === "warning" ? ["Page layout changed · added ep-new-row · removed ep-acc-row"] : stubHealth === "action" ? ["No tickets found — page layout may have changed"] : [],
           layout_changed: stubHealth === "warning",
         });
+        setRoster(DEMO_ROSTER);
+        setWeather(DEMO_WEATHER);
         setIsDemo(true);
         const stubMine = session ? DEMO_PEOPLE.find((p) => (p.email ?? "").toLowerCase() === session.email.toLowerCase()) ?? null : null;
         setMyEntry(stubMine);
-        const stubTest = Boolean(session && /tester@/i.test(session.email));
-        setIsAdmin(Boolean(session) && !stubTest);
+        // Demo mode: any email signs in as an ordinary classmate; only "admin@…" gets the admin view.
+        const stubAdmin = Boolean(session && /^admin@/i.test(session.email));
+        const stubTest = Boolean(session) && !stubAdmin;
+        setIsAdmin(stubAdmin);
         setIsTestAccount(stubTest);
         setLedActivityIds(session ? ["napoli"] : []);
+        setMyRoster(session ? stubMyRoster(session.email, readPendingClaim()) : null);
         return;
       }
       const token = session?.accessToken ?? null;
@@ -169,6 +217,17 @@ export function useReunionData(options: { stub?: boolean } = {}) {
           setTicketHealth(latest[0] ?? null);
         })
         .catch(() => undefined);
+      // Daily weather (info only) — never blocks the page.
+      void supabaseRest<WeatherRow[]>("/weather_daily?select=city,observed_on,temp_f,high_f,low_f,weather_code,fetched_at&order=observed_on.desc&limit=6", { accessToken: token })
+        .then(setWeather).catch(() => setWeather([]));
+      // Roster names (for the "find your name" picker) and the caller's own roster row.
+      void supabaseRest<RosterEntry[]>("/roster?select=id,display_name,search_names,status,person_id&order=display_name.asc", { accessToken: token })
+        .then(setRoster).catch(() => setRoster([]));
+      if (token) {
+        void supabaseRpc<MyRoster[]>("my_roster", {}, token)
+          .then((rows) => setMyRoster(Array.isArray(rows) && rows[0] ? rows[0] : null))
+          .catch(() => setMyRoster(null));
+      } else setMyRoster(null);
       const [myRows, admin, tester, led] = mineRes;
       setMyEntry(Array.isArray(myRows) && myRows[0] ? myRows[0] : null);
       setIsAdmin(admin === true);
@@ -547,7 +606,54 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     [session, stub, load, myPerson],
   );
 
+  /** After a sign-in link: claim the picked roster name (or ask to be added). */
+  const claimPending = useCallback(async () => {
+    const pending = readPendingClaim();
+    if (!pending || !session) return;
+    setClaimError(null);
+    try {
+      if (stub) {
+        setRoster((prev) => prev.map((r) => (r.id === pending.rosterId ? { ...r, status: "claimed" } : r)));
+        setMyRoster(stubMyRoster(session.email, pending));
+      } else if (pending.rosterId) {
+        await supabaseRpc("claim_roster_name", { p_roster_id: pending.rosterId }, session.accessToken);
+      } else {
+        await supabaseRpc("request_roster_name", { p_name: pending.name }, session.accessToken);
+      }
+      writePendingClaim(null);
+      if (!stub) await load();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (/already claimed a name/.test(msg)) writePendingClaim(null);
+      setClaimError(/already claimed a name/.test(msg)
+        ? "This email is already linked to a name on the list."
+        : /already claimed/.test(msg) ? "Someone has already claimed that name. If it's you, sign in with the email you used before, or contact the organizers."
+        : "Couldn't link your name just now. Please try again.");
+    }
+  }, [session, stub, load]);
+
+  useEffect(() => { if (session && readPendingClaim()) void claimPending(); }, [session, claimPending]);
+
+  const confirmMyYearbook = useCallback(async (yes: boolean) => {
+    if (!session) return;
+    if (stub) { setMyRoster((r) => (r ? { ...r, yearbook_confirmed: yes, yearbook_name: yes ? r.yearbook_name : null } : r)); return; }
+    await supabaseRpc("confirm_my_yearbook", { p_yes: yes }, session.accessToken);
+    await load();
+  }, [session, stub, load]);
+
+  const fetchYearbookOverlays = useCallback(async (): Promise<YearbookOverlay[]> => {
+    if (stub) return DEMO_OVERLAYS;
+    return supabaseRpc<YearbookOverlay[]>("yearbook_overlays", {}, session?.accessToken ?? null);
+  }, [stub, session]);
+
   return {
+    weather,
+    roster,
+    myRoster,
+    claimError,
+    claimPending,
+    confirmMyYearbook,
+    fetchYearbookOverlays,
     people,
     activities,
     clusterResources,
@@ -594,3 +700,57 @@ export function useReunionData(options: { stub?: boolean } = {}) {
 }
 
 export { parseAuthHashFragment };
+
+// ---------------------------------------------------------------------------
+// Stub data for offline QA (never written anywhere)
+// ---------------------------------------------------------------------------
+const DEMO_WEATHER: WeatherRow[] = [
+  { city: "Orlando, FL", observed_on: "2026-11-19", temp_f: 68.7, high_f: 71.3, low_f: 68.1, weather_code: 63, fetched_at: "2026-11-19T09:23:09Z" },
+  { city: "Panama City", observed_on: "2026-11-19", temp_f: 77.6, high_f: 88.5, low_f: 77.1, weather_code: 2, fetched_at: "2026-11-19T09:23:09Z" },
+];
+
+const DEMO_ROSTER: RosterEntry[] = [
+  { id: "r-1", display_name: "Shelly Mickelson (McQuary)", search_names: ["Michelle McQuary"], status: "unclaimed", person_id: null },
+  { id: "r-2", display_name: "Stacy Payton", search_names: [], status: "unclaimed", person_id: null },
+  { id: "r-3", display_name: "Ted Melcher", search_names: ["Edward Melcher"], status: "unclaimed", person_id: null },
+  { id: "r-4", display_name: "Bill King", search_names: ["William King"], status: "unclaimed", person_id: null },
+  { id: "r-5", display_name: "Jerry Pankow", search_names: [], status: "claimed", person_id: null },
+];
+
+function stubMyRoster(email: string, pending?: PendingClaim | null): MyRoster | null {
+  const picked = pending?.rosterId ? DEMO_ROSTER.find((r) => r.id === pending.rosterId) : null;
+  if (/stacy/i.test(email) || picked?.id === "r-2") {
+    return { id: "r-2", display_name: "Stacy Payton", status: "claimed", yearbook_name: "Stacy Collins", yearbook_confirmed: false, page: 13, box: [31.02, 10.57, 19.69, 21.21] };
+  }
+  if (picked) return { id: picked.id, display_name: picked.display_name, status: "claimed", yearbook_name: null, yearbook_confirmed: true, page: null, box: null };
+  if (pending && !pending.rosterId) return { id: "r-new", display_name: pending.name, status: "pending_review", yearbook_name: null, yearbook_confirmed: false, page: null, box: null };
+  return null;
+}
+
+const DEMO_OVERLAYS: YearbookOverlay[] = [
+  { page: 14, box: [5.51, 10.41, 19.59, 21.45], watermark: "2026", honor: false, categories: [] },
+  { page: 14, box: [26.73, 10.41, 19.59, 21.45], watermark: "2026 - Unconfirmed", honor: true, categories: ["Baseball:Devils"] },
+  { page: 14, box: [69.29, 10.41, 19.59, 21.45], watermark: null, honor: false, categories: ["Basketball:Bulldogs"] },
+  { page: 14, box: [5.51, 36.04, 19.59, 21.45], watermark: "2026 - Unconfirmed", honor: true, categories: ["Basketball:Bulldogs"] },
+  { page: 14, box: [5.51, 61.44, 19.59, 21.45], watermark: "2026", honor: false, categories: ["Basketball:Cougars"] },
+  { page: 14, box: [47.86, 10.41, 19.59, 21.45], watermark: null, honor: true, categories: ["Cheerleading:Red"] },
+  // Pages 18–19: real frames/titles/teams from the yearbook; watermarks are made up for the demo.
+  { page: 18, box: [47.96, 10.8, 19.29, 20.66], watermark: null, honor: true, categories: ["Biological Honor Society"] },
+  { page: 18, box: [69.49, 10.8, 19.29, 20.66], watermark: "2026", honor: true, categories: [] },
+  { page: 18, box: [5.92, 36.28, 19.29, 20.66], watermark: "2026 - Unconfirmed", honor: true, categories: ["Cheerleading:Bulldogs", "Title:Friendliest"] },
+  { page: 18, box: [27.04, 36.28, 19.29, 20.66], watermark: null, honor: true, categories: ["Computer Club"] },
+  { page: 18, box: [69.49, 61.67, 19.29, 20.66], watermark: "2026", honor: false, categories: ["Baseball:Devils", "Football:Bulldogs"] },
+  { page: 19, box: [10.41, 10.65, 19.29, 20.66], watermark: null, honor: true, categories: ["Baseball:Cougars"] },
+  { page: 19, box: [31.63, 10.65, 19.29, 20.66], watermark: null, honor: true, categories: ["Computer Club"] },
+  { page: 19, box: [53.06, 10.65, 19.29, 20.66], watermark: "2026 - Unconfirmed", honor: false, categories: ["Football:Devils"] },
+  { page: 19, box: [74.08, 10.65, 19.29, 20.66], watermark: "2026", honor: true, categories: ["Biological Honor Society", "Computer Club", "Football:Devils"] },
+  { page: 19, box: [10.41, 35.8, 19.29, 20.66], watermark: null, honor: true, categories: [] },
+  { page: 19, box: [31.63, 35.8, 19.29, 20.66], watermark: null, honor: true, categories: ["Biological Honor Society", "Football:Red", "Title:Most Likely To Succeed"] },
+  { page: 19, box: [53.06, 35.8, 19.29, 20.66], watermark: null, honor: true, categories: [] },
+  { page: 19, box: [74.08, 35.8, 19.29, 20.66], watermark: "2026 - Unconfirmed", honor: false, categories: [] },
+  { page: 19, box: [31.63, 61.28, 19.29, 20.66], watermark: null, honor: false, categories: ["Swimming"] },
+  // Real positions (page 15): Karen Fahlgren — Honor Graduate + Most Likely To Succeed; Heather Erickson — Honor + Swimming.
+  { page: 15, box: [30.82, 60.8, 19.49, 21.21], watermark: null, honor: true, categories: ["Title:Most Likely To Succeed"] },
+  { page: 15, box: [73.47, 35.49, 19.49, 21.21], watermark: null, honor: true, categories: ["Swimming"] },
+  { page: 28, box: [68.57, 10.57, 19.29, 20.74], watermark: "2026", honor: true, categories: ["Baseball:Red", "Basketball:Bulldogs", "Football:Cougars"] },
+];

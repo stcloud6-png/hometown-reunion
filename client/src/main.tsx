@@ -41,7 +41,22 @@ async function resolveAuthRedirect() {
   }
 }
 
+// Friendly direct links: bhs87.com/yearbook, /dashboard, /availability, ?tab=…,
+// #tab=…, #?tab=…, #/tab=… all become the canonical #/?tab=… hash route.
+const SHORT_TABS: Record<string, string> = { yearbook: "yearbook", dashboard: "dashboard", availability: "entry", entry: "entry" };
+function normalizeDirectLink() {
+  const { pathname, search, hash } = window.location;
+  if (hash.includes("access_token=") || hash.includes("token_hash=")) return; // auth redirects handled separately
+  const pathTab = SHORT_TABS[pathname.replace(/^\/+|\/+$/g, "").toLowerCase()];
+  const searchTab = new URLSearchParams(search).get("tab");
+  const hashMatch = hash.match(/^#\/?\??tab=([a-z]+)/i);
+  const tab = pathTab ?? (searchTab && SHORT_TABS[searchTab.toLowerCase()]) ?? (hashMatch && SHORT_TABS[hashMatch[1].toLowerCase()]);
+  if (!tab) return;
+  window.history.replaceState(null, "", `/#/?tab=${tab}`);
+}
+
 async function boot() {
+  normalizeDirectLink();
   await resolveAuthRedirect();
   if (!window.location.hash) {
     window.location.hash = "#/";

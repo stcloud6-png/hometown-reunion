@@ -16,11 +16,17 @@ import {
 import { CalendarRange, CheckCircle2, ExternalLink, Lock, LogIn, Pencil, Sparkles, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import VolunteerPromptDialog from "@/components/volunteer-prompt-dialog";
-import YachtPaymentDialog from "@/components/yacht-payment-dialog";
-import MieventoTicketDialog from "@/components/mievento-ticket-dialog";
-import MieventoDialog from "@/components/mievento-dialog";
 import EventPickerField from "@/components/event-picker-field";
 import RollCallBar from "@/components/roll-call-bar";
+import { ClassEventsGrid, YachtGate } from "@/components/class-events-grid";
+import { RosterClaim, YearbookConfirm } from "@/components/roster-claim";
+import {
+  buildClassEvents, applyAnswersToSlots, answersAfterCalendarEdit, applyYachtToSlots, checkChoice, clashesWith,
+  openSlots, slotIdLabel, yachtEvent, NAPOLI_KEY, YACHT_KEY,
+  type EventAnswers, type YachtStatus,
+} from "@/lib/class-events";
+import { findRepeat, type DedupeHit } from "@/lib/pill-dedupe";
+import type { MyRoster, RosterEntry } from "@/lib/use-reunion-data";
 import { useToast } from "@/hooks/use-toast";
 import {
   type Activity,
@@ -30,7 +36,9 @@ import {
   type Period,
   type Person,
   type SlotStatus,
+  type ScheduledEvent,
   DAYS,
+  HIDDEN_PILL_IDS,
   EMAIL_PATTERN,
   END_DATE,
   MIEVENTO_TICKET_URL,
@@ -54,8 +62,6 @@ import {
   eventCategoryClass,
   formatDateRange,
   mieventoOrEventLabel,
-  mieventoShoppingEvents,
-  mieventoTicketTally,
   statusesForSlot,
   suggestedMieventoEvents,
   selectedSuggestedEvents,
@@ -86,6 +92,23 @@ interface EntryFormProps {
   linkError?: string | null;
   /** Asks the database whether an entry already uses this email (yes/no only). */
   onCheckEmailTaken?: (email: string) => Promise<boolean>;
+  /** Class roster for "find your name" (2026-11 revamp). */
+  roster?: RosterEntry[];
+  myRoster?: MyRoster | null;
+  claimError?: string | null;
+  onConfirmYearbook?: (yes: boolean) => Promise<void>;
+}
+
+function yachtFrom(p?: Person | null): YachtStatus | null {
+  if (!p) return null;
+  return p.yacht_status ?? (p.yacht_paid ? "paid" : null);
+}
+
+/** Saved grid answers; the Napoli pill carries over as "plan to attend" Napoli lunch (owner, 2026-11-19). */
+function answersFrom(p?: Person | null): EventAnswers {
+  const a: EventAnswers = { ...(p?.event_answers ?? {}) };
+  if (p?.interests?.includes("napoli") && !a[NAPOLI_KEY]) a[NAPOLI_KEY] = "planning";
+  return a;
 }
 
 function slugify(label: string): string {
@@ -125,7 +148,7 @@ const LEGEND_ITEMS: { status: SlotStatus; label: string; hint: string }[] = [
   { status: "private", label: "Private", hint: "Private / unavailable" },
 ];
 
-export default function EntryForm({ initial, activities, eventPlans, tickets = [], onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus, myIdentity, onSignOut, linkError, onCheckEmailTaken }: EntryFormProps) {
+export default function EntryForm({ initial, activities, eventPlans, tickets = [], onSave, onSuggestActivity, onGoToDashboard, people, isDemo, sessionEmail, onSendSignInLink, onConfirmYachtPaid, onSaveMieventoIntents, onSaveMieventoTicketStatus, myIdentity, onSignOut, linkError, onCheckEmailTaken, roster = [], myRoster = null, claimError, onConfirmYearbook }: EntryFormProps) {
   const { toast } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
@@ -142,6 +165,15 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
   const [interests, setInterests] = useState<string[]>(initial?.interests ?? []);
   const [newActivityLabel, setNewActivityLabel] = useState("");
   const [attending, setAttending] = useState<boolean | null>(initial?.attending ?? null);
+  // --- 2026-11 revamp: Yacht gate, events grid, pill timeslots -------------
+  const catalog = useMemo(() => buildClassEvents(tickets), [tickets]);
+  const [yachtStatus, setYachtStatus] = useState<YachtStatus | null>(() => yachtFrom(initial));
+  const [eventAnswers, setEventAnswers] = useState<EventAnswers>(() => answersFrom(initial));
+  const [eventsDone, setEventsDone] = useState(Boolean(initial));
+  const [pillSlots, setPillSlots] = useState<Record<string, string[]>>(initial?.pill_slots ?? {});
+  const [openPill, setOpenPill] = useState<string | null>(null);
+  const [suggestHit, setSuggestHit] = useState<DedupeHit | null>(null);
+  const yachtAttending = yachtStatus === "planning" || yachtStatus === "paid";
   const [volunteerSupport, setVolunteerSupport] = useState<boolean | null>(initial?.volunteer_support ?? null);
   const [volunteerLead, setVolunteerLead] = useState<boolean | null>(initial?.volunteer_lead ?? null);
   const [volunteerStep, setVolunteerStep] = useState<"support" | "lead" | null>(null);
@@ -155,7 +187,9 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
   const [eventChoiceMade, setEventChoiceMade] = useState(Boolean(initial));
   const [ticketCostsAcknowledged, setTicketCostsAcknowledged] = useState(false);
   const [eventsReviewed, setEventsReviewed] = useState(false);
-  const suggestedEvents = suggestedMieventoEvents(arrival, departure);
+  // The old 5-item "optional MiEvento events" review is replaced by the events grid.
+  const suggestedEvents: ScheduledEvent[] = useMemo(() => [], []);
+  void suggestedMieventoEvents;
   const eventReviewRequired = suggestedEvents.length > 0 && !eventsReviewed;
   const selectedEventCount = suggestedEvents.filter((event) => suggestedChoices.includes(event.id)).length;
 
@@ -187,6 +221,10 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
     setVolunteerSupport(initial.volunteer_support ?? null);
     setVolunteerLead(initial.volunteer_lead ?? null);
     setVolunteerPrompted((initial.interests ?? []).length > 0);
+    setYachtStatus(yachtFrom(initial));
+    setEventAnswers(answersFrom(initial));
+    setEventsDone(true);
+    setPillSlots(initial.pill_slots ?? {});
   }, [initial]);
 
   // Not signed in, but the name typed matches someone who already has a saved
@@ -256,14 +294,65 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
   // form so returning members aren't slowed down re-confirming old answers.
   const gatingActive = !initial && !matchedExisting && !emailTaken;
   const nameReadyToConfirm = name.trim().length > 0 && EMAIL_PATTERN.test(email.trim());
-  const [nameConfirmed, setNameConfirmed] = useState(false);
+  const [nameConfirmedRaw, setNameConfirmed] = useState(false);
+  // A signed-in classmate whose roster name is known doesn't need to confirm their name.
+  const nameConfirmed = nameConfirmedRaw || Boolean(sessionEmail && myRoster);
   const [datesConfirmed, setDatesConfirmed] = useState(false);
   const [interestsConfirmed, setInterestsConfirmed] = useState(false);
   const [slotsConfirmed, setSlotsConfirmed] = useState(false);
+  // New order (2026-11): name → dates → Yacht → events grid → calendar → pills → save.
   const showDatesSection = !gatingActive || nameConfirmed;
-  const showInterestsSection = !gatingActive || (nameConfirmed && datesConfirmed);
-  const showSlotsSection = !gatingActive || (nameConfirmed && datesConfirmed && interestsConfirmed);
-  const showTicketAndSave = !eventReviewRequired && (!gatingActive || (nameConfirmed && datesConfirmed && interestsConfirmed && slotsConfirmed));
+  const showYachtSection = !gatingActive || (nameConfirmed && datesConfirmed);
+  const showGridSection = !gatingActive || (nameConfirmed && datesConfirmed && yachtStatus !== null);
+  const showSlotsSection = !gatingActive || (nameConfirmed && datesConfirmed && yachtStatus !== null && eventsDone);
+  const showInterestsSection = !gatingActive || (nameConfirmed && datesConfirmed && yachtStatus !== null && eventsDone && slotsConfirmed);
+  const showTicketAndSave = !eventReviewRequired && (!gatingActive || (nameConfirmed && datesConfirmed && yachtStatus !== null && eventsDone && slotsConfirmed && interestsConfirmed));
+
+  useEffect(() => {
+    if (!sessionEmail) return;
+    if (myRoster?.display_name && !initial) setName(myRoster.display_name);
+    if (!initial) setEmail(sessionEmail);
+  }, [sessionEmail, myRoster, initial]);
+
+  // Calendar edits that take a grid event off all its slots untick it in the grid.
+  useEffect(() => {
+    if (!eventsDone) return;
+    const { answers, dropped } = answersAfterCalendarEdit(slots, eventAnswers, catalog);
+    if (!dropped.length) return;
+    setEventAnswers(answers);
+    toast({ title: "Events list updated", description: `Unticked ${dropped.map((e) => e.name).join(", ")} — it's no longer on your calendar.` });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slots]);
+
+  function changeYacht(next: YachtStatus) {
+    setYachtStatus(next);
+    setSlots((prev) => applyYachtToSlots(prev, next));
+    if (next === "planning" || next === "paid") {
+      // Going to the Yacht Club now: drop anything picked for the same Wed evening.
+      const clash = Object.keys(eventAnswers).filter((k) => {
+        const e = catalog.find((c) => c.key === k);
+        return e && clashesWith(e, yachtEvent()).length > 0;
+      });
+      if (clash.length) {
+        const next2 = { ...eventAnswers };
+        clash.forEach((k) => delete next2[k]);
+        setEventAnswers(next2);
+        if (eventsDone) setSlots((prev) => applyYachtToSlots(applyAnswersToSlots(prev, next2, catalog, arrival, departure), next));
+        toast({ title: "Wed evening is the Yacht Club", description: `Unticked ${clash.map((k) => catalog.find((c) => c.key === k)?.name).join(", ")}.` });
+      }
+    }
+  }
+
+  function changeAnswers(next: EventAnswers) {
+    setEventAnswers(next);
+    if (eventsDone) setSlots((prev) => applyAnswersToSlots(prev, next, catalog, arrival, departure));
+  }
+
+  function finishEvents() {
+    setSlots((prev) => applyYachtToSlots(applyAnswersToSlots(prev, eventAnswers, catalog, arrival, departure), yachtStatus));
+    setEventsDone(true);
+    window.setTimeout(() => document.querySelector('[data-testid="card-slots"]')?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
 
   const [linkSending, setLinkSending] = useState(false);
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
@@ -349,12 +438,13 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
       for (const iso of Object.keys(fresh)) {
         if (prev[iso]) fresh[iso] = { ...fresh[iso], ...prev[iso] };
       }
-      return fresh;
+      const withYacht = applyYachtToSlots(fresh, yachtStatus);
+      return eventsDone ? applyAnswersToSlots(withYacht, eventAnswers, catalog, nextArrival, nextDeparture) : withYacht;
     });
   }
 
   function setSlotStatus(iso: string, period: Period, status: SlotStatus, tag?: string) {
-    if (isYachtLockSlot(iso, period)) return; // locked, cannot be edited
+    if (isYachtLockSlot(iso, period) && yachtAttending) return; // set by the Yacht answer
     setSlots((prev) => ({
       ...prev,
       [iso]: { ...prev[iso], [period]: status === "busy" ? { s: status, t: tag } : { s: status } },
@@ -369,11 +459,17 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
     setSlots((prev) => {
       const next = { ...prev, [iso]: { ...prev[iso] } };
       for (const p of span) {
-        if (isYachtLockSlot(iso, p)) continue;
+        if (isYachtLockSlot(iso, p) && yachtAttending) continue;
         next[iso][p] = { s: "busy" as SlotStatus, t: event.id };
       }
       return next;
     });
+    // Picking a grid event from the calendar drop-down ticks it in the grid too (if allowed).
+    const gridEvent = catalog.find((c) => c.key === event.id);
+    if (gridEvent && !eventAnswers[gridEvent.key]) {
+      const ok = checkChoice(gridEvent, "planning", { answers: eventAnswers, yacht: yachtStatus, catalog, arrival, departure });
+      if (ok.allowed) setEventAnswers((prev) => ({ ...prev, [gridEvent.key]: "planning" }));
+    }
     if (span.length > 1) {
       const day = DAYS.find((d) => d.iso === iso);
       const dayLabel = day?.label ?? iso;
@@ -392,7 +488,20 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
       setVolunteerPrompted(true);
       setVolunteerStep("support");
     }
+    const adding = !interests.includes(id);
     setInterests((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+    setOpenPill(adding ? id : openPill === id ? null : openPill);
+    setSuggestHit(null);
+  }
+
+  const visiblePills = mergeActivities(activities).filter((a) => !HIDDEN_PILL_IDS.includes(a.id));
+  const freeSlots = useMemo(() => openSlots(slots, arrival, departure), [slots, arrival, departure]);
+
+  function togglePillSlot(pill: string, slotId: string) {
+    setPillSlots((prev) => {
+      const cur = prev[pill] ?? [];
+      return { ...prev, [pill]: cur.includes(slotId) ? cur.filter((x) => x !== slotId) : [...cur, slotId].sort() };
+    });
   }
 
   function handleVolunteerAnswer(yes: boolean) {
@@ -415,6 +524,17 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
     const label = newActivityLabel.trim();
     if (!label) return;
     const id = slugify(label);
+    // Owner rule (2026-11-19): turn down anything that reuses a word of an existing pill or event.
+    const hit = findRepeat(label, [
+      ...visiblePills.map((a) => ({ id: a.id, label: a.label, kind: "pill" as const })),
+      ...catalog.map((e) => ({ id: e.key, label: e.name, kind: "event" as const })),
+      { id: YACHT_KEY, label: "Yacht Club Dinner Dance", kind: "event" as const },
+    ]);
+    if (hit) {
+      setSuggestHit(hit);
+      return;
+    }
+    setSuggestHit(null);
     // Guard against re-creating an activity that already exists (built-in or
     // previously suggested) under the same slug — this is what caused the
     // Interest Clusters duplicate-pill bug. Just mark interest in the existing
@@ -431,6 +551,7 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
     }
     await onSuggestActivity(id, label, name.trim() || "someone");
     setInterests((prev) => [...prev, id]);
+    setOpenPill(id);
     setNewActivityLabel("");
   }
 
@@ -455,8 +576,12 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
       setValidationError("Your arrival date must be before your departure date.");
       return;
     }
-    if (eventReviewRequired || (gatingActive && (!nameConfirmed || !datesConfirmed || !interestsConfirmed || !slotsConfirmed))) {
-      setValidationError("Please review the optional events and confirm your time slots before saving.");
+    if (gatingActive && (!nameConfirmed || !datesConfirmed || !eventsDone || !slotsConfirmed || !interestsConfirmed)) {
+      setValidationError("Please finish each section above before saving.");
+      return;
+    }
+    if (!yachtStatus) {
+      setValidationError("Please answer the Yacht Club question above.");
       return;
     }
     if (attending === null) {
@@ -475,6 +600,10 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
         attending,
         volunteer_support: volunteerSupport,
         volunteer_lead: volunteerLead,
+        yacht_status: yachtStatus,
+        event_answers: eventAnswers,
+        // Only keep slot choices for pills still selected.
+        pill_slots: Object.fromEntries(Object.entries(pillSlots).filter(([k, v]) => interests.includes(k) && v.length)),
       });
       writeMyIdentity({ name: name.trim(), email: email.trim() });
       setSaved(true);
@@ -486,7 +615,6 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
   if (saved) {
     const savedName = name.trim().toLowerCase();
     const myPersonRow = initial ?? people?.find((p) => p.name.trim().toLowerCase() === savedName) ?? null;
-    const alreadyPaidYacht = Boolean(myPersonRow?.yacht_paid);
     return (
       <Card className="max-w-xl mx-auto" data-testid="card-confirmation">
         <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
@@ -512,71 +640,6 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
               Click here for Group Dashboard
             </button>
           )}
-          {onSendSignInLink && onConfirmYachtPaid && (
-            <YachtPaymentDialog
-              isDemo={Boolean(isDemo)}
-              sessionEmail={sessionEmail ?? null}
-              myPerson={myPersonRow}
-              onSendSignInLink={onSendSignInLink}
-              onConfirmPaid={onConfirmYachtPaid}
-              autoOpen={!alreadyPaidYacht}
-              defaultEmail={email}
-            />
-          )}
-
-          {signedIn && onSendSignInLink && onSaveMieventoTicketStatus && (
-            <div className="w-full space-y-4 border-t pt-6 text-left" data-testid="section-mievento-tickets">
-              <div>
-                <h3 className="flex items-center gap-2 text-sm font-semibold">
-                  <Ticket className="h-4 w-4" /> MiEvento tickets
-                </h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  These MiEvento sub-events need tickets bought directly through MiEvento — see where the
-                  group stands and register when you're ready.
-                </p>
-              </div>
-              <Button asChild size="sm" data-testid="link-mievento-buy-tickets">
-                <a href={MIEVENTO_TICKET_URL} target="_blank" rel="noreferrer">
-                  <ExternalLink className="mr-1 h-4 w-4" /> Buy MiEvento tickets
-                </a>
-              </Button>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {mieventoShoppingEvents().map((event) => {
-                  const tally = mieventoTicketTally(people ?? [], event.id);
-                  return (
-                    <div key={event.id} className="rounded-md border p-3" data-testid={`ticket-shopping-${event.id}`}>
-                      <p className="text-sm font-medium">{event.label}</p>
-                      {event.note && <p className="text-xs text-muted-foreground">{event.note}</p>}
-                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                        <span>{tally.purchased} purchased</span>
-                        <span>{tally.researching} looking into it</span>
-                        <span>{tally.not_registered} not registered yet</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <MieventoTicketDialog
-                  isDemo={Boolean(isDemo)}
-                  sessionEmail={sessionEmail ?? null}
-                  myPerson={myPersonRow}
-                  onSendSignInLink={onSendSignInLink}
-                  onSaveTicketStatus={onSaveMieventoTicketStatus}
-                />
-                {onSaveMieventoIntents && (
-                  <MieventoDialog
-                    isDemo={Boolean(isDemo)}
-                    sessionEmail={sessionEmail ?? null}
-                    myPerson={myPersonRow}
-                    onSendSignInLink={onSendSignInLink}
-                    onSaveIntents={onSaveMieventoIntents}
-                  />
-                )}
-              </div>
-            </div>
-          )}
-
           {signedIn && onSendSignInLink && (
             <div className="w-full border-t pt-6">
               <RollCallBar
@@ -593,6 +656,14 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
           )}
         </CardContent>
       </Card>
+    );
+  }
+
+  if (!sessionEmail && onSendSignInLink) {
+    return (
+      <div className="space-y-8" data-testid="form-entry">
+        <RosterClaim roster={roster} onSendSignInLink={onSendSignInLink} linkError={linkError} />
+      </div>
     );
   }
 
@@ -623,7 +694,22 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
         </p>
       )}
 
-      <Card data-testid="card-name">
+      {myRoster ? (
+        <Card data-testid="card-name">
+          <CardContent className="space-y-3 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]" />
+                Signed in as <strong>{myRoster.display_name}</strong>
+                {myRoster.status === "pending_review" && <span className="text-xs text-muted-foreground">(new name — the organizers will confirm it)</span>}
+              </span>
+              {onSignOut && <Button type="button" size="sm" variant="ghost" onClick={onSignOut} data-testid="button-sign-out">Sign out</Button>}
+            </div>
+            {claimError && <p className="text-sm text-destructive" data-testid="text-claim-error">{claimError}</p>}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card data-testid="card-name">
         <CardHeader>
           <CardTitle>Your name</CardTitle>
         </CardHeader>
@@ -713,6 +799,9 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
         </CardContent>
         )}
       </Card>
+      )}
+      {myRoster && onConfirmYearbook && <YearbookConfirm mine={myRoster} onAnswer={onConfirmYearbook} />}
+      {!myRoster && claimError && <p className="text-sm text-destructive" data-testid="text-claim-error">{claimError}</p>}
 
       {showDatesSection && (
       <Card data-testid="card-dates">
@@ -784,75 +873,19 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
       </Card>
       )}
 
-      {showInterestsSection && (
-      <Card data-testid="card-interests">
-        <CardHeader>
-          <CardTitle>What are you up for?</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            (BHS87-only activities) — pick any of the interest pills you'd like the class of '87 to organize.
-            MiEvento events are covered in the time slots below (Jan 17–24). Pills are just interest — you'll
-            confirm you're in with the Ticket-check after your time slots.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {mergeActivities(activities).map((activity) => {
-              const active = interests.includes(activity.id);
-              return (
-                <button
-                  type="button"
-                  key={activity.id}
-                  onClick={() => toggleInterest(activity.id)}
-                  disabled={gatingActive && interestsConfirmed}
-                  data-testid={`pill-interest-${activity.id}`}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-sm transition-colors hover-elevate active-elevate-2",
-                    active ? "bg-primary text-primary-foreground border-primary-border" : "bg-secondary text-secondary-foreground border-secondary-border",
-                  )}
-                >
-                  {activity.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap items-end gap-2 border-t pt-4">
-            <div className="flex-1 min-w-[220px] space-y-2">
-              <Label htmlFor="new-activity">Suggest another activity…</Label>
-              <Input
-                id="new-activity"
-                value={newActivityLabel}
-                onChange={(e) => setNewActivityLabel(e.target.value)}
-                placeholder="Suggest an activity"
-                data-testid="input-suggest-activity"
-                disabled={gatingActive && interestsConfirmed}
-              />
-            </div>
-            <Button type="button" variant="secondary" onClick={handleSuggestActivity} disabled={gatingActive && interestsConfirmed} data-testid="button-suggest-activity">
-              <Sparkles className="mr-1 h-4 w-4" /> Add
-            </Button>
-          </div>
-          {gatingActive && (
-            interestsConfirmed ? (
-              <div className="flex items-center justify-between border-t pt-3 text-sm" data-testid="text-interests-confirmed">
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]" />
-                  <span>{summarizeInterests()}</span>
-                </span>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setInterestsConfirmed(false)} data-testid="button-edit-interests">
-                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
-                </Button>
-              </div>
-            ) : (
-              <div className="border-t pt-3">
-                <Button type="button" onClick={() => setInterestsConfirmed(true)} data-testid="button-confirm-interests">
-                  Confirm and continue
-                </Button>
-                <p className="mt-2 text-xs text-muted-foreground">It's fine to leave this blank if nothing fits — just confirm to move on.</p>
-              </div>
-            )
-          )}
-        </CardContent>
-      </Card>
+      {showYachtSection && <YachtGate value={yachtStatus} onChange={changeYacht} />}
+
+      {showGridSection && (
+        <ClassEventsGrid
+          catalog={catalog}
+          answers={eventAnswers}
+          yacht={yachtStatus}
+          arrival={arrival}
+          departure={departure}
+          onChange={changeAnswers}
+          done={eventsDone}
+          onDone={finishEvents}
+        />
       )}
 
       {showSlotsSection && (
@@ -865,7 +898,7 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
               <span className="underline underline-offset-2">
                 Change any slot where you already have plans — choose <strong className="font-bold">MiEvento</strong> and pick from what's scheduled that day.
               </span>{" "}
-              The <em>Yacht Club 87 Dinner/Dance</em> on Wed 20 evening is already set for everyone.
+              Your MiEvento and class events are already filled in from the events list above.
             </p>
             <p className="italic text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]">
               Go through each block — a blank canvas of green reads as "free and ready to join," and the organizers
@@ -1006,7 +1039,7 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
                       <span className="hidden sm:inline">{day.label}</span>
                     </td>
                     {PERIODS.map((period) => {
-                      const locked = isYachtLockSlot(day.iso, period);
+                      const locked = isYachtLockSlot(day.iso, period) && yachtAttending;
                       const current = slots[day.iso]?.[period] ?? { s: "ok" as SlotStatus };
                       const statusOptions = statusesForSlot(day.iso, period, current.s);
                       const options = [
@@ -1110,6 +1143,131 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
                 <p className="mt-2 text-xs text-muted-foreground">
                   Available means organizers may plan around you. Review each day, mark private or uncertain times, then confirm to continue.
                 </p>
+              </div>
+            )
+          )}
+        </CardContent>
+      </Card>
+      )}
+
+      {showInterestsSection && (
+      <Card data-testid="card-interests">
+        <CardHeader>
+          <CardTitle>What are you up for?</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            BHS '87-only ideas the class could organize in your open time. Pick any pill, then choose which of your
+            open timeslots you'd join it in. MiEvento and class events are already covered in the events list above.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {visiblePills.map((activity) => {
+              const active = interests.includes(activity.id);
+              return (
+                <button
+                  type="button"
+                  key={activity.id}
+                  onClick={() => toggleInterest(activity.id)}
+                  disabled={gatingActive && interestsConfirmed}
+                  data-testid={`pill-interest-${activity.id}`}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-sm transition-colors hover-elevate active-elevate-2",
+                    active ? "bg-primary text-primary-foreground border-primary-border" : "bg-secondary text-secondary-foreground border-secondary-border",
+                  )}
+                >
+                  {activity.label}
+                  {active && (pillSlots[activity.id]?.length ?? 0) > 0 && <span className="ml-1.5 rounded-full bg-primary-foreground/20 px-1.5 text-xs">{pillSlots[activity.id].length}</span>}
+                </button>
+              );
+            })}
+          </div>
+          {interests.filter((id) => visiblePills.some((a) => a.id === id)).length > 0 && (
+            <div className="space-y-2 rounded-md border bg-muted/30 p-3" data-testid="pill-slot-picker">
+              <p className="text-sm font-medium">When could you join?</p>
+              {freeSlots.length === 0 && <p className="text-xs text-muted-foreground">You have no Available or Maybe slots on your calendar — mark some above to pick times.</p>}
+              {interests.filter((id) => visiblePills.some((a) => a.id === id)).map((id) => {
+                const label = visiblePills.find((a) => a.id === id)!.label;
+                const chosen = pillSlots[id] ?? [];
+                const isOpen = openPill === id;
+                return (
+                  <div key={id} className="rounded-md border bg-card">
+                    <button type="button" onClick={() => setOpenPill(isOpen ? null : id)} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm" data-testid={`pill-slots-toggle-${id}`}>
+                      <span className="font-medium">{label}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {chosen.length ? chosen.slice(0, 2).map(slotIdLabel).join(", ") + (chosen.length > 2 ? ` +${chosen.length - 2}` : "") : "pick times"} {isOpen ? "▲" : "▼"}
+                      </span>
+                    </button>
+                    {isOpen && freeSlots.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 border-t px-3 py-2">
+                        {freeSlots.map((slotId) => {
+                          const on = chosen.includes(slotId);
+                          const maybe = slots[slotId.split(":")[0]]?.[slotId.split(":")[1] as Period]?.s === "maybe";
+                          return (
+                            <button key={slotId} type="button" onClick={() => togglePillSlot(id, slotId)} aria-pressed={on}
+                              data-testid={`pill-slot-${id}-${slotId}`}
+                              className={cn("rounded-full border px-2.5 py-1 text-xs", on ? "border-primary bg-primary text-primary-foreground" : maybe ? "status-maybe" : "status-ok")}>
+                              {slotIdLabel(slotId)}{maybe ? " (maybe)" : ""}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex flex-wrap items-end gap-2 border-t pt-4">
+            <div className="flex-1 min-w-[220px] space-y-2">
+              <Label htmlFor="new-activity">Suggest another activity…</Label>
+              <Input
+                id="new-activity"
+                value={newActivityLabel}
+                onChange={(e) => setNewActivityLabel(e.target.value)}
+                placeholder="Suggest an activity"
+                data-testid="input-suggest-activity"
+                disabled={gatingActive && interestsConfirmed}
+              />
+            </div>
+            <Button type="button" variant="secondary" onClick={handleSuggestActivity} disabled={gatingActive && interestsConfirmed} data-testid="button-suggest-activity">
+              <Sparkles className="mr-1 h-4 w-4" /> Add
+            </Button>
+          </div>
+          {suggestHit && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200" role="status" data-testid="text-suggest-repeat">
+              <p>
+                “{newActivityLabel.trim()}” repeats <strong>{suggestHit.target.label}</strong> (“{suggestHit.word}”), so it can't be added as a new pill.
+              </p>
+              {suggestHit.target.kind === "pill" ? (
+                <Button type="button" size="sm" variant="outline" className="mt-2" data-testid="button-join-existing-pill"
+                  onClick={() => { if (!interests.includes(suggestHit.target.id)) toggleInterest(suggestHit.target.id); else setOpenPill(suggestHit.target.id); setNewActivityLabel(""); setSuggestHit(null); }}>
+                  Join “{suggestHit.target.label}” instead
+                </Button>
+              ) : (
+                <Button type="button" size="sm" variant="outline" className="mt-2" data-testid="button-goto-event"
+                  onClick={() => { document.querySelector(suggestHit.target.id === YACHT_KEY ? '[data-testid="card-yacht-gate"]' : `[data-testid="row-event-${suggestHit.target.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }); setSuggestHit(null); setNewActivityLabel(""); }}>
+                  It's in the events list — take me there
+                </Button>
+              )}
+            </div>
+          )}
+          {gatingActive && (
+            interestsConfirmed ? (
+              <div className="flex items-center justify-between border-t pt-3 text-sm" data-testid="text-interests-confirmed">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-[hsl(155_48%_25%)] dark:text-[hsl(150_40%_70%)]" />
+                  <span>{summarizeInterests()}</span>
+                </span>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setInterestsConfirmed(false)} data-testid="button-edit-interests">
+                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                </Button>
+              </div>
+            ) : (
+              <div className="border-t pt-3">
+                <Button type="button" onClick={() => setInterestsConfirmed(true)} data-testid="button-confirm-interests">
+                  Confirm and continue
+                </Button>
+                <p className="mt-2 text-xs text-muted-foreground">It's fine to leave this blank if nothing fits — just confirm to move on.</p>
               </div>
             )
           )}

@@ -1,8 +1,12 @@
-import { Anchor, CalendarHeart, ClipboardCheck, Ticket } from "lucide-react";
+import { Anchor, CalendarHeart, ClipboardCheck, Crown, HandHelping, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import YachtPaymentDialog from "@/components/yacht-payment-dialog";
 import MieventoTicketDialog from "@/components/mievento-ticket-dialog";
 import {
+  type Activity,
+  BASE_ACTIVITIES,
+  type ClusterLead,
+  labelForTag,
   MIEVENTO_INTENT_LABEL,
   type MieventoTicketEntry,
   type Person,
@@ -22,6 +26,70 @@ interface RollCallBarProps {
   /** "header" sits directly under the main site header on the Group Dashboard.
    * "footer" is the compact duplicate shown on the My Application tab after sign-in + save. */
   variant?: "header" | "footer";
+  /** Maintenance mode: list the names behind the volunteer counts. */
+  showVolunteerNames?: boolean;
+  activities?: Activity[];
+  clusterLeads?: ClusterLead[];
+}
+
+function activityLabel(id: string, activities: Activity[]): string {
+  return activities.find((a) => a.id === id)?.label ?? BASE_ACTIVITIES.find((a) => a.id === id)?.label ?? labelForTag(id, activities);
+}
+
+/** Maintenance-only: who said yes to leading / helping, with the interests they picked. */
+function VolunteerNames({ people, activities, clusterLeads }: { people: Person[]; activities: Activity[]; clusterLeads: ClusterLead[] }) {
+  const byName = (a: Person, b: Person) => a.name.localeCompare(b.name);
+  const leads = people.filter((p) => p.volunteer_lead).sort(byName);
+  const helpers = people.filter((p) => p.volunteer_support).sort(byName);
+  const organizers = clusterLeads
+    .filter((l) => l.lead_name)
+    .map((l) => ({ name: l.lead_name as string, event: activityLabel(l.activity_id, activities) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const Row = ({ person, note }: { person: Person; note?: string }) => {
+    const interests = (person.interests ?? []).map((id) => activityLabel(id, activities));
+    return (
+      <li className="leading-snug" data-testid={`volunteer-name-${person.id ?? person.name}`}>
+        <span className="font-medium text-foreground">{person.name}</span>
+        {note && <span className="ml-1 text-[10px] text-muted-foreground">({note})</span>}
+        {interests.length > 0 && <span className="text-muted-foreground"> — {interests.join(", ")}</span>}
+      </li>
+    );
+  };
+
+  return (
+    <div className="mt-3 grid gap-3 border-t border-dashed pt-2.5 text-xs sm:grid-cols-2" data-testid="rollcall-volunteer-names">
+      <div>
+        <p className="mb-1 flex items-center gap-1.5 font-semibold">
+          <Crown className="h-3.5 w-3.5 text-primary" /> Willing to lead ({leads.length})
+        </p>
+        {leads.length ? (
+          <ul className="space-y-0.5">{leads.map((p) => <Row key={p.id ?? p.name} person={p} note={p.volunteer_support ? "also helping" : undefined} />)}</ul>
+        ) : (
+          <p className="text-muted-foreground">No one yet.</p>
+        )}
+      </div>
+      <div>
+        <p className="mb-1 flex items-center gap-1.5 font-semibold">
+          <HandHelping className="h-3.5 w-3.5 text-primary" /> Willing to help the lead ({helpers.length})
+        </p>
+        {helpers.length ? (
+          <ul className="space-y-0.5">{helpers.map((p) => <Row key={p.id ?? p.name} person={p} note={p.volunteer_lead ? "also willing to lead" : undefined} />)}</ul>
+        ) : (
+          <p className="text-muted-foreground">No one yet.</p>
+        )}
+      </div>
+      {organizers.length > 0 && (
+        <p className="text-muted-foreground sm:col-span-2" data-testid="rollcall-event-organizers">
+          <span className="font-semibold text-foreground">Current Event Organizers:</span>{" "}
+          {organizers.map((o) => `${o.name} (${o.event})`).join(" · ")}
+        </p>
+      )}
+      <p className="text-[10px] text-muted-foreground sm:col-span-2">
+        Maintenance view only. Interests shown are what each person picked; the yes/no was asked when they chose their first interest.
+      </p>
+    </div>
+  );
 }
 
 /**
@@ -39,6 +107,9 @@ export default function RollCallBar({
   onConfirmYachtPaid,
   onSaveMieventoTicketStatus,
   variant = "header",
+  showVolunteerNames = false,
+  activities = [],
+  clusterLeads = [],
 }: RollCallBarProps) {
   const attending = people.filter((p) => p.attending === true);
   const notSure = people.filter((p) => p.attending === false);
@@ -146,6 +217,7 @@ export default function RollCallBar({
             )}
           </div>
         </div>
+        {showVolunteerNames && <VolunteerNames people={people} activities={activities} clusterLeads={clusterLeads} />}
       </div>
     </div>
   );

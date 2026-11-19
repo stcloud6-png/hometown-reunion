@@ -137,7 +137,8 @@ export function TicketWatchCard({ tickets, run, onRegister, className, fitHeight
 const POPUP_KEY = "czr-ticket-popup-shown";
 
 /** Mobile: floating pill that opens the ticket watch; auto-opens once a day when something is selling out. */
-export function TicketWatchMobile({ tickets, run, onRegister }: { tickets: TicketWatchRow[]; run: TicketWatchRun | null; onRegister?: () => void }) {
+/** `autoOpen=false` skips the once-a-day popup (e.g. the visitor arrived on a yearbook/dashboard direct link). */
+export function TicketWatchMobile({ tickets, run, onRegister, autoOpen = true }: { tickets: TicketWatchRow[]; run: TicketWatchRun | null; onRegister?: () => void; autoOpen?: boolean }) {
   const [open, setOpen] = useState(false);
   const s = ticketSummary(tickets);
   const urgentCount = s.sold_out + s.low;
@@ -146,6 +147,7 @@ export function TicketWatchMobile({ tickets, run, onRegister }: { tickets: Ticke
   useEffect(() => {
     if (autoChecked.current || tickets.length === 0 || urgentCount === 0) return;
     autoChecked.current = true;
+    if (!autoOpen) return;
     if (typeof window === "undefined" || !window.matchMedia("(max-width: 1023px)").matches) return;
     const today = new Date().toISOString().slice(0, 10);
     try {
@@ -156,7 +158,7 @@ export function TicketWatchMobile({ tickets, run, onRegister }: { tickets: Ticke
     }
     const timer = window.setTimeout(() => setOpen(true), 1200);
     return () => window.clearTimeout(timer);
-  }, [tickets.length, urgentCount]);
+  }, [tickets.length, urgentCount, autoOpen]);
 
   if (tickets.length === 0) return null;
   return (

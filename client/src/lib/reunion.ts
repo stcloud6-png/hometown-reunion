@@ -40,6 +40,12 @@ export interface Person {
   mievento_intents?: Record<string, string> | null;
   /** Per sub-event ticket status for the 4 "tickets coming soon" MiEvento events (keyed by ScheduledEvent id), e.g. `{ "mega-cruise-23": { status: "purchased" } }`. */
   mievento_ticket_status?: Record<string, MieventoTicketEntry> | null;
+  /** Wed 20 Yacht Club answer (2026-11 revamp). Kept in step with yacht_paid by a DB trigger. */
+  yacht_status?: "planning" | "paid" | "not_attending" | null;
+  /** Events grid answers keyed by class-event key, e.g. { "golf-21": "purchased", "napoli-lunch-20": "planning" }. */
+  event_answers?: Record<string, "planning" | "purchased"> | null;
+  /** Interest pill -> the open slots ("2027-01-21:e") the person would join it in. */
+  pill_slots?: Record<string, string[]> | null;
   updated_at?: string;
   /** Private test-account entry — visible only to that account (and admins in the directory). */
   is_test?: boolean;
@@ -203,6 +209,12 @@ export const BASE_ACTIVITIES: Activity[] = [
   { id: "tennis-doubles", label: "Tennis doubles" },
 ];
 
+/**
+ * Pills no longer shown or offered: the first five duplicate MiEvento events, and Napoli is now
+ * a class event in the events grid. Existing picks stay in the database untouched.
+ */
+export const HIDDEN_PILL_IDS = ["railway-87", "pin-ding", "golf", "bay-cruise-87", "chicken-coup", "napoli"];
+
 /** Typical time-of-day for an activity, used to auto-slot a group-planned sub-event. */
 type TimeOfDay = "evening" | "afternoon" | "day" | "any";
 const ACTIVITY_TIME_OF_DAY: Record<string, TimeOfDay> = {
@@ -264,14 +276,22 @@ export const SCHEDULED_EVENTS: ScheduledEvent[] = [
   { id: "museums-21", label: "Museums Tour", note: "Thu 21, 12:30-5pm", days: ["2027-01-21"], autoSlots: ["a"] },
   { id: "locks-21", label: "Locks Tour", note: "Thu 21, 12:30-5pm", days: ["2027-01-21"], autoSlots: ["a"] },
   { id: "chicken-21", label: "Midnite Chicken Coop", note: "Thu 21, 8pm-12am", days: ["2027-01-21"], autoSlots: ["e"] },
-  { id: "railway-22", label: "Railway", note: "Fri 22 morning & afternoon — tickets coming soon", days: ["2027-01-22"], autoSlots: ["m", "a"], blue: true, soon: true },
+  { id: "railway-22", label: "Railway", note: "Fri 22 morning & afternoon", days: ["2027-01-22"], autoSlots: ["m", "a"], blue: true, soon: true },
   { id: "transit-22", label: "Southbound Partial Transit", note: "Fri 22, 9am-5pm", days: ["2027-01-22"], autoSlots: ["m", "a"] },
   { id: "pin-ding-22", label: "CZR PÍN DÍNG", note: "Fri 22, 8pm-1am", days: ["2027-01-22"], autoSlots: ["e"] },
-  { id: "dome-car-22", label: "Railroad Dome Car", note: "Fri 22 morning — tickets coming soon, space limited", days: ["2027-01-22"], autoSlots: ["m"], blue: true, soon: true },
+  { id: "dome-car-22", label: "Railroad Dome Car", note: "Fri 22 morning & afternoon", days: ["2027-01-22"], autoSlots: ["m", "a"], blue: true, soon: true },
   { id: "coffee-house-19", label: "Coffee House 2027", note: "Tue 19 evening — tickets coming soon", days: ["2027-01-19"], autoSlots: ["e"], blue: true, soon: true },
   { id: "mega-cruise-23", label: "MEGA Cruise", note: "Sat 23 evening — tickets coming soon", days: ["2027-01-23"], autoSlots: ["e"], blue: true, soon: true },
   { id: "jamboree-23", label: "Jamboree", note: "Sat 23, 10am-6pm", days: ["2027-01-23"], autoSlots: ["m", "a"] },
   { id: "taboga-24", label: "Taboga Island", note: "Sun 24 all day", days: ["2027-01-24"], autoSlots: ["m", "a", "e"], blue: true },
+  // Added 2026-11-19: MiEvento listings that weren't in the hand-kept list, plus the
+  // BHS '87 Napoli lunch. Slots follow the class-events rules (lib/class-events.ts).
+  { id: "move-ancon-18", label: "Move & Mingle Up Ancon Hill", note: "Mon 18, 8:30-11am", days: ["2027-01-18"], autoSlots: ["m"] },
+  { id: "carimanola-19", label: "Carimañola Cooking Class", note: "Tue 19, 11:30am-2:30pm", days: ["2027-01-19"], autoSlots: ["a"] },
+  { id: "chiva-20", label: "Chiva Parrandera", note: "Wed 20, 7-10pm", days: ["2027-01-20"], autoSlots: ["e"] },
+  { id: "vip-bay-cruise-20", label: "VIP Bay Cruise", note: "Wed 20, 7-10pm", days: ["2027-01-20"], autoSlots: ["e"] },
+  { id: "napoli-lunch-20", label: "Napoli Lunch (BHS '87)", note: "Wed 20 afternoon", days: ["2027-01-20"], autoSlots: ["a"] },
+  { id: "move-causeway-23", label: "Move & Mingle Down The Causeway", note: "Sat 23, 8:30-9:30am", days: ["2027-01-23"], autoSlots: ["m"] },
   { id: "coronado-25", label: "Coronado Beach", days: [...SHOULDER_START, "2027-01-17", ...SHOULDER_END] },
   { id: "el-valle-26", label: "El Valle", days: [...SHOULDER_START, "2027-01-17", ...SHOULDER_END] },
   { id: "pool-day", label: "Drinking All Day at the Pool", days: POOL_DAY_DATES },
@@ -1368,8 +1388,10 @@ export const DEMO_PEOPLE: Person[] = [
     [8, "a", "busy", "transit-17"],
   ], ["napoli", "coronado", "casino"], {
     email: "danny.demo@example.com",
+    volunteer_support: true,
+    volunteer_lead: true,
     mievento_intents: { "2027-01-17": "very", "2027-01-18": "somewhat" },
     mievento_ticket_status: { "coffee-house-19": { status: "not_registered", note: "Waiting to see who else is going first." } },
   }),
-  buildDemoPerson("Jerry Pankow", 0, 21, [], ["napoli", "hiking", "escape-room"]),
+  buildDemoPerson("Jerry Pankow", 0, 21, [], ["napoli", "hiking", "escape-room"], { volunteer_support: true }),
 ];
