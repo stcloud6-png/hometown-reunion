@@ -3,7 +3,7 @@ import HTMLFlipBook from "react-pageflip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, BookOpen, Award, Stamp } from "lucide-react";
+import { ChevronLeft, ChevronRight, BookOpen, Stamp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { YearbookOverlay } from "@/lib/use-reunion-data";
 
@@ -23,6 +23,8 @@ export const BORDER_COLORS: Record<string, string> = {
 };
 const CLUBS = ["Computer Club", "Biological Honor Society"];
 const CATEGORY_LABEL: Record<string, string> = { Honor: "Honor Graduates", Title: "Class Title Winners" };
+/** Short chip text for the compact button row. */
+const SHORT_LABEL: Record<string, string> = { Title: "Titles", Honor: "Honor Grads", Cheerleading: "Cheer", "Biological Honor Society": "Bio Honor Soc.", "Computer Club": "Computer" };
 const slug = (c: string) => c.toLowerCase().replace(/[^a-z]+/g, "-");
 
 /**
@@ -36,7 +38,7 @@ function parseCat(raw: string): { kind: string; detail: string | null } {
 
 /** Label written on the frame line. */
 function frameLabel(kind: string, detail: string | null): string {
-  if (kind === "Honor") return "Honor Graduate";
+  if (kind === "Honor") return "Honor Grad";
   if (kind === "Title") return detail ?? "Class Title";
   if (kind === "Biological Honor Society") return "Bio Honor Society";
   return detail ? `${kind} · ${detail}` : kind;
@@ -79,6 +81,24 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
           const frames = [...(o.honor ? ["Honor"] : []), ...o.categories]
             .map((raw) => parseCat(raw))
             .sort((x, y) => PRIORITY(x.kind) - PRIORITY(y.kind));
+          const labelStyle = (f: { kind: string; detail: string | null }) => ({
+            backgroundColor: BORDER_COLORS[f.kind] ?? "#888",
+            fontSize: `max(5px, min(6.2cqw, ${(112 / Math.max(1, frameLabel(f.kind, f.detail).length)).toFixed(2)}cqw))`,
+          });
+          const label = (f: { kind: string; detail: string | null }, key: string) => (
+            <span key={key} className={`yb-ring yb-ring-${slug(f.kind)} yb-label`} style={labelStyle(f)} data-testid="yearbook-frame-label">
+              {frameLabel(f.kind, f.detail)}
+            </span>
+          );
+          // Where each label goes (owner layout, 2026-11-19):
+          //  top edge, top→down: class title, Biological Honor Society, Computer Club;
+          //  right edge: Honor Graduate; bottom edge, bottom→up: football/cheerleading, then any other sport,
+          //  then the Jan 2027 watermark one row above them. Every switched-on label stays visible.
+          const title = frames.filter((f) => f.kind === "Title");
+          const clubs = ["Biological Honor Society", "Computer Club"].flatMap((k) => frames.filter((f) => f.kind === k));
+          const honor = frames.filter((f) => f.kind === "Honor");
+          const fbCheer = frames.filter((f) => f.kind === "Football" || f.kind === "Cheerleading");
+          const otherSports = frames.filter((f) => !["Title", "Honor", "Football", "Cheerleading", ...CLUBS].includes(f.kind));
           return (
             <div key={i} className="pointer-events-none absolute" style={{ left: `${o.box[0]}%`, top: `${o.box[1]}%`, width: `${o.box[2]}%`, height: `${o.box[3]}%`, containerType: "inline-size" }}>
               {/* One frame per category, inside the photo edge; each shows only while its own button is on. */}
@@ -86,28 +106,32 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
                 <div key={`r-${k}`} className={`yb-ring yb-ring-${slug(f.kind)} absolute rounded-[1px] border-[3px]`}
                   style={{ inset: `${3 * k}px`, borderColor: BORDER_COLORS[f.kind] ?? "#888" }} />
               ))}
-              {/* Labels sit on the top frame line, all in the same spot. They're drawn lowest priority first,
-                  so the highest-priority label that's switched on covers the others. */}
-              {[...frames].reverse().map((f, k) => (
-                <span key={`l-${k}`} className={`yb-ring yb-ring-${slug(f.kind)} absolute inset-x-[6%] top-0 -translate-y-1/2 overflow-hidden text-ellipsis whitespace-nowrap rounded-sm px-[2%] py-px text-center font-sans font-semibold leading-tight text-white shadow`}
-                  style={{ backgroundColor: BORDER_COLORS[f.kind] ?? "#888", fontSize: `max(6px, min(6.8cqw, ${(118 / Math.max(1, frameLabel(f.kind, f.detail).length)).toFixed(2)}cqw))` }}
-                  data-testid="yearbook-frame-label">
-                  {frameLabel(f.kind, f.detail)}
+              <div className="absolute inset-x-[5%] top-0 flex -translate-y-[35%] flex-col items-stretch gap-[1.5cqw]">
+                {[...title, ...clubs].map((f, k) => label(f, `t-${k}`))}
+              </div>
+              {honor.length > 0 && (
+                <span className="yb-ring yb-ring-honor yb-label yb-label-side absolute right-0 top-1/2 translate-x-[35%] -translate-y-1/2" style={labelStyle(honor[0])} data-testid="yearbook-honor-label">
+                  Honor Grad
                 </span>
-              ))}
-              {o.watermark && (
-                // Level, yellow, in a bottom band no taller than 15% of the photo.
-                <div className="yb-wm absolute inset-x-0 bottom-0 h-[15%] items-center justify-center overflow-hidden" style={{ containerType: "size" }}>
-                  <span
-                    className="whitespace-nowrap font-sans font-bold leading-none text-[#ffd400] [text-shadow:0_0_2px_rgba(0,0,0,.9),0_1px_2px_rgba(0,0,0,.9)]"
-                    style={{ fontSize: o.watermark === "2026" ? "62cqh" : "min(56cqh, 11cqw)" }}
-                    data-testid="yearbook-watermark"
-                  >
-                    {/* Neutral wording on purpose: nothing here says anything about payment. */}
-                    {o.watermark === "2026" ? "2026" : "2026 \u2013 Soon"}
-                  </span>
-                </div>
               )}
+              <div className="absolute inset-x-[5%] bottom-0 flex translate-y-[35%] flex-col-reverse items-stretch gap-[1.5cqw]">
+                {/* At least one row is always kept free under the watermark for these labels. */}
+                <div className="flex min-h-[7.5cqw] flex-col-reverse items-stretch gap-[1.5cqw]">
+                  {[...fbCheer, ...otherSports].map((f, k) => label(f, `b-${k}`))}
+                </div>
+                {o.watermark && (
+                  <div className="yb-wm items-center justify-center" data-testid="yearbook-watermark-band">
+                    <span
+                      className="whitespace-nowrap font-sans font-bold leading-none text-[#ffd400] [text-shadow:0_0_2px_rgba(0,0,0,.9),0_1px_2px_rgba(0,0,0,.9)]"
+                      style={{ fontSize: o.watermark === "2026" ? "9.5cqw" : "8.5cqw" }}
+                      data-testid="yearbook-watermark"
+                    >
+                      {/* Neutral wording on purpose: nothing here says anything about payment. */}
+                      {o.watermark === "2026" ? "Jan 2027" : "2027 \u2013 Soon"}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
@@ -257,21 +281,28 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
           </div>
         </div>
         {(overlays?.length ?? 0) > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5" data-testid="yearbook-overlay-buttons">
-            <Button variant={showWatermarks ? "default" : "outline"} size="sm" className="h-8" aria-pressed={showWatermarks}
-              onClick={() => setShowWatermarks((v) => !v)} data-testid="button-yearbook-watermarks">
-              <Stamp className="mr-1 h-4 w-4" /> 2026
-            </Button>
+          // One compact row of small chips, so the flipbook keeps its full size.
+          <div className="-mt-1 flex flex-wrap items-center gap-1" data-testid="yearbook-overlay-buttons">
+            <button type="button" aria-pressed={showWatermarks} onClick={() => setShowWatermarks((v) => !v)}
+              className={cn("yb-chip", showWatermarks && "yb-chip-on")} style={showWatermarks ? { backgroundColor: "#ffd400", borderColor: "#c9a800", color: "#222" } : undefined}
+              data-testid="button-yearbook-watermarks">
+              <Stamp className="h-3 w-3" /> Jan 27
+            </button>
+            <button type="button" disabled title="July 2027 — coming later"
+              className="yb-chip cursor-not-allowed opacity-50" data-testid="button-yearbook-jul-2027">
+              <Stamp className="h-3 w-3" /> Jul 2027
+            </button>
+            <span className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden="true" />
             {legend.map((c) => {
               const on = activeCats.includes(c);
               return (
-                <Button key={c} variant="outline" size="sm" aria-pressed={on} onClick={() => toggleCat(c)}
-                  className={cn("h-8 gap-1.5", on && "font-semibold")}
-                  style={on ? { borderColor: BORDER_COLORS[c], backgroundColor: `${BORDER_COLORS[c]}22` } : undefined}
+                <button key={c} type="button" aria-pressed={on} onClick={() => toggleCat(c)}
+                  className={cn("yb-chip", on && "yb-chip-on")}
+                  style={on ? { borderColor: BORDER_COLORS[c], backgroundColor: `${BORDER_COLORS[c]}26` } : undefined}
                   data-testid={`button-yearbook-cat-${slug(c)}`}>
-                  {c === "Honor" ? <Award className="h-4 w-4" style={{ color: BORDER_COLORS[c] }} /> : <span className="inline-block h-3 w-3 rounded-sm border-2" style={{ borderColor: BORDER_COLORS[c] }} />}
-                  {CATEGORY_LABEL[c] ?? c}
-                </Button>
+                  <span className="inline-block h-2 w-2 shrink-0 rounded-[2px] border-[1.5px]" style={{ borderColor: BORDER_COLORS[c], backgroundColor: on ? BORDER_COLORS[c] : "transparent" }} />
+                  {SHORT_LABEL[c] ?? CATEGORY_LABEL[c] ?? c}
+                </button>
               );
             })}
           </div>
