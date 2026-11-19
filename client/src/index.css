@@ -408,6 +408,7 @@
 /* Yearbook overlays (2026-11): hidden until their button is switched on. */
 .yb-wm, .yb-ring { display: none; }
 .yearbook-stage.show-wm .yb-wm { display: flex; }
+.yearbook-stage.show-title .yb-ring-title,
 .yearbook-stage.show-honor .yb-ring-honor,
 .yearbook-stage.show-football .yb-ring-football,
 .yearbook-stage.show-cheerleading .yb-ring-cheerleading,
@@ -417,3 +418,9 @@
 .yearbook-stage.show-swimming .yb-ring-swimming,
 .yearbook-stage.show-track .yb-ring-track,
 .yearbook-stage.show-sports-shorts .yb-ring-sports-shorts { display: block; }
+span.yb-ring { display: none; }
+.yearbook-stage.show-title span.yb-ring-title, .yearbook-stage.show-honor span.yb-ring-honor,
+.yearbook-stage.show-football span.yb-ring-football, .yearbook-stage.show-cheerleading span.yb-ring-cheerleading,
+.yearbook-stage.show-basketball span.yb-ring-basketball, .yearbook-stage.show-baseball span.yb-ring-baseball,
+.yearbook-stage.show-tennis span.yb-ring-tennis, .yearbook-stage.show-swimming span.yb-ring-swimming,
+.yearbook-stage.show-track span.yb-ring-track, .yearbook-stage.show-sports-shorts span.yb-ring-sports-shorts { display: block; }

@@ -9,6 +9,7 @@ import type { YearbookOverlay } from "@/lib/use-reunion-data";
 
 /** Border colour per category (Honor Graduates + teams from the sports pages). */
 export const BORDER_COLORS: Record<string, string> = {
+  Title: "#8e24aa",
   Honor: "#d4a017",
   Football: "#8b5a2b",
   Cheerleading: "#e84393",
@@ -16,11 +17,30 @@ export const BORDER_COLORS: Record<string, string> = {
   Baseball: "#2e6fd8",
   Tennis: "#2e9e57",
   Swimming: "#0aa3a3",
-  Track: "#6c5ce7",
+  Track: "#3949ab",
   "Sports Shorts": "#7f8c8d",
 };
-const CATEGORY_LABEL: Record<string, string> = { Honor: "Honor Graduates" };
+const CATEGORY_LABEL: Record<string, string> = { Honor: "Honor Graduates", Title: "Class Title Winners" };
 const slug = (c: string) => c.toLowerCase().replace(/[^a-z]+/g, "-");
+
+/**
+ * A category string from the database is "Sport" or "Sport:Team" (e.g. "Football:Cougars"),
+ * or "Title:Most Likely To Succeed". The button groups by the part before the colon.
+ */
+function parseCat(raw: string): { kind: string; detail: string | null } {
+  const i = raw.indexOf(":");
+  return i < 0 ? { kind: raw, detail: null } : { kind: raw.slice(0, i), detail: raw.slice(i + 1) };
+}
+
+/** Label written on the frame line. */
+function frameLabel(kind: string, detail: string | null): string {
+  if (kind === "Honor") return "Honor Graduate";
+  if (kind === "Title") return detail ?? "Class Title";
+  return detail ? `${kind} · ${detail}` : kind;
+}
+
+/** When several frames are on, the label that shows is: class titles first, then teams, then Honor. */
+const PRIORITY = (kind: string) => (kind === "Title" ? 0 : kind === "Honor" ? 2 : 1);
 
 const TOTAL_PAGES = 173;
 
@@ -46,14 +66,25 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
           draggable={false}
         />
         {overlays?.map((o, i) => {
-          const cats = [...(o.honor ? ["Honor"] : []), ...o.categories];
+          // Outermost frame = highest priority (titles, then teams, then Honor).
+          const frames = [...(o.honor ? ["Honor"] : []), ...o.categories]
+            .map((raw) => parseCat(raw))
+            .sort((x, y) => PRIORITY(x.kind) - PRIORITY(y.kind));
           return (
-            <div key={i} className="pointer-events-none absolute" style={{ left: `${o.box[0]}%`, top: `${o.box[1]}%`, width: `${o.box[2]}%`, height: `${o.box[3]}%` }}>
-              {/* One frame per category, drawn inside the photo edge (nested inward) so neighbours keep their gap;
-                  each shows only while its own button is on. */}
-              {cats.map((c, k) => (
-                <div key={c} className={`yb-ring yb-ring-${slug(c)} absolute rounded-[1px] border-[3px]`}
-                  style={{ inset: `${3 * k}px`, borderColor: BORDER_COLORS[c] ?? "#888" }} />
+            <div key={i} className="pointer-events-none absolute" style={{ left: `${o.box[0]}%`, top: `${o.box[1]}%`, width: `${o.box[2]}%`, height: `${o.box[3]}%`, containerType: "inline-size" }}>
+              {/* One frame per category, inside the photo edge; each shows only while its own button is on. */}
+              {frames.map((f, k) => (
+                <div key={`r-${k}`} className={`yb-ring yb-ring-${slug(f.kind)} absolute rounded-[1px] border-[3px]`}
+                  style={{ inset: `${3 * k}px`, borderColor: BORDER_COLORS[f.kind] ?? "#888" }} />
+              ))}
+              {/* Labels sit on the top frame line, all in the same spot. They're drawn lowest priority first,
+                  so the highest-priority label that's switched on covers the others. */}
+              {[...frames].reverse().map((f, k) => (
+                <span key={`l-${k}`} className={`yb-ring yb-ring-${slug(f.kind)} absolute left-1/2 top-0 max-w-[96%] -translate-x-1/2 -translate-y-1/2 overflow-hidden text-ellipsis whitespace-nowrap rounded-sm px-[3%] py-px font-sans font-semibold leading-tight text-white shadow`}
+                  style={{ backgroundColor: BORDER_COLORS[f.kind] ?? "#888", fontSize: `max(6px, min(6.8cqw, ${(118 / Math.max(1, frameLabel(f.kind, f.detail).length)).toFixed(2)}cqw))` }}
+                  data-testid="yearbook-frame-label">
+                  {frameLabel(f.kind, f.detail)}
+                </span>
               ))}
               {o.watermark && (
                 // Level, yellow, in a bottom band no taller than 15% of the photo.
@@ -108,7 +139,7 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
   }, [overlays]);
   const legend = useMemo(() => {
     const seen = new Set<string>();
-    for (const o of overlays ?? []) { if (o.honor) seen.add("Honor"); o.categories.forEach((c) => seen.add(c)); }
+    for (const o of overlays ?? []) { if (o.honor) seen.add("Honor"); o.categories.forEach((c) => seen.add(parseCat(c).kind)); }
     return Object.keys(BORDER_COLORS).filter((k) => seen.has(k));
   }, [overlays]);
 
