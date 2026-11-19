@@ -171,8 +171,10 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         setIsDemo(true);
         const stubMine = session ? DEMO_PEOPLE.find((p) => (p.email ?? "").toLowerCase() === session.email.toLowerCase()) ?? null : null;
         setMyEntry(stubMine);
-        const stubTest = Boolean(session && /tester@/i.test(session.email));
-        setIsAdmin(Boolean(session) && !stubTest);
+        // Demo mode: any email signs in as an ordinary classmate; only "admin@…" gets the admin view.
+        const stubAdmin = Boolean(session && /^admin@/i.test(session.email));
+        const stubTest = Boolean(session) && !stubAdmin;
+        setIsAdmin(stubAdmin);
         setIsTestAccount(stubTest);
         setLedActivityIds(session ? ["napoli"] : []);
         setMyRoster(session ? stubMyRoster(session.email, readPendingClaim()) : null);
