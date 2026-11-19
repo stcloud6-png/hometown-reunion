@@ -26,6 +26,10 @@ export const TEAM_COLORS: Record<string, string> = {
 const TEAM_SPORTS = ["Football", "Cheerleading", "Basketball", "Baseball"];
 const OTHER_SPORTS = ["Tennis", "Swimming", "Track"];
 /** Button order in the chip row. */
+/** Buttons switched on when the yearbook opens. */
+const DEFAULT_CATS = ["Title", "Honor", "Football", "Cheerleading"];
+/** The Jan 27 watermarks start switched on until 1 Feb 2027, 00:00 Eastern (owner, 2026-11-19). */
+const WATERMARKS_ON_UNTIL = Date.parse("2027-02-01T00:00:00-05:00");
 const BUTTONS = ["Title", "Honor", "Football", "Cheerleading", "Basketball", "Baseball", "Other Sports", "Biological Honor Society", "Computer Club"];
 /** Which button a frame kind belongs to. */
 const buttonFor = (kind: string) => (OTHER_SPORTS.includes(kind) ? "Other Sports" : kind);
@@ -180,9 +184,10 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
   const [currentPage, setCurrentPage] = useState(0);
   const [jumpValue, setJumpValue] = useState("");
   const [overlays, setOverlays] = useState<YearbookOverlay[] | null>(fetchOverlays ? null : []);
-  const [showWatermarks, setShowWatermarks] = useState(false);
+  const [showWatermarks, setShowWatermarks] = useState(() => Date.now() < WATERMARKS_ON_UNTIL);
   // Honor Graduates frames are on when the yearbook opens; every team is its own button, off until clicked.
-  const [activeCats, setActiveCats] = useState<string[]>(["Honor"]);
+  // On by default (owner, 2026-11-19): Titles, Honor Grads, Football, Cheer.
+  const [activeCats, setActiveCats] = useState<string[]>(DEFAULT_CATS);
   const toggleCat = (c: string) => setActiveCats((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
   // Load overlay data once, the first time the yearbook opens. The flipbook waits for it
