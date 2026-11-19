@@ -28,6 +28,7 @@ import {
   CLUSTER_RESOURCE_LINKS,
   CLUSTER_THRESHOLDS,
   DASHBOARD_HIDDEN_IDS,
+  mergeActivities,
   DAYS,
   EVENT_PLAN_STATUS_LABEL,
   EXPECTED_HEADCOUNT,
@@ -167,12 +168,13 @@ export default function Dashboard({
   }
   const [interestFilter, setInterestFilter] = useState<string | null>(null);
   // MiEvento-duplicate "exclusive 87" activities are left out of the dashboard (Chiva 87 stays).
-  const dashActivities = useMemo(() => activities.filter((a) => !DASHBOARD_HIDDEN_IDS.includes(a.id)), [activities]);
-  const pillCounts = useMemo(() => interestPillCounts(people, dashActivities), [people, dashActivities]);
+  // (Filter after merging: the merge always adds the built-in list back.)
+  const dashActivities = useMemo(() => mergeActivities(activities).filter((a) => !DASHBOARD_HIDDEN_IDS.includes(a.id)), [activities]);
+  const pillCounts = useMemo(() => interestPillCounts(people, activities).filter((p) => !DASHBOARD_HIDDEN_IDS.includes(p.id)), [people, activities]);
   const filteredPeople = useMemo(() => scopeByInterest(people, interestFilter), [people, interestFilter]);
 
   const rankedWindows = useMemo(() => bestWindowsRanked(filteredPeople, 6), [filteredPeople]);
-  const clusters = useMemo(() => clusterSummaries(filteredPeople, dashActivities), [filteredPeople, dashActivities]);
+  const clusters = useMemo(() => clusterSummaries(filteredPeople, activities).filter((c) => !DASHBOARD_HIDDEN_IDS.includes(c.activity.id)), [filteredPeople, activities]);
   const commitments = useMemo(() => sharedCommitments(people), [people]);
   const lastEditor = useMemo(() => mostRecentEditor(people), [people]);
   const lastFiveEditors = useMemo(() => recentEditors(people, 5), [people]);

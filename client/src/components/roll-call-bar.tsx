@@ -6,6 +6,7 @@ import {
   type Activity,
   BASE_ACTIVITIES,
   type ClusterLead,
+  DASHBOARD_HIDDEN_IDS,
   labelForTag,
   MIEVENTO_INTENT_LABEL,
   type MieventoTicketEntry,
@@ -42,12 +43,12 @@ function VolunteerNames({ people, activities, clusterLeads }: { people: Person[]
   const leads = people.filter((p) => p.volunteer_lead).sort(byName);
   const helpers = people.filter((p) => p.volunteer_support).sort(byName);
   const organizers = clusterLeads
-    .filter((l) => l.lead_name)
+    .filter((l) => l.lead_name && !DASHBOARD_HIDDEN_IDS.includes(l.activity_id))
     .map((l) => ({ name: l.lead_name as string, event: activityLabel(l.activity_id, activities) }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const Row = ({ person, note }: { person: Person; note?: string }) => {
-    const interests = (person.interests ?? []).map((id) => activityLabel(id, activities));
+    const interests = (person.interests ?? []).filter((id) => !DASHBOARD_HIDDEN_IDS.includes(id)).map((id) => activityLabel(id, activities));
     return (
       <li className="leading-snug" data-testid={`volunteer-name-${person.id ?? person.name}`}>
         <span className="font-medium text-foreground">{person.name}</span>

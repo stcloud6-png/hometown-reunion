@@ -188,7 +188,11 @@ export function useReunionData(options: { stub?: boolean } = {}) {
         setActivities(mergeActivities(stubActivities.current));
         setClusterResources([]);
         setClusterLeads([{ activity_id: "napoli", lead_name: "Demo Organizer" }]);
-        setEventPlans([{ activity_id: "napoli", status: "open", event_date: "2027-01-20", start_time: "11:30am", venue: "Napoli", max_size: 50 }]);
+        setEventPlans([
+          { activity_id: "napoli", status: "open", event_date: "2027-01-20", start_time: "11:30am", venue: "Napoli", max_size: 50 },
+          // Demo: an organizer has set Karaoke for Fri 22 evening.
+          { activity_id: "karaoke", status: "open", event_date: "2027-01-22", start_time: "8pm", venue: "Demo venue", max_size: 20 },
+        ]);
         setTickets(DEMO_TICKETS);
         setTicketRun({ ran_at: DEMO_TICKETS[0].last_seen, ok: true, tickets: DEMO_TICKETS.length, sold_out: 3 });
         // Stub-only QA hook: localStorage "czr-stub-ticket-health" = ok | warning | action | stale
