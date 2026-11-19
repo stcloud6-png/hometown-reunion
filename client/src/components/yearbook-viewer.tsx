@@ -18,7 +18,6 @@ export const BORDER_COLORS: Record<string, string> = {
   Tennis: "#2e9e57",
   Swimming: "#0aa3a3",
   Track: "#3949ab",
-  "Sports Shorts": "#7f8c8d",
   "Computer Club": "#263238",
   "Biological Honor Society": "#9e9d24",
 };
