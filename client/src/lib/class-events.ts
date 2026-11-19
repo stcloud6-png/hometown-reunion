@@ -233,7 +233,7 @@ export function slotTagFor(event: ClassEvent): string { return event.key; }
 export function applyAnswersToSlots(slots: PersonSlots, answers: EventAnswers, catalog: ClassEvent[], arrival: string, departure: string): PersonSlots {
   const next: PersonSlots = Object.fromEntries(Object.entries(slots).map(([d, p]) => [d, { ...p }]));
   const gridKeys = new Set(catalog.map((e) => e.key));
-  for (const [day, periods] of Object.entries(next)) {
+  for (const periods of Object.values(next)) {
     for (const p of PERIODS) {
       const v = periods[p];
       if (v?.s === "busy" && v.t && gridKeys.has(v.t) && !answers[v.t]) periods[p] = { s: "ok" };

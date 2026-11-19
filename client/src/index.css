@@ -404,3 +404,8 @@
 .yearbook-page img {
   pointer-events: none;
 }
+
+/* Yearbook overlays (2026-11): hidden until their button is switched on. */
+.yb-wm, .yb-border { display: none; }
+.yearbook-stage.show-wm .yb-wm { display: flex; }
+.yearbook-stage.show-borders .yb-border { display: block; }

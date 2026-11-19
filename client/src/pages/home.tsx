@@ -193,7 +193,7 @@ export default function Home() {
                     onClick={() => document.getElementById("entry-form")?.scrollIntoView({ behavior: "smooth", block: "start" })}
                     data-testid="button-mark-availability"
                   >
-                    Mark my availability
+                    Find my name &amp; plan my week
                   </Button>
                   <p className="text-xs text-muted-foreground">Takes about two minutes</p>
                 </>
@@ -249,6 +249,10 @@ export default function Home() {
               onSignOut={data.signOut}
               linkError={data.linkError}
               onCheckEmailTaken={data.entryEmailTaken}
+              roster={data.roster}
+              myRoster={data.myRoster}
+              claimError={data.claimError}
+              onConfirmYearbook={data.confirmMyYearbook}
             />
             )}
           </>
@@ -284,7 +288,7 @@ export default function Home() {
         CZR BHS87 Reunion &middot; Jan 9 &ndash; 30, 2027 &middot; Mark once, meet more.
       </footer>
 
-      <YearbookViewer open={yearbookOpen} onOpenChange={setYearbookOpen} />
+      <YearbookViewer open={yearbookOpen} onOpenChange={setYearbookOpen} fetchOverlays={data.fetchYearbookOverlays} />
     </div>
   );
 }

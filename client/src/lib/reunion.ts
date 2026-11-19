@@ -40,6 +40,12 @@ export interface Person {
   mievento_intents?: Record<string, string> | null;
   /** Per sub-event ticket status for the 4 "tickets coming soon" MiEvento events (keyed by ScheduledEvent id), e.g. `{ "mega-cruise-23": { status: "purchased" } }`. */
   mievento_ticket_status?: Record<string, MieventoTicketEntry> | null;
+  /** Wed 20 Yacht Club answer (2026-11 revamp). Kept in step with yacht_paid by a DB trigger. */
+  yacht_status?: "planning" | "paid" | "not_attending" | null;
+  /** Events grid answers keyed by class-event key, e.g. { "golf-21": "purchased", "napoli-lunch-20": "planning" }. */
+  event_answers?: Record<string, "planning" | "purchased"> | null;
+  /** Interest pill -> the open slots ("2027-01-21:e") the person would join it in. */
+  pill_slots?: Record<string, string[]> | null;
   updated_at?: string;
   /** Private test-account entry — visible only to that account (and admins in the directory). */
   is_test?: boolean;
@@ -202,6 +208,12 @@ export const BASE_ACTIVITIES: Activity[] = [
   { id: "rooftop-dinner-casco", label: "Rooftop dinner casco" },
   { id: "tennis-doubles", label: "Tennis doubles" },
 ];
+
+/**
+ * Pills no longer shown or offered: the first five duplicate MiEvento events, and Napoli is now
+ * a class event in the events grid. Existing picks stay in the database untouched.
+ */
+export const HIDDEN_PILL_IDS = ["railway-87", "pin-ding", "golf", "bay-cruise-87", "chicken-coup", "napoli"];
 
 /** Typical time-of-day for an activity, used to auto-slot a group-planned sub-event. */
 type TimeOfDay = "evening" | "afternoon" | "day" | "any";
