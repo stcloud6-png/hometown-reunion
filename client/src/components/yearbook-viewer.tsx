@@ -59,8 +59,11 @@ function frameLabel(kind: string, detail: string | null): string {
   if (kind === "Honor") return "HONOR GRAD";
   if (kind === "Title") return detail ?? "Class Title";
   if (kind === "Biological Honor Society") return "Bio Honor Society";
-  // Football stands out in capitals (owner, 2026-11-19).
-  if (kind === "Football") return detail ? `FOOTBALL · ${detail.toUpperCase()}` : "FOOTBALL";
+  // Football and cheerleading stand out in capitals (owner, 2026-11-19).
+  if (kind === "Football" || kind === "Cheerleading") {
+    const k = kind === "Cheerleading" ? "CHEER" : "FOOTBALL"; // short word = bigger letters
+    return detail ? `${k} · ${detail.toUpperCase()}` : k;
+  }
   return detail ? `${kind} · ${detail}` : kind;
 }
 
@@ -109,7 +112,8 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
             fontSize: `max(5px, min(6.2cqw, ${(112 / Math.max(1, frameLabel(f.kind, f.detail).length)).toFixed(2)}cqw))`,
           });
           const label = (f: { kind: string; detail: string | null }, key: string) => (
-            <span key={key} className={`yb-ring yb-ring-${slug(buttonFor(f.kind))} yb-label`} style={labelStyle(f)} data-testid="yearbook-frame-label">
+            <span key={key} className={`yb-ring yb-ring-${slug(buttonFor(f.kind))} yb-label`}
+              style={f.kind === "Cheerleading" ? { ...labelStyle(f), fontWeight: 800, letterSpacing: "0.02em" } : labelStyle(f)} data-testid="yearbook-frame-label">
               {frameLabel(f.kind, f.detail)}
             </span>
           );
