@@ -49,10 +49,11 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
           const cats = [...(o.honor ? ["Honor"] : []), ...o.categories];
           return (
             <div key={i} className="pointer-events-none absolute" style={{ left: `${o.box[0]}%`, top: `${o.box[1]}%`, width: `${o.box[2]}%`, height: `${o.box[3]}%` }}>
-              {/* One frame per category, nested outward; each shows only while its own button is on. */}
+              {/* One frame per category, drawn inside the photo edge (nested inward) so neighbours keep their gap;
+                  each shows only while its own button is on. */}
               {cats.map((c, k) => (
-                <div key={c} className={`yb-ring yb-ring-${slug(c)} absolute rounded-[2px] border-[3px]`}
-                  style={{ inset: `${-3 * (k + 1)}px`, borderColor: BORDER_COLORS[c] ?? "#888" }} />
+                <div key={c} className={`yb-ring yb-ring-${slug(c)} absolute rounded-[1px] border-[3px]`}
+                  style={{ inset: `${3 * k}px`, borderColor: BORDER_COLORS[c] ?? "#888" }} />
               ))}
               {o.watermark && (
                 // Level, yellow, in a bottom band no taller than 15% of the photo.
