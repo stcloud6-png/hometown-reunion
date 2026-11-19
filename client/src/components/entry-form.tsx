@@ -41,6 +41,8 @@ import {
   type ScheduledEvent,
   DAYS,
   HIDDEN_PILL_IDS,
+  plannedSlotIds,
+  toGroupPlannedId,
   EMAIL_PATTERN,
   END_DATE,
   MIEVENTO_TICKET_URL,
@@ -114,6 +116,9 @@ function answersFrom(p?: Person | null): EventAnswers {
   if (p?.interests?.includes("napoli") && !a[NAPOLI_KEY]) a[NAPOLI_KEY] = "planning";
   return a;
 }
+
+/** Pill timeslot shades: 1, 2, 3+ classmates also picked that time (light → dark gold). */
+const OTHERS_SHADES = ["hsl(45 95% 85%)", "hsl(43 92% 70%)", "hsl(40 90% 55%)"];
 
 function slugify(label: string): string {
   return label
@@ -1209,15 +1214,26 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
           {interests.filter((id) => visiblePills.some((a) => a.id === id)).length > 0 && (
             <div className="space-y-2 rounded-md border bg-muted/30 p-3" data-testid="pill-slot-picker">
               <p className="text-sm font-medium">When could you join?</p>
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="inline-block h-3 w-5 rounded-full border bg-background ring-2 ring-[hsl(43_85%_45%)]" aria-hidden="true" />
-                Gold ring + number = classmates who picked that time for the same activity (hover to see who).
-              </p>
+              <p className="text-xs text-muted-foreground">Only times you're Available or Maybe on your calendar are listed.</p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" data-testid="pill-slot-legend">
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-5 rounded-full border-2 border-[hsl(265_55%_45%)] bg-[hsl(265_60%_92%)]" aria-hidden="true" /> ★ Organizer&rsquo;s set time</span>
+                <span className="inline-flex items-center gap-1">
+                  {OTHERS_SHADES.map((c, i) => <span key={i} className="inline-block h-3 w-3 rounded-full border" style={{ backgroundColor: c }} aria-hidden="true" />)}
+                  Classmates also picked it (darker = more; hover to see who)
+                </span>
+              </div>
               {freeSlots.length === 0 && <p className="text-xs text-muted-foreground">You have no Available or Maybe slots on your calendar — mark some above to pick times.</p>}
               {interests.filter((id) => visiblePills.some((a) => a.id === id)).map((id) => {
                 const label = visiblePills.find((a) => a.id === id)!.label;
                 const chosen = pillSlots[id] ?? [];
                 const isOpen = openPill === id;
+                const planned = plannedSlotIds(id, eventPlans);
+                // The organizer's time counts as open when the calendar already holds it for this activity.
+                const heldForThis = (sid: string) => slots[sid.split(":")[0]]?.[sid.split(":")[1] as Period]?.t === toGroupPlannedId(id);
+                const slotKey = (sid: string) => `${sid.split(":")[0]}${PERIODS.indexOf(sid.split(":")[1] as Period)}`;
+                const pillSlotsList = [...freeSlots, ...planned.filter((sid) => !freeSlots.includes(sid) && heldForThis(sid))]
+                  .sort((x, y) => slotKey(x).localeCompare(slotKey(y)));
+                const plannedButBusy = planned.filter((sid) => !pillSlotsList.includes(sid));
                 return (
                   <div key={id} className="rounded-md border bg-card">
                     <button type="button" onClick={() => setOpenPill(isOpen ? null : id)} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm" data-testid={`pill-slots-toggle-${id}`}>
@@ -1226,31 +1242,43 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
                         {chosen.length ? chosen.slice(0, 2).map(slotIdLabel).join(", ") + (chosen.length > 2 ? ` +${chosen.length - 2}` : "") : "pick times"} {isOpen ? "▲" : "▼"}
                       </span>
                     </button>
-                    {isOpen && freeSlots.length > 0 && (
+                    {isOpen && plannedButBusy.length > 0 && (
+                      <p className="border-t px-3 py-1.5 text-xs text-[hsl(265_55%_35%)]" data-testid={`pill-lead-busy-${id}`}>
+                        ★ The organizer set {plannedButBusy.map(slotIdLabel).join(", ")}, but you're not free then on your calendar.
+                      </p>
+                    )}
+                    {isOpen && pillSlotsList.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 border-t px-3 py-2">
-                        {freeSlots.map((slotId) => {
+                        {pillSlotsList.map((slotId) => {
                           const on = chosen.includes(slotId);
                           const maybe = slots[slotId.split(":")[0]]?.[slotId.split(":")[1] as Period]?.s === "maybe";
                           const others = pillPeople.bySlot[id]?.[slotId] ?? [];
+                          const lead = planned.includes(slotId);
+                          // Shade by how many classmates picked this time (1, 2, 3+); the organizer's set time gets a purple outline.
+                          const shade = others.length > 0 && !on ? OTHERS_SHADES[Math.min(others.length, OTHERS_SHADES.length) - 1] : undefined;
                           const btn = (
                             <button key={slotId} type="button" onClick={() => togglePillSlot(id, slotId)} aria-pressed={on}
-                              data-testid={`pill-slot-${id}-${slotId}`} data-others={others.length || undefined}
+                              data-testid={`pill-slot-${id}-${slotId}`} data-others={others.length || undefined} data-lead={lead || undefined}
                               className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs",
-                                on ? "border-primary bg-primary text-primary-foreground" : maybe ? "status-maybe" : "status-ok",
-                                // Timeslots other classmates picked for this pill stand out with a gold ring.
-                                others.length > 0 && !on && (others.length >= 3 ? "ring-2 ring-[hsl(43_85%_45%)]" : "ring-1 ring-[hsl(43_85%_50%)]"))}>
+                                on ? "border-primary bg-primary text-primary-foreground" : lead ? "border-2 border-[hsl(265_55%_45%)] bg-[hsl(265_60%_92%)] text-[hsl(265_55%_25%)] font-medium" : maybe ? "status-maybe" : "status-ok",
+                                lead && on && "ring-2 ring-[hsl(265_55%_45%)] ring-offset-1")}
+                              style={shade && !lead ? { backgroundColor: shade, borderColor: "hsl(43 70% 40%)", color: "#1f1600" } : undefined}>
+                              {lead && <span aria-hidden="true">★</span>}
                               {slotIdLabel(slotId)}{maybe ? " (maybe)" : ""}
                               {others.length > 0 && (
-                                <span className={cn("rounded-full px-1.5 text-[10px] font-semibold", on ? "bg-primary-foreground/25" : "bg-[hsl(43_85%_50%)] text-black")}>
+                                <span className={cn("rounded-full px-1.5 text-[10px] font-semibold", on ? "bg-primary-foreground/25" : "bg-black/10")}>
                                   +{others.length}
                                 </span>
                               )}
                             </button>
                           );
-                          return others.length === 0 ? btn : (
+                          return others.length === 0 && !lead ? btn : (
                             <Tooltip key={slotId}>
                               <TooltipTrigger asChild>{btn}</TooltipTrigger>
-                              <TooltipContent className="max-w-[240px] text-xs"><strong>Also picked this time:</strong> {others.join(", ")}</TooltipContent>
+                              <TooltipContent className="max-w-[240px] space-y-1 text-xs">
+                                {lead && <p><strong>Organizer&rsquo;s set time</strong> for this activity.</p>}
+                                {others.length > 0 && <p><strong>Also picked this time:</strong> {others.join(", ")}</p>}
+                              </TooltipContent>
                             </Tooltip>
                           );
                         })}

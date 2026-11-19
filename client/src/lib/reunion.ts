@@ -219,9 +219,20 @@ export const HIDDEN_PILL_IDS = ["railway-87", "pin-ding", "golf", "bay-cruise-87
 /**
  * "Exclusive for 87" activities kept out of the Group dashboard's interest clusters and filter
  * (owner, 2026-11-19): MiEvento already runs these, so showing them would confuse people.
- * Chiva 87 ("cruise-87") is the one exclusive that stays.
+ * Chiva 87 ("cruise-87") is the one exclusive that stays. "Chicken coup" is hidden too: the
+ * MiEvento Midnite Chicken Coop (Thu 21) is the only chicken-coop event, offered in the timeslots.
  */
-export const DASHBOARD_HIDDEN_IDS = ["railway-87", "bay-cruise-87", "golf", "pin-ding", "poolside-87"];
+export const DASHBOARD_HIDDEN_IDS = ["railway-87", "bay-cruise-87", "golf", "pin-ding", "poolside-87", "chicken-coup"];
+
+/**
+ * Timeslots an organizer (event lead) has set for an activity via its open group plan,
+ * as "YYYY-MM-DD:m|a|e" ids. Empty when no plan has a date yet.
+ */
+export function plannedSlotIds(activityId: string, eventPlans: EventPlan[]): string[] {
+  return eventPlans
+    .filter((p) => p.activity_id === activityId && p.status === "open" && p.event_date)
+    .flatMap((p) => autoSlotsForTimeOfDay(activityTimeOfDay(activityId)).map((per) => `${p.event_date}:${per}`));
+}
 
 /** Typical time-of-day for an activity, used to auto-slot a group-planned sub-event. */
 type TimeOfDay = "evening" | "afternoon" | "day" | "any";

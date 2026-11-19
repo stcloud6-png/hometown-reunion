@@ -5,7 +5,7 @@ import {
   type CheckContext,
 } from "../client/src/lib/class-events";
 import { findRepeat, words, type DedupeTarget } from "../client/src/lib/pill-dedupe";
-import { initSlots, labelForTag, BASE_ACTIVITIES, canonicalSlots, eventsForDate, groupPlannedEventsForDate, applyGroupPlanDefaults } from "../client/src/lib/reunion";
+import { initSlots, labelForTag, BASE_ACTIVITIES, canonicalSlots, eventsForDate, groupPlannedEventsForDate, applyGroupPlanDefaults, plannedSlotIds, DASHBOARD_HIDDEN_IDS, HIDDEN_PILL_IDS } from "../client/src/lib/reunion";
 import type { TicketWatchRow } from "../client/src/lib/ticket-watch";
 
 // Live MiEvento snapshot as of 2026-11-19.
@@ -197,5 +197,11 @@ assert.deepEqual(words("Exclusive Bay Cruise for 87"), ["bay", "cruise"]);
   const fresh = applyGroupPlanDefaults(initSlots("2027-01-17", "2027-01-24"), plans);
   assert.notEqual(fresh["2027-01-20"].a.t, "czr-napoli"); // Napoli comes from the events list, not a default
 }
+
+// Organizer's set time for a pill; Railway and Chicken coup hidden as pills and on the dashboard.
+assert.deepEqual(plannedSlotIds("karaoke", [{ activity_id: "karaoke", status: "open", event_date: "2027-01-22", start_time: "8pm", venue: null, max_size: null }]), ["2027-01-22:e"]);
+assert.deepEqual(plannedSlotIds("karaoke", [{ activity_id: "karaoke", status: "cancelled", event_date: "2027-01-22", start_time: null, venue: null, max_size: null }]), []);
+for (const id of ["railway-87", "chicken-coup"]) { assert.ok(HIDDEN_PILL_IDS.includes(id)); assert.ok(DASHBOARD_HIDDEN_IDS.includes(id)); }
+assert.ok(!DASHBOARD_HIDDEN_IDS.includes("cruise-87"));
 
 console.log("class-events + pill-dedupe tests passed");
