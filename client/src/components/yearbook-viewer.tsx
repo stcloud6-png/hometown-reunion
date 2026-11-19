@@ -60,10 +60,11 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
                 <div className="yb-wm absolute inset-x-0 bottom-0 h-[15%] items-center justify-center overflow-hidden" style={{ containerType: "size" }}>
                   <span
                     className="whitespace-nowrap font-sans font-bold leading-none text-[#ffd400] [text-shadow:0_0_2px_rgba(0,0,0,.9),0_1px_2px_rgba(0,0,0,.9)]"
-                    style={{ fontSize: o.watermark === "2026" ? "62cqh" : "min(52cqh, 7.6cqw)" }}
+                    style={{ fontSize: o.watermark === "2026" ? "62cqh" : "min(56cqh, 11cqw)" }}
                     data-testid="yearbook-watermark"
                   >
-                    {o.watermark === "2026" ? "2026" : "2026 \u2013 Unconfirmed"}
+                    {/* Neutral wording on purpose: nothing here says anything about payment. */}
+                    {o.watermark === "2026" ? "2026" : "2026 \u2013 Soon"}
                   </span>
                 </div>
               )}
