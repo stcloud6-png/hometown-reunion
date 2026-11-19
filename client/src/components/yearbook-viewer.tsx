@@ -19,7 +19,10 @@ export const BORDER_COLORS: Record<string, string> = {
   Swimming: "#0aa3a3",
   Track: "#3949ab",
   "Sports Shorts": "#7f8c8d",
+  "Computer Club": "#263238",
+  "Biological Honor Society": "#9e9d24",
 };
+const CLUBS = ["Computer Club", "Biological Honor Society"];
 const CATEGORY_LABEL: Record<string, string> = { Honor: "Honor Graduates", Title: "Class Title Winners" };
 const slug = (c: string) => c.toLowerCase().replace(/[^a-z]+/g, "-");
 
@@ -36,11 +39,18 @@ function parseCat(raw: string): { kind: string; detail: string | null } {
 function frameLabel(kind: string, detail: string | null): string {
   if (kind === "Honor") return "Honor Graduate";
   if (kind === "Title") return detail ?? "Class Title";
+  if (kind === "Biological Honor Society") return "Bio Honor Society";
   return detail ? `${kind} · ${detail}` : kind;
 }
 
 /** When several frames are on, the label that shows is: class titles first, then teams, then Honor. */
-const PRIORITY = (kind: string) => (kind === "Title" ? 0 : kind === "Honor" ? 2 : 1);
+// Clubs rank after teams and before Honor.
+const PRIORITY = (kind: string) => (kind === "Title" ? 0 : kind === "Honor" ? 3 : CLUBS.includes(kind) ? 2 : 1);
+
+/** Show/hide rules for every frame kind, generated so a new category only needs a colour above. */
+const FRAME_CSS = Object.keys(BORDER_COLORS)
+  .map((k) => `.yearbook-stage.show-${slug(k)} .yb-ring-${slug(k)}{display:block}`)
+  .join("\n");
 
 const TOTAL_PAGES = 173;
 
@@ -179,6 +189,7 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays }: Ye
           className={cn("yearbook-stage flex flex-1 items-center justify-center overflow-hidden rounded-md bg-muted/40 py-2", showWatermarks && "show-wm", activeCats.map((c) => `show-${slug(c)}`))}
           data-testid="yearbook-stage"
         >
+          <style>{FRAME_CSS}</style>
           {overlays === null ? (
             <p className="py-24 text-sm text-muted-foreground">Opening the yearbook…</p>
           ) : (
