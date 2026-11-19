@@ -17,6 +17,7 @@ import {
   supabaseAuth,
   supabaseRest,
   supabaseRpc,
+  canonicalSlots,
   supabaseSignedUrls,
   supabaseUpload,
   shrinkImage,
@@ -78,6 +79,11 @@ export interface AdminMissingPhoto {
   created_at: string;
   url: string | null;
 }
+/** Old look-alike calendar tags (e.g. the "Napoli Restaurant" group plan) read as the one class event. */
+function withCanonicalSlots(p: Person): Person {
+  return p.slots ? { ...p, slots: canonicalSlots(p.slots) } : p;
+}
+
 const PHOTO_BUCKET = "missing-photos";
 const newPhotoPath = () => `uploads/${crypto.randomUUID()}.jpg`;
 
@@ -178,7 +184,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     setError(null);
     try {
       if (stub) {
-        setPeople(withDemoAnswers(DEMO_PEOPLE));
+        setPeople(withDemoAnswers(DEMO_PEOPLE).map(withCanonicalSlots));
         setActivities(mergeActivities(stubActivities.current));
         setClusterResources([]);
         setClusterLeads([{ activity_id: "napoli", lead_name: "Demo Organizer" }]);
@@ -268,11 +274,11 @@ export function useReunionData(options: { stub?: boolean } = {}) {
           .catch(() => setMyMissingPhoto(null));
       } else { setMyRoster(null); setMyMissingPhoto(null); }
       const [myRows, admin, tester, led] = mineRes;
-      setMyEntry(Array.isArray(myRows) && myRows[0] ? myRows[0] : null);
+      setMyEntry(Array.isArray(myRows) && myRows[0] ? withCanonicalSlots(myRows[0]) : null);
       setIsAdmin(admin === true);
       setIsTestAccount(tester === true);
       setLedActivityIds(Array.isArray(led) ? led.map((v) => (typeof v === "string" ? v : String((v as Record<string, unknown>).my_led_activities ?? ""))).filter(Boolean) : []);
-      setPeople(peopleRes);
+      setPeople(peopleRes.map(withCanonicalSlots));
       setActivities(mergeActivities(activitiesRes));
       setClusterResources(resourcesRes);
       setClusterLeads(leadsRes);

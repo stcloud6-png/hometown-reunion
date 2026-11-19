@@ -185,7 +185,8 @@ export const CLUSTER_THRESHOLDS: ClusterThresholds = {
 
 /** Baseline interest/activity pills (BHS87-only activities the group can organize). */
 export const BASE_ACTIVITIES: Activity[] = [
-  { id: "napoli", label: "Napoli Restaurant" },
+  // One Napoli everywhere (owner, 2026-11-19): same name as the class event "napoli-lunch-20".
+  { id: "napoli", label: "Napoli Lunch (BHS '87)" },
   { id: "casino", label: "Casino Night" },
   { id: "deep-sea-fishing", label: "Charter Deep-Sea Fishing but send catch to restaurant" },
   { id: "coronado", label: "Coronado Beach" },
@@ -603,7 +604,8 @@ export function fromGroupPlannedId(id: string): string {
 }
 
 /** Human label for any busy-slot tag id, prefixing "(BHS87 event)" for czr- ids. */
-export function labelForTag(tag: string, activities: Activity[]): string {
+export function labelForTag(rawTag: string, activities: Activity[]): string {
+  const tag = canonicalTag(rawTag) ?? rawTag;
   if (isGroupPlannedId(tag)) {
     const activityId = fromGroupPlannedId(tag);
     const base = activities.find((a) => a.id === activityId)?.label ?? BASE_ACTIVITIES.find((a) => a.id === activityId)?.label ?? activityId;
@@ -645,9 +647,36 @@ export function eventCategoryClass(tag: string | undefined): string | undefined 
  * When `period` is given, applies the same evening-only/day-only restriction as
  * `eventsForDate()` so a group-planned evening activity doesn't leak into Morning/Afternoon
  * (and vice versa). */
+/**
+ * Group plans already covered by a fixed class event, so they never show a second, look-alike option:
+ * the Napoli plan IS the "Napoli Lunch (BHS '87)" event (napoli-lunch-20).
+ */
+const PLAN_COVERED_BY_EVENT: Record<string, string> = { napoli: "napoli-lunch-20" };
+
+/** Old saved tags that now mean a fixed class event (e.g. "czr-napoli" → "napoli-lunch-20"). */
+export function canonicalTag(tag: string | undefined): string | undefined {
+  if (!tag || !isGroupPlannedId(tag)) return tag;
+  return PLAN_COVERED_BY_EVENT[fromGroupPlannedId(tag)] ?? tag;
+}
+
+/** Rewrites old look-alike tags in a person's calendar to the one canonical event id (read-time only). */
+export function canonicalSlots(slots: PersonSlots | null | undefined): PersonSlots {
+  const out: PersonSlots = {};
+  for (const [day, periods] of Object.entries(slots ?? {})) {
+    const d: PersonSlots[string] = { ...periods };
+    for (const per of Object.keys(d) as Period[]) {
+      const slot = d[per];
+      const t = canonicalTag(slot?.t);
+      if (slot && t !== slot.t) d[per] = { ...slot, t };
+    }
+    out[day] = d;
+  }
+  return out;
+}
+
 export function groupPlannedEventsForDate(iso: string, eventPlans: EventPlan[], activities: Activity[], period?: Period): { id: string; label: string; note?: string; autoSlots: Period[] }[] {
   return eventPlans
-    .filter((p) => p.status === "open" && p.event_date === iso)
+    .filter((p) => p.status === "open" && p.event_date === iso && !PLAN_COVERED_BY_EVENT[p.activity_id])
     .map((p) => {
       const base = activities.find((a) => a.id === p.activity_id) ?? BASE_ACTIVITIES.find((a) => a.id === p.activity_id);
       return {
@@ -685,6 +714,8 @@ export function applyGroupPlanDefaults(slots: PersonSlots, eventPlans: EventPlan
   const next: PersonSlots = { ...slots };
   for (const plan of eventPlans) {
     if (plan.status !== "open" || !plan.event_date || !next[plan.event_date]) continue;
+    // Napoli is picked in the events list (Plan to attend), not pre-filled for everyone.
+    if (PLAN_COVERED_BY_EVENT[plan.activity_id]) continue;
     for (const period of autoSlotsForTimeOfDay(activityTimeOfDay(plan.activity_id))) {
       if (isYachtLockSlot(plan.event_date, period)) continue;
       const day = { ...next[plan.event_date] };

@@ -5,7 +5,7 @@ import {
   type CheckContext,
 } from "../client/src/lib/class-events";
 import { findRepeat, words, type DedupeTarget } from "../client/src/lib/pill-dedupe";
-import { initSlots, labelForTag, BASE_ACTIVITIES } from "../client/src/lib/reunion";
+import { initSlots, labelForTag, BASE_ACTIVITIES, canonicalSlots, eventsForDate, groupPlannedEventsForDate, applyGroupPlanDefaults } from "../client/src/lib/reunion";
 import type { TicketWatchRow } from "../client/src/lib/ticket-watch";
 
 // Live MiEvento snapshot as of 2026-11-19.
@@ -185,6 +185,17 @@ assert.deepEqual(words("Exclusive Bay Cruise for 87"), ["bay", "cruise"]);
   assert.deepEqual(pills.byPill.karaoke, ["Ann", "Bob"]);
   assert.deepEqual(pills.bySlot.karaoke["2027-01-21:evening"], ["Ann", "Bob"]);
   assert.equal(pills.bySlot.bowling, undefined); // slot picks for a pill they no longer have are ignored
+}
+
+// One Napoli: Wed 20 afternoon offers only "Napoli Lunch (BHS '87)"; old "czr-napoli" tags read as it.
+{
+  const plans = [{ activity_id: "napoli", status: "open" as const, event_date: "2027-01-20", start_time: "11:30am", venue: "Napoli", max_size: 50 }];
+  const opts = [...eventsForDate("2027-01-20", "a").map((e) => e.label), ...groupPlannedEventsForDate("2027-01-20", plans, BASE_ACTIVITIES, "a").map((e) => e.label)];
+  assert.deepEqual(opts.filter((l) => /napoli/i.test(l)), ["Napoli Lunch (BHS '87)"]);
+  assert.equal(labelForTag("czr-napoli", BASE_ACTIVITIES), "Napoli Lunch (BHS '87)");
+  assert.equal(canonicalSlots({ "2027-01-20": { m: { s: "ok" }, a: { s: "busy", t: "czr-napoli" }, e: { s: "ok" } } })["2027-01-20"].a.t, NAPOLI_KEY);
+  const fresh = applyGroupPlanDefaults(initSlots("2027-01-17", "2027-01-24"), plans);
+  assert.notEqual(fresh["2027-01-20"].a.t, "czr-napoli"); // Napoli comes from the events list, not a default
 }
 
 console.log("class-events + pill-dedupe tests passed");
