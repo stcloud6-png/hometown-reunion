@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { WeatherRow } from "@/components/weather-corner";
 import { DEMO_TICKETS, latestTickets, type TicketWatchRow, type TicketWatchRun } from "@/lib/ticket-watch";
 import {
   type Activity,
@@ -138,6 +139,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const [ledActivityIds, setLedActivityIds] = useState<string[]>([]);
   const stubActivities = useRef<Activity[]>([]);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
+  const [weather, setWeather] = useState<WeatherRow[]>([]);
   const [myRoster, setMyRoster] = useState<MyRoster | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
 
@@ -165,6 +167,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
           layout_changed: stubHealth === "warning",
         });
         setRoster(DEMO_ROSTER);
+        setWeather(DEMO_WEATHER);
         setIsDemo(true);
         const stubMine = session ? DEMO_PEOPLE.find((p) => (p.email ?? "").toLowerCase() === session.email.toLowerCase()) ?? null : null;
         setMyEntry(stubMine);
@@ -212,6 +215,9 @@ export function useReunionData(options: { stub?: boolean } = {}) {
           setTicketHealth(latest[0] ?? null);
         })
         .catch(() => undefined);
+      // Daily weather (info only) — never blocks the page.
+      void supabaseRest<WeatherRow[]>("/weather_daily?select=city,observed_on,temp_f,high_f,low_f,weather_code,fetched_at&order=observed_on.desc&limit=6", { accessToken: token })
+        .then(setWeather).catch(() => setWeather([]));
       // Roster names (for the "find your name" picker) and the caller's own roster row.
       void supabaseRest<RosterEntry[]>("/roster?select=id,display_name,search_names,status,person_id&order=display_name.asc", { accessToken: token })
         .then(setRoster).catch(() => setRoster([]));
@@ -639,6 +645,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   }, [stub, session]);
 
   return {
+    weather,
     roster,
     myRoster,
     claimError,
@@ -695,6 +702,11 @@ export { parseAuthHashFragment };
 // ---------------------------------------------------------------------------
 // Stub data for offline QA (never written anywhere)
 // ---------------------------------------------------------------------------
+const DEMO_WEATHER: WeatherRow[] = [
+  { city: "Orlando, FL", observed_on: "2026-11-19", temp_f: 68.7, high_f: 71.3, low_f: 68.1, weather_code: 63, fetched_at: "2026-11-19T09:23:09Z" },
+  { city: "Panama City", observed_on: "2026-11-19", temp_f: 77.6, high_f: 88.5, low_f: 77.1, weather_code: 2, fetched_at: "2026-11-19T09:23:09Z" },
+];
+
 const DEMO_ROSTER: RosterEntry[] = [
   { id: "r-1", display_name: "Shelly Mickelson (McQuary)", search_names: ["Michelle McQuary"], status: "unclaimed", person_id: null },
   { id: "r-2", display_name: "Stacy Payton", search_names: [], status: "unclaimed", person_id: null },

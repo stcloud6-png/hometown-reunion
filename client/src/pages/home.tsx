@@ -7,6 +7,7 @@ import RollCallBar from "@/components/roll-call-bar";
 import SettingsPopover from "@/components/settings-popover";
 import YearbookViewer from "@/components/yearbook-viewer";
 import { TicketWatchCard, TicketWatchMobile } from "@/components/ticket-watch";
+import { WeatherCorner } from "@/components/weather-corner";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReunionData } from "@/lib/use-reunion-data";
@@ -177,7 +178,9 @@ export default function Home() {
             {/* Hero row: the side frame is pinned to the hero's height (list scrolls inside it),
                 so the sign-in / availability form always starts right below the button. */}
             <div className={cn("mb-8", data.tickets.length > 0 && "lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-8")}>
-            <div className={cn("flex flex-col items-center gap-3 text-center", data.tickets.length > 0 && "lg:min-h-[480px] lg:justify-center")}>
+            <div className={cn("relative flex flex-col items-center gap-3 text-center", data.tickets.length > 0 && "lg:min-h-[480px] lg:justify-center")}>
+              {/* Small, info-only weather in the top-left corner of the splash. */}
+              <WeatherCorner rows={data.weather} className="self-start sm:absolute sm:left-0 sm:top-0" />
               <img src={`${import.meta.env.BASE_URL}reunion-logo.jpg`} alt="CZR BHS87 Reunion" className="h-20 w-20 rounded-full object-cover shadow-md" />
               <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">CZR BHS87</h1>
               <p className="font-serif text-lg italic text-muted-foreground">The Meetup &amp; Planning Organizer</p>
