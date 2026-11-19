@@ -65,8 +65,9 @@ function frameLabel(kind: string, detail: string | null): string {
 }
 
 /** When several frames are on, the label that shows is: class titles first, then teams, then Honor. */
-// Clubs rank after teams and before Honor.
-const PRIORITY = (kind: string) => (kind === "Title" ? 0 : kind === "Honor" ? 3 : CLUBS.includes(kind) ? 2 : 1);
+/** Outside-in order of the nested frames. */
+const RING_ORDER = (kind: string) =>
+  ({ Honor: 0, Title: 1, Football: 2, Cheerleading: 2, "Computer Club": 3, "Biological Honor Society": 4 } as Record<string, number>)[kind] ?? 5;
 
 /** Show/hide rules for every frame kind, generated so a new category only needs a colour above. */
 const FRAME_CSS = BUTTONS
@@ -97,10 +98,11 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
           draggable={false}
         />
         {overlays?.map((o, i) => {
-          // Outermost frame = highest priority (titles, then teams, then Honor).
+          // Frames nest from the outside in (owner, 2026-11-19): yellow Honor outermost, then purple title,
+          // football/cheer team colour, Computer Club, Bio Honor Society, then the other sports.
           const frames = [...(o.honor ? ["Honor"] : []), ...o.categories]
             .map((raw) => parseCat(raw))
-            .sort((x, y) => PRIORITY(x.kind) - PRIORITY(y.kind));
+            .sort((x, y) => RING_ORDER(x.kind) - RING_ORDER(y.kind));
           const labelStyle = (f: { kind: string; detail: string | null }) => ({
             backgroundColor: colorFor(f.kind, f.detail),
             color: textOn(colorFor(f.kind, f.detail)),

@@ -743,7 +743,7 @@ const DEMO_OVERLAYS: YearbookOverlay[] = [
   { page: 19, box: [53.06, 10.65, 19.29, 20.66], watermark: "2026 - Unconfirmed", honor: false, categories: ["Football:Devils"] },
   { page: 19, box: [74.08, 10.65, 19.29, 20.66], watermark: "2026", honor: true, categories: ["Biological Honor Society", "Computer Club", "Football:Devils"] },
   { page: 19, box: [10.41, 35.8, 19.29, 20.66], watermark: null, honor: true, categories: [] },
-  { page: 19, box: [31.63, 35.8, 19.29, 20.66], watermark: "2026", honor: true, categories: ["Biological Honor Society", "Football:Red", "Title:Most Likely To Succeed"] },
+  { page: 19, box: [31.63, 35.8, 19.29, 20.66], watermark: null, honor: true, categories: ["Biological Honor Society", "Football:Red", "Title:Most Likely To Succeed"] },
   { page: 19, box: [53.06, 35.8, 19.29, 20.66], watermark: null, honor: true, categories: [] },
   { page: 19, box: [74.08, 35.8, 19.29, 20.66], watermark: "2026 - Unconfirmed", honor: false, categories: [] },
   { page: 19, box: [31.63, 61.28, 19.29, 20.66], watermark: null, honor: false, categories: ["Swimming"] },
