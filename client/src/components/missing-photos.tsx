@@ -29,11 +29,13 @@ function WatermarkText({ value }: { value: string | null }) {
  * Yearbook pop-up: classmates who missed the senior photo shoot (or graduation), with the photo
  * they gave us. Public, approved photos only.
  */
-export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWatermarks }: {
+export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWatermarks, showTitles = true }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   fetchPhotos?: () => Promise<MissingPhoto[]>;
   showWatermarks: boolean;
+  /** Follows the yearbook's Titles button: purple frame + label, as on the portraits. */
+  showTitles?: boolean;
 }) {
   const [photos, setPhotos] = useState<MissingPhoto[] | null>(null);
   useEffect(() => {
@@ -61,8 +63,23 @@ export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWater
           <ul className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4" data-testid="list-missing-photos">
             {photos.map((p) => (
               <li key={p.id} className="flex flex-col items-center gap-1.5">
-                <div className="relative aspect-[4/5] w-full overflow-hidden bg-muted shadow-md">
-                  <img src={p.url} alt={p.display_name} className="h-full w-full object-cover" loading="lazy" />
+                <div className={cn("relative aspect-[4/5] w-full overflow-hidden bg-muted shadow-md",
+                  showTitles && p.titles.length > 0 && "outline outline-[3px] outline-[#8e24aa]")} data-testid={`missing-photo-${p.id}`}>
+                  {p.url ? (
+                    <img src={p.url} alt={p.display_name} className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[#e8dfcb] text-[#8a7a5c]" data-testid="missing-photo-placeholder">
+                      <Camera className="h-8 w-8" />
+                      <span className="text-[11px] font-medium">Photo coming soon</span>
+                    </div>
+                  )}
+                  {showTitles && p.titles.length > 0 && (
+                    <div className="absolute inset-x-0 top-0 flex flex-col items-center gap-px" data-testid="missing-photo-titles">
+                      {p.titles.map((t) => (
+                        <span key={t} className="w-full truncate bg-[#8e24aa] px-1 py-0.5 text-center font-sans text-[11px] font-bold leading-tight text-white">{t}</span>
+                      ))}
+                    </div>
+                  )}
                   {showWatermarks && p.watermark && (
                     <div className="absolute inset-x-0 bottom-[8%] flex justify-center" data-testid="missing-photo-watermark">
                       <WatermarkText value={p.watermark} />

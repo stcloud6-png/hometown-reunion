@@ -60,7 +60,10 @@ export interface YearbookOverlay {
 export interface MissingPhoto {
   id: string;
   display_name: string;
-  url: string;
+  /** null = no photo yet (a titled classmate still waiting for one: shown as a placeholder card). */
+  url: string | null;
+  /** Class titles for classmates with no senior portrait, e.g. "Best Dancer". */
+  titles: string[];
   /** Same internal labels as the yearbook: "2026" (paid) / "2026 - Unconfirmed" / null. */
   watermark: string | null;
 }
@@ -703,11 +706,20 @@ export function useReunionData(options: { stub?: boolean } = {}) {
 
   /** Approved missing-classmate photos for the yearbook pop-up (public). */
   const fetchMissingPhotos = useCallback(async (): Promise<MissingPhoto[]> => {
-    if (stub) return stubPhotos.filter((p) => p.status === "approved").map(({ id, display_name, url, watermark }) => ({ id, display_name, url, watermark }));
+    if (stub) {
+      const withPhoto = stubPhotos.filter((p) => p.status === "approved").map(({ id, display_name, url, watermark }) => ({ id, display_name, url, watermark, titles: STUB_TITLES[display_name] ?? [] }));
+      const waiting = Object.entries(STUB_TITLES).filter(([n]) => !withPhoto.some((p) => p.display_name === n))
+        .map(([n, titles]) => ({ id: `t-${n}`, display_name: n, url: null, watermark: "2026 - Unconfirmed", titles }));
+      return [...withPhoto, ...waiting].sort((a, b) => a.display_name.localeCompare(b.display_name));
+    }
     const token = session?.accessToken ?? null;
-    const rows = await supabaseRpc<{ id: string; display_name: string; storage_path: string; watermark: string | null }[]>("missing_photos_public", {}, token);
-    const urls = await supabaseSignedUrls(PHOTO_BUCKET, rows.map((r) => r.storage_path), token);
-    return rows.filter((r) => urls[r.storage_path]).map((r) => ({ id: r.id, display_name: r.display_name, url: urls[r.storage_path], watermark: r.watermark }));
+    const rows = await supabaseRpc<{ id: string; display_name: string; storage_path: string | null; watermark: string | null; titles: string[] | null }[]>("missing_photos_public", {}, token);
+    const paths = rows.flatMap((r) => (r.storage_path ? [r.storage_path] : []));
+    const urls = await supabaseSignedUrls(PHOTO_BUCKET, paths, token);
+    // A photo whose link couldn't be made is left out; titled classmates with no photo yet show as a placeholder.
+    return rows
+      .filter((r) => !r.storage_path || urls[r.storage_path])
+      .map((r) => ({ id: r.id, display_name: r.display_name, url: r.storage_path ? urls[r.storage_path] : null, watermark: r.watermark, titles: r.titles ?? [] }));
   }, [stub, session]);
 
   /** Signed-in classmate with no senior portrait: upload their own photo (waits for admin approval). */
@@ -878,9 +890,10 @@ function demoPhoto(initials: string, hue: number): string {
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='380'><rect width='300' height='380' fill='hsl(${hue},35%,78%)'/><circle cx='150' cy='150' r='70' fill='hsl(${hue},25%,55%)'/><rect x='55' y='235' width='190' height='160' rx='90' fill='hsl(${hue},25%,55%)'/><text x='150' y='365' font-family='Georgia' font-size='34' text-anchor='middle' fill='white'>${initials}</text></svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
+/** Demo: titles for classmates with no senior portrait. */
+const STUB_TITLES: Record<string, string[]> = { "Robert Bell": ["Best Dancer"] };
 type StubPhoto = AdminMissingPhoto & { url: string; watermark: string | null };
 let stubPhotos: StubPhoto[] = [
-  { id: "s-1", roster_id: "r-bell", display_name: "Robert Bell", url: demoPhoto("RB", 205), watermark: "2026 - Unconfirmed", status: "approved", created_at: "2026-11-19T16:00:00Z" },
   { id: "s-2", roster_id: "r-bolton", display_name: "Venus Bolton", url: demoPhoto("VB", 330), watermark: "2026", status: "approved", created_at: "2026-11-19T16:05:00Z" },
   { id: "s-3", roster_id: "r-hutto", display_name: "Celeste Hutto", url: demoPhoto("CH", 140), watermark: "2026 - Unconfirmed", status: "pending", created_at: "2026-11-19T16:10:00Z" },
 ];

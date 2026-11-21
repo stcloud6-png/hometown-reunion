@@ -423,7 +423,7 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
           </div>
         )}
       </DialogContent>
-      <MissingPhotosDialog open={missingOpen} onOpenChange={setMissingOpen} fetchPhotos={fetchMissingPhotos} showWatermarks={showWatermarks} />
+      <MissingPhotosDialog open={missingOpen} onOpenChange={setMissingOpen} fetchPhotos={fetchMissingPhotos} showWatermarks={showWatermarks} showTitles={activeCats.includes("Title")} />
     </Dialog>
   );
 }
