@@ -36,7 +36,7 @@ function WatermarkText({ value }: { value: string | null }) {
  * Yearbook pop-up: classmates who missed the senior photo shoot (or graduation), with the photo
  * they gave us. Public, approved photos only.
  */
-export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWatermarks, showTitles = true, showRip = true }: {
+export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWatermarks, showTitles = true, showRip = true, showHonorary = true }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   fetchPhotos?: () => Promise<MissingPhoto[]>;
@@ -45,6 +45,8 @@ export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWater
   showTitles?: boolean;
   /** Follows the yearbook's RIP button. */
   showRip?: boolean;
+  /** Follows the yearbook's Honorary '87 button: gray frame + label. */
+  showHonorary?: boolean;
 }) {
   const [photos, setPhotos] = useState<MissingPhoto[] | null>(null);
   useEffect(() => {
@@ -73,7 +75,8 @@ export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWater
             {photos.map((p) => (
               <li key={p.id} className="flex flex-col items-center gap-1.5">
                 <div className={cn("relative aspect-[4/5] w-full overflow-hidden bg-muted shadow-md",
-                  showTitles && p.titles.length > 0 && "outline outline-[3px] outline-[#8e24aa]")} data-testid={`missing-photo-${p.id}`}>
+                  showTitles && p.titles.length > 0 && "outline outline-[3px] outline-[#8e24aa]",
+                  showHonorary && p.honorary && !(showTitles && p.titles.length > 0) && "outline outline-[3px] outline-[#8a8f98]")} data-testid={`missing-photo-${p.id}`}>
                   {p.url ? (
                     <img src={p.url} alt={p.display_name} className="h-full w-full object-cover" loading="lazy" />
                   ) : (
@@ -87,6 +90,11 @@ export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWater
                       {p.titles.map((t) => (
                         <span key={t} className="w-full truncate bg-[#8e24aa] px-1 py-0.5 text-center font-sans text-[11px] font-bold leading-tight text-white">{t}</span>
                       ))}
+                    </div>
+                  )}
+                  {showHonorary && p.honorary && (
+                    <div className="absolute inset-x-0 top-0 flex justify-center" data-testid="missing-photo-honorary">
+                      <span className="w-full bg-[#8a8f98] px-1 py-0.5 text-center font-sans text-[11px] font-bold leading-tight text-white">Honorary &rsquo;87</span>
                     </div>
                   )}
                   {showRip && p.rip && (

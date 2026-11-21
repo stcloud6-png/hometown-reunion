@@ -66,6 +66,8 @@ export interface MissingPhoto {
   titles: string[];
   /** In memoriam (not in the senior portraits): shown with an RIP label. */
   rip?: boolean;
+  /** Part of the class (e.g. junior high) but didn't graduate with it: "Honorary '87". */
+  honorary?: boolean;
   /** Same internal labels as the yearbook: "2026" (paid) / "2026 - Unconfirmed" / "2026 - Unconfirmed?" / null. */
   watermark: string | null;
 }
@@ -731,17 +733,18 @@ export function useReunionData(options: { stub?: boolean } = {}) {
       const withPhoto = stubPhotos.filter((p) => p.status === "approved").map(({ id, display_name, url, watermark }) => ({ id, display_name, url, watermark, titles: STUB_TITLES[display_name] ?? [] }));
       const waiting = Object.entries(STUB_TITLES).filter(([n]) => !withPhoto.some((p) => p.display_name === n))
         .map(([n, titles]) => ({ id: `t-${n}`, display_name: n, url: null, watermark: "2026 - Unconfirmed", titles }));
-      const rip = [{ id: "t-rip", display_name: "Demo Classmate (RIP)", url: null, watermark: null, titles: [], rip: true }];
+      const rip = [{ id: "t-rip", display_name: "Demo Classmate (RIP)", url: null, watermark: null, titles: [], rip: true },
+        { id: "t-hon", display_name: "Demo Classmate (Honorary)", url: null, watermark: "2026", titles: [], honorary: true }];
       return [...withPhoto, ...waiting, ...rip].sort((a, b) => a.display_name.localeCompare(b.display_name));
     }
     const token = session?.accessToken ?? null;
-    const rows = await supabaseRpc<{ id: string; display_name: string; storage_path: string | null; watermark: string | null; titles: string[] | null; rip?: boolean | null }[]>("missing_photos_public", {}, token);
+    const rows = await supabaseRpc<{ id: string; display_name: string; storage_path: string | null; watermark: string | null; titles: string[] | null; rip?: boolean | null; honorary?: boolean | null }[]>("missing_photos_public", {}, token);
     const paths = rows.flatMap((r) => (r.storage_path && !isStaticPhoto(r.storage_path) ? [r.storage_path] : []));
     const urls = withStaticPhotos(await supabaseSignedUrls(PHOTO_BUCKET, paths, token), rows.map((r) => r.storage_path));
     // A photo whose link couldn't be made is left out; titled classmates with no photo yet show as a placeholder.
     return rows
       .filter((r) => !r.storage_path || urls[r.storage_path])
-      .map((r) => ({ id: r.id, display_name: r.display_name, url: r.storage_path ? urls[r.storage_path] : null, watermark: r.watermark, titles: r.titles ?? [], rip: !!r.rip }));
+      .map((r) => ({ id: r.id, display_name: r.display_name, url: r.storage_path ? urls[r.storage_path] : null, watermark: r.watermark, titles: r.titles ?? [], rip: !!r.rip, honorary: !!r.honorary }));
   }, [stub, session]);
 
   /** Signed-in classmate with no senior portrait: upload their own photo (waits for admin approval). */
