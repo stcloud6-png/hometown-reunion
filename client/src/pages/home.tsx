@@ -297,7 +297,7 @@ export default function Home() {
         CZR BHS87 Reunion &middot; Jan 9 &ndash; 30, 2027 &middot; Mark once, meet more.
       </footer>
 
-      <YearbookViewer open={yearbookOpen} onOpenChange={setYearbookOpen} fetchOverlays={data.fetchYearbookOverlays} fetchMissingPhotos={data.fetchMissingPhotos} />
+      <YearbookViewer open={yearbookOpen} onOpenChange={setYearbookOpen} fetchOverlays={data.fetchYearbookOverlays} fetchMissingPhotos={data.fetchMissingPhotos} searchYearbook={data.searchYearbook} />
     </div>
   );
 }
