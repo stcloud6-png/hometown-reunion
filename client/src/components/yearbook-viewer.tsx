@@ -3,7 +3,8 @@ import HTMLFlipBook from "react-pageflip";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, BookOpen, Stamp, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal, Stamp, Users } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MissingPhotosDialog } from "@/components/missing-photos";
 import { cn } from "@/lib/utils";
 import type { MissingPhoto, YearbookOverlay } from "@/lib/use-reunion-data";
@@ -201,6 +202,7 @@ Page.displayName = "Page";
  */
 export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetchMissingPhotos }: YearbookViewerProps) {
   const [missingOpen, setMissingOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
   const flipBookRef = useRef<any>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [jumpValue, setJumpValue] = useState("");
@@ -247,42 +249,103 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
       // long-distance jumps like this.
       flipBookRef.current?.pageFlip()?.turnToPage(n - 1);
       setCurrentPage(n - 1);
+      setControlsOpen(false);
     }
     setJumpValue("");
   }
+
+  // Page controls and filter chips: shown in place on wider screens, and inside a pop-up on phones
+  // (where the browser's own bars can hide anything at the top or bottom edge).
+  const navControls = (
+    <>
+      <Button variant="outline" size="icon" className="h-7 w-7" onClick={goPrev} aria-label="Previous page" data-testid="button-yearbook-prev">
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <span className="text-xs tabular-nums text-muted-foreground" data-testid="text-yearbook-page-count">
+        {currentPage + 1} / {TOTAL_PAGES}
+      </span>
+      <Button variant="outline" size="icon" className="h-7 w-7" onClick={goNext} aria-label="Next page" data-testid="button-yearbook-next">
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+      <Input
+        type="number"
+        min={1}
+        max={TOTAL_PAGES}
+        placeholder="Page"
+        value={jumpValue}
+        onChange={(e) => setJumpValue(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && jumpToPage()}
+        className="h-7 w-16 px-2 text-xs"
+        data-testid="input-yearbook-jump"
+      />
+      <Button size="sm" className="h-7 px-2 text-xs" onClick={jumpToPage} data-testid="button-yearbook-jump">Go</Button>
+    </>
+  );
+  const chipControls = (
+    <>
+            <button type="button" aria-pressed={showWatermarks} onClick={() => setShowWatermarks((v) => !v)}
+              className={cn("yb-chip", showWatermarks && "yb-chip-on")} style={showWatermarks ? { backgroundColor: "#ffd400", borderColor: "#c9a800", color: "#222" } : undefined}
+              data-testid="button-yearbook-watermarks">
+              <Stamp className="h-3 w-3" /> Jan 27
+            </button>
+            <button type="button" disabled title="July 2027 — coming later"
+              className="yb-chip cursor-not-allowed opacity-50" data-testid="button-yearbook-jul-2027">
+              <Stamp className="h-3 w-3" /> Jul 2027
+            </button>
+            {fetchMissingPhotos && (
+              <button type="button" onClick={() => setMissingOpen(true)} className="yb-chip" title="Classmates with no senior portrait"
+                data-testid="button-yearbook-missing-photos">
+                <Users className="h-3 w-3" /> Missing photos
+              </button>
+            )}
+            <span className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden="true" />
+            {legend.map((c) => {
+              const on = activeCats.includes(c);
+              return (
+                <button key={c} type="button" aria-pressed={on} onClick={() => toggleCat(c)}
+                  className={cn("yb-chip", on && "yb-chip-on")}
+                  style={on ? { borderColor: BORDER_COLORS[c] ?? "#555", backgroundColor: `${BORDER_COLORS[c] ?? "#777777"}22` } : undefined}
+                  data-testid={`button-yearbook-cat-${slug(c)}`}>
+                  {TEAM_SPORTS.includes(c) ? (
+                    <span className="inline-flex shrink-0 overflow-hidden rounded-[2px]" aria-hidden="true">
+                      {Object.values(TEAM_COLORS).map((tc) => <span key={tc} className="h-2 w-[3px]" style={{ backgroundColor: tc }} />)}
+                    </span>
+                  ) : (
+                    <span className="inline-block h-2 w-2 shrink-0 rounded-[2px] border-[1.5px]" style={{ borderColor: BORDER_COLORS[c], backgroundColor: on ? BORDER_COLORS[c] : "transparent" }} />
+                  )}
+                  {SHORT_LABEL[c] ?? CATEGORY_LABEL[c] ?? c}
+                </button>
+              );
+            })}
+    </>
+  );
+  const hasChips = (overlays?.length ?? 0) > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-testid="dialog-yearbook-viewer"
-        className="flex h-[96vh] max-h-[96vh] w-[98vw] max-w-5xl flex-col gap-1.5 overflow-hidden p-2.5 sm:p-3"
+        className="flex h-[96vh] max-h-[96vh] w-[98vw] max-w-5xl flex-col gap-1.5 overflow-hidden p-2.5 supports-[height:100dvh]:h-[96dvh] supports-[height:100dvh]:max-h-[96dvh] sm:p-3"
       >
         {/* One slim bar: title + page controls, so the yearbook gets the height. */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pr-8">
           <DialogTitle className="mr-auto flex items-center gap-1.5 text-sm font-semibold">
             <BookOpen className="h-4 w-4" /> Panama &rsquo;87 Yearbook
           </DialogTitle>
-          <Button variant="outline" size="icon" className="h-7 w-7" onClick={goPrev} aria-label="Previous page" data-testid="button-yearbook-prev">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-xs tabular-nums text-muted-foreground" data-testid="text-yearbook-page-count">
-            {currentPage + 1} / {TOTAL_PAGES}
-          </span>
-          <Button variant="outline" size="icon" className="h-7 w-7" onClick={goNext} aria-label="Next page" data-testid="button-yearbook-next">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Input
-            type="number"
-            min={1}
-            max={TOTAL_PAGES}
-            placeholder="Page"
-            value={jumpValue}
-            onChange={(e) => setJumpValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && jumpToPage()}
-            className="h-7 w-16 px-2 text-xs"
-            data-testid="input-yearbook-jump"
-          />
-          <Button size="sm" className="h-7 px-2 text-xs" onClick={jumpToPage} data-testid="button-yearbook-jump">Go</Button>
+          <div className="hidden items-center gap-x-2 sm:flex">{navControls}</div>
+          {/* Phone: one button opens page controls + filters in a pop-up. */}
+          <span className="text-xs tabular-nums text-muted-foreground sm:hidden" data-testid="text-yearbook-page-count-mobile">{currentPage + 1} / {TOTAL_PAGES}</span>
+          <Popover open={controlsOpen} onOpenChange={setControlsOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs sm:hidden" data-testid="button-yearbook-controls">
+                <SlidersHorizontal className="h-3.5 w-3.5" /> Pages &amp; filters
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" sideOffset={6} className="w-[min(92vw,360px)] space-y-3 p-3" data-testid="popover-yearbook-controls">
+              <div className="flex flex-wrap items-center gap-2">{navControls}</div>
+              {hasChips && <div className="flex flex-wrap items-center gap-1.5 border-t pt-3" data-testid="yearbook-overlay-buttons-mobile">{chipControls}</div>}
+            </PopoverContent>
+          </Popover>
         </div>
 
         <div
@@ -328,43 +391,10 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
           )}
         </div>
 
-        {(overlays?.length ?? 0) > 0 && (
-          // One compact row of small chips, so the flipbook keeps its full size.
-          <div className="flex flex-wrap items-center gap-1" data-testid="yearbook-overlay-buttons">
-            <button type="button" aria-pressed={showWatermarks} onClick={() => setShowWatermarks((v) => !v)}
-              className={cn("yb-chip", showWatermarks && "yb-chip-on")} style={showWatermarks ? { backgroundColor: "#ffd400", borderColor: "#c9a800", color: "#222" } : undefined}
-              data-testid="button-yearbook-watermarks">
-              <Stamp className="h-3 w-3" /> Jan 27
-            </button>
-            <button type="button" disabled title="July 2027 — coming later"
-              className="yb-chip cursor-not-allowed opacity-50" data-testid="button-yearbook-jul-2027">
-              <Stamp className="h-3 w-3" /> Jul 2027
-            </button>
-            {fetchMissingPhotos && (
-              <button type="button" onClick={() => setMissingOpen(true)} className="yb-chip" title="Classmates with no senior portrait"
-                data-testid="button-yearbook-missing-photos">
-                <Users className="h-3 w-3" /> Missing photos
-              </button>
-            )}
-            <span className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden="true" />
-            {legend.map((c) => {
-              const on = activeCats.includes(c);
-              return (
-                <button key={c} type="button" aria-pressed={on} onClick={() => toggleCat(c)}
-                  className={cn("yb-chip", on && "yb-chip-on")}
-                  style={on ? { borderColor: BORDER_COLORS[c] ?? "#555", backgroundColor: `${BORDER_COLORS[c] ?? "#777777"}22` } : undefined}
-                  data-testid={`button-yearbook-cat-${slug(c)}`}>
-                  {TEAM_SPORTS.includes(c) ? (
-                    <span className="inline-flex shrink-0 overflow-hidden rounded-[2px]" aria-hidden="true">
-                      {Object.values(TEAM_COLORS).map((tc) => <span key={tc} className="h-2 w-[3px]" style={{ backgroundColor: tc }} />)}
-                    </span>
-                  ) : (
-                    <span className="inline-block h-2 w-2 shrink-0 rounded-[2px] border-[1.5px]" style={{ borderColor: BORDER_COLORS[c], backgroundColor: on ? BORDER_COLORS[c] : "transparent" }} />
-                  )}
-                  {SHORT_LABEL[c] ?? CATEGORY_LABEL[c] ?? c}
-                </button>
-              );
-            })}
+        {hasChips && (
+          // One compact row of small chips, so the flipbook keeps its full size (phones use the pop-up instead).
+          <div className="hidden flex-wrap items-center gap-1 sm:flex" data-testid="yearbook-overlay-buttons">
+            {chipControls}
           </div>
         )}
       </DialogContent>
