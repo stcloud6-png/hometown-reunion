@@ -15,12 +15,19 @@ function pickError(file: File | undefined): string | null {
   return null;
 }
 
+/** Watermark wording (neutral on purpose: nothing says anything about payment). */
+export function watermarkText(v: string): string {
+  if (v === "2026") return "Jan 2027";
+  if (v === "2026 - Unconfirmed?") return "2027 \u2013 Soon?";
+  return "2027 \u2013 Soon";
+}
+
 /** Same neutral wording as the yearbook watermarks — never says anything about payment. */
 function WatermarkText({ value }: { value: string | null }) {
   if (!value) return null;
   return (
     <span className="whitespace-nowrap font-sans text-sm font-bold leading-none text-[#ffd400] [text-shadow:0_0_2px_rgba(0,0,0,.9),0_1px_2px_rgba(0,0,0,.9)]">
-      {value === "2026" ? "Jan 2027" : "2027 – Soon"}
+      {watermarkText(value)}
     </span>
   );
 }
@@ -29,13 +36,15 @@ function WatermarkText({ value }: { value: string | null }) {
  * Yearbook pop-up: classmates who missed the senior photo shoot (or graduation), with the photo
  * they gave us. Public, approved photos only.
  */
-export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWatermarks, showTitles = true }: {
+export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWatermarks, showTitles = true, showRip = true }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   fetchPhotos?: () => Promise<MissingPhoto[]>;
   showWatermarks: boolean;
   /** Follows the yearbook's Titles button: purple frame + label, as on the portraits. */
   showTitles?: boolean;
+  /** Follows the yearbook's RIP button. */
+  showRip?: boolean;
 }) {
   const [photos, setPhotos] = useState<MissingPhoto[] | null>(null);
   useEffect(() => {
@@ -80,7 +89,12 @@ export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWater
                       ))}
                     </div>
                   )}
-                  {showWatermarks && p.watermark && (
+                  {showRip && p.rip && (
+                    <div className="absolute inset-x-0 bottom-[8%] flex justify-center" data-testid="missing-photo-rip">
+                      <span className="font-serif text-base font-bold tracking-[0.12em] text-white [text-shadow:0_0_2px_rgba(0,0,0,.95),0_1px_3px_rgba(0,0,0,.95)]">RIP</span>
+                    </div>
+                  )}
+                  {showWatermarks && p.watermark && !p.rip && (
                     <div className="absolute inset-x-0 bottom-[8%] flex justify-center" data-testid="missing-photo-watermark">
                       <WatermarkText value={p.watermark} />
                     </div>
