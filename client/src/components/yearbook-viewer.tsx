@@ -3,7 +3,8 @@ import HTMLFlipBook from "react-pageflip";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, BookOpen, Stamp, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal, Stamp, Users } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MissingPhotosDialog } from "@/components/missing-photos";
 import { cn } from "@/lib/utils";
 import type { MissingPhoto, YearbookOverlay } from "@/lib/use-reunion-data";
@@ -91,6 +92,22 @@ interface YearbookViewerProps {
   fetchOverlays?: () => Promise<YearbookOverlay[]>;
   /** Approved photos of classmates with no senior portrait (pop-up). */
   fetchMissingPhotos?: () => Promise<MissingPhoto[]>;
+}
+
+/**
+ * Phone layout: one page at a time and controls in a pop-up. True for narrow screens and for
+ * phones turned sideways (touch screen with little height), where two-page spreads don't fit.
+ */
+const PHONE_QUERY = "(max-width: 767px), (pointer: coarse) and (max-height: 500px)";
+function usePhoneLayout(): boolean {
+  const [phone, setPhone] = useState(() => typeof window !== "undefined" && window.matchMedia(PHONE_QUERY).matches);
+  useEffect(() => {
+    const mql = window.matchMedia(PHONE_QUERY);
+    const onChange = () => setPhone(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return phone;
 }
 
 /** The last senior portrait in the book (Lori Nickisher, viewer page 33): the Missing Photos link sits just after it. */
@@ -201,8 +218,13 @@ Page.displayName = "Page";
  */
 export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetchMissingPhotos }: YearbookViewerProps) {
   const [missingOpen, setMissingOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const isPhone = usePhoneLayout();
   const flipBookRef = useRef<any>(null);
   const [currentPage, setCurrentPage] = useState(0);
+  // Page to open on when the book is rebuilt for a new layout (e.g. phone turned sideways); fixed per layout.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const startPage = useMemo(() => currentPage, [isPhone]);
   const [jumpValue, setJumpValue] = useState("");
   const [overlays, setOverlays] = useState<YearbookOverlay[] | null>(fetchOverlays ? null : []);
   const [showWatermarks, setShowWatermarks] = useState(() => Date.now() < WATERMARKS_ON_UNTIL);
@@ -247,90 +269,40 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
       // long-distance jumps like this.
       flipBookRef.current?.pageFlip()?.turnToPage(n - 1);
       setCurrentPage(n - 1);
+      setControlsOpen(false);
     }
     setJumpValue("");
   }
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        data-testid="dialog-yearbook-viewer"
-        className="flex h-[96vh] max-h-[96vh] w-[98vw] max-w-5xl flex-col gap-1.5 overflow-hidden p-2.5 sm:p-3"
-      >
-        {/* One slim bar: title + page controls, so the yearbook gets the height. */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pr-8">
-          <DialogTitle className="mr-auto flex items-center gap-1.5 text-sm font-semibold">
-            <BookOpen className="h-4 w-4" /> Panama &rsquo;87 Yearbook
-          </DialogTitle>
-          <Button variant="outline" size="icon" className="h-7 w-7" onClick={goPrev} aria-label="Previous page" data-testid="button-yearbook-prev">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-xs tabular-nums text-muted-foreground" data-testid="text-yearbook-page-count">
-            {currentPage + 1} / {TOTAL_PAGES}
-          </span>
-          <Button variant="outline" size="icon" className="h-7 w-7" onClick={goNext} aria-label="Next page" data-testid="button-yearbook-next">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Input
-            type="number"
-            min={1}
-            max={TOTAL_PAGES}
-            placeholder="Page"
-            value={jumpValue}
-            onChange={(e) => setJumpValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && jumpToPage()}
-            className="h-7 w-16 px-2 text-xs"
-            data-testid="input-yearbook-jump"
-          />
-          <Button size="sm" className="h-7 px-2 text-xs" onClick={jumpToPage} data-testid="button-yearbook-jump">Go</Button>
-        </div>
-
-        <div
-          className={cn("yearbook-stage flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md bg-muted/40 py-1", showWatermarks && "show-wm", activeCats.map((c) => `show-${slug(c)}`))}
-          data-testid="yearbook-stage"
-        >
-          <style>{FRAME_CSS}</style>
-          {overlays === null ? (
-            <p className="py-24 text-sm text-muted-foreground">Opening the yearbook…</p>
-          ) : (
-          <HTMLFlipBook
-            key="yearbook-flipbook"
-            ref={flipBookRef}
-            width={380}
-            height={491}
-            size="stretch"
-            minWidth={240}
-            maxWidth={560}
-            minHeight={310}
-            maxHeight={724}
-            showCover={true}
-            usePortrait={true}
-            drawShadow={true}
-            flippingTime={600}
-            maxShadowOpacity={0.5}
-            mobileScrollSupport={true}
-            clickEventForward={true}
-            useMouseEvents={true}
-            swipeDistance={20}
-            showPageCorners={true}
-            disableFlipByClick={false}
-            startPage={0}
-            startZIndex={0}
-            autoSize={true}
-            className="yearbook-flipbook"
-            style={{}}
-            onFlip={(e: any) => setCurrentPage(e.data)}
-          >
-            {pages.map((p) => (
-              <Page key={p} pageNumber={p} overlays={byPage.get(p)} onMissingPhotos={fetchMissingPhotos ? () => setMissingOpen(true) : undefined} />
-            ))}
-          </HTMLFlipBook>
-          )}
-        </div>
-
-        {(overlays?.length ?? 0) > 0 && (
-          // One compact row of small chips, so the flipbook keeps its full size.
-          <div className="flex flex-wrap items-center gap-1" data-testid="yearbook-overlay-buttons">
+  // Page controls and filter chips: shown in place on wider screens, and inside a pop-up on phones
+  // (where the browser's own bars can hide anything at the top or bottom edge).
+  const navControls = (
+    <>
+      <Button variant="outline" size="icon" className="h-7 w-7" onClick={goPrev} aria-label="Previous page" data-testid="button-yearbook-prev">
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <span className="text-xs tabular-nums text-muted-foreground" data-testid="text-yearbook-page-count">
+        {currentPage + 1} / {TOTAL_PAGES}
+      </span>
+      <Button variant="outline" size="icon" className="h-7 w-7" onClick={goNext} aria-label="Next page" data-testid="button-yearbook-next">
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+      <Input
+        type="number"
+        min={1}
+        max={TOTAL_PAGES}
+        placeholder="Page"
+        value={jumpValue}
+        onChange={(e) => setJumpValue(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && jumpToPage()}
+        className="h-7 w-16 px-2 text-xs"
+        data-testid="input-yearbook-jump"
+      />
+      <Button size="sm" className="h-7 px-2 text-xs" onClick={jumpToPage} data-testid="button-yearbook-jump">Go</Button>
+    </>
+  );
+  const chipControls = (
+    <>
             <button type="button" aria-pressed={showWatermarks} onClick={() => setShowWatermarks((v) => !v)}
               className={cn("yb-chip", showWatermarks && "yb-chip-on")} style={showWatermarks ? { backgroundColor: "#ffd400", borderColor: "#c9a800", color: "#222" } : undefined}
               data-testid="button-yearbook-watermarks">
@@ -365,6 +337,89 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
                 </button>
               );
             })}
+    </>
+  );
+  const hasChips = (overlays?.length ?? 0) > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        data-testid="dialog-yearbook-viewer"
+        className="flex h-[96vh] max-h-[96vh] w-[98vw] max-w-5xl flex-col gap-1.5 overflow-hidden p-2.5 supports-[height:100dvh]:h-[96dvh] supports-[height:100dvh]:max-h-[96dvh] sm:p-3"
+      >
+        {/* One slim bar: title + page controls, so the yearbook gets the height. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pr-8">
+          <DialogTitle className="mr-auto flex items-center gap-1.5 text-sm font-semibold">
+            <BookOpen className="h-4 w-4" /> Panama &rsquo;87 Yearbook
+          </DialogTitle>
+          {!isPhone && <div className="flex items-center gap-x-2">{navControls}</div>}
+          {/* Phone: one button opens page controls + filters in a pop-up. */}
+          {isPhone && <span className="text-xs tabular-nums text-muted-foreground" data-testid="text-yearbook-page-count-mobile">{currentPage + 1} / {TOTAL_PAGES}</span>}
+          {isPhone && <Popover open={controlsOpen} onOpenChange={setControlsOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" data-testid="button-yearbook-controls">
+                <SlidersHorizontal className="h-3.5 w-3.5" /> Pages &amp; filters
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" sideOffset={6} className="w-[min(92vw,360px)] space-y-3 p-3" data-testid="popover-yearbook-controls">
+              <div className="flex flex-wrap items-center gap-2">{navControls}</div>
+              {hasChips && <div className="flex flex-wrap items-center gap-1.5 border-t pt-3" data-testid="yearbook-overlay-buttons-mobile">{chipControls}</div>}
+            </PopoverContent>
+          </Popover>}
+        </div>
+
+        <div
+          className={cn("yearbook-stage flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md bg-muted/40 py-1", showWatermarks && "show-wm", activeCats.map((c) => `show-${slug(c)}`))}
+          data-testid="yearbook-stage"
+        >
+          <style>{FRAME_CSS}</style>
+          {overlays === null ? (
+            <p className="py-24 text-sm text-muted-foreground">Opening the yearbook…</p>
+          ) : (
+          // Phones: the book's box is kept narrower than two pages, so the flipbook always shows
+          // one page at a time (and turns one page per tap/swipe), even with the phone sideways.
+          <div className={cn("flex h-full w-full items-center justify-center", isPhone && "mx-auto")}
+            style={isPhone ? { maxWidth: "calc((100dvh - 96px) * 0.774)" } : undefined}>
+          <HTMLFlipBook
+            key={isPhone ? "yearbook-flipbook-phone" : "yearbook-flipbook"}
+            ref={flipBookRef}
+            width={380}
+            height={491}
+            size="stretch"
+            minWidth={240}
+            maxWidth={560}
+            minHeight={310}
+            maxHeight={724}
+            showCover={true}
+            usePortrait={true}
+            drawShadow={true}
+            flippingTime={600}
+            maxShadowOpacity={0.5}
+            mobileScrollSupport={true}
+            clickEventForward={true}
+            useMouseEvents={true}
+            swipeDistance={20}
+            showPageCorners={true}
+            disableFlipByClick={false}
+            startPage={startPage}
+            startZIndex={0}
+            autoSize={true}
+            className="yearbook-flipbook"
+            style={{}}
+            onFlip={(e: any) => setCurrentPage(e.data)}
+          >
+            {pages.map((p) => (
+              <Page key={p} pageNumber={p} overlays={byPage.get(p)} onMissingPhotos={fetchMissingPhotos ? () => setMissingOpen(true) : undefined} />
+            ))}
+          </HTMLFlipBook>
+          </div>
+          )}
+        </div>
+
+        {hasChips && !isPhone && (
+          // One compact row of small chips, so the flipbook keeps its full size (phones use the pop-up instead).
+          <div className="flex flex-wrap items-center gap-1" data-testid="yearbook-overlay-buttons">
+            {chipControls}
           </div>
         )}
       </DialogContent>
