@@ -213,7 +213,7 @@ export default function SettingsPopover({
               <p className="text-xs text-muted-foreground">The dashboard publicly shows the top N interest clusters.</p>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="threshold-public-min">Feature all above N interest</Label>
+              <Label htmlFor="threshold-public-min">Feature all with N+ interest</Label>
               <Input
                 id="threshold-public-min"
                 type="number"
@@ -222,7 +222,7 @@ export default function SettingsPopover({
                 onChange={(e) => draftField("publicMinInterest", e.target.value)}
                 data-testid="input-threshold-public-min"
               />
-              <p className="text-xs text-muted-foreground">Any cluster with more interested than this is always shown publicly, even outside the top N.</p>
+              <p className="text-xs text-muted-foreground">Any cluster with this many interested or more is always shown publicly, even outside the top N.</p>
             </div>
             <div className="space-y-1">
               <Label htmlFor="threshold-candidate">Sub-event candidate at</Label>

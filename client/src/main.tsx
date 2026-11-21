@@ -47,6 +47,11 @@ const SHORT_TABS: Record<string, string> = { "missing-photos": "missing-photos",
 function normalizeDirectLink() {
   const { pathname, search, hash } = window.location;
   if (hash.includes("access_token=") || hash.includes("token_hash=")) return; // auth redirects handled separately
+  // bhs87.com/weather is its own page (#/weather), not a tab.
+  if (/^\/weather\/?$/i.test(pathname)) {
+    window.history.replaceState(null, "", "/#/weather");
+    return;
+  }
   const pathTab = SHORT_TABS[pathname.replace(/^\/+|\/+$/g, "").toLowerCase()];
   const searchTab = new URLSearchParams(search).get("tab");
   const hashMatch = hash.match(/^#\/?\??tab=([a-z-]+)/i);

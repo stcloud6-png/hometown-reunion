@@ -178,7 +178,7 @@ export interface ClusterThresholds {
 /** Fallback defaults, used until the shared `app_settings` row loads (or when stubbed). */
 export const CLUSTER_THRESHOLDS: ClusterThresholds = {
   publicTop: 2,
-  publicMinInterest: 6,
+  publicMinInterest: 4,
   candidateAt: 10,
   spinoffAt: 20,
 };

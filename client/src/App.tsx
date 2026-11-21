@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import LeadInvite from "@/pages/lead-invite";
+import WeatherPage from "@/pages/weather";
 
 // wouter's stock useHashLocation reports the raw hash fragment as the
 // "path", query string and all (e.g. "/lead-invite?email=..&cluster=.."),
@@ -23,6 +24,7 @@ function AppRouter() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/lead-invite">{() => <LeadInvite />}</Route>
+      <Route path="/weather" component={WeatherPage} />
       <Route component={NotFound} />
     </Switch>
   );

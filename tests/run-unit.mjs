@@ -4,7 +4,7 @@ import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 
-const tests = ["tests/event-review.test.ts", "tests/class-events.test.ts"];
+const tests = ["tests/event-review.test.ts", "tests/class-events.test.ts", "tests/weather-estimate.test.ts"];
 const outdir = "/tmp/reunion-unit";
 await mkdir(outdir, { recursive: true });
 let failed = 0;

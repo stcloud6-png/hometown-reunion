@@ -40,7 +40,12 @@ export function WeatherCorner({ rows, className }: { rows: WeatherRow[]; classNa
   const cities = ["Orlando, FL", "Panama City"].map((c) => latest.get(c)).filter(Boolean) as WeatherRow[];
   if (!cities.length) return null;
   return (
-    <div className={cn("flex items-center gap-3 rounded-full border bg-card/80 px-3 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur", className)} data-testid="weather-corner">
+    // The whole corner (label + temps) opens the Reunion Weather chart page.
+    <a href="#/weather" className={cn("group flex flex-col items-start gap-1 no-underline", className)} aria-label="Current temps – open the Reunion Weather chart" data-testid="link-weather-page">
+    <span className="pl-1 text-[11px] font-medium text-muted-foreground group-hover:text-foreground group-hover:underline underline-offset-2" data-testid="text-weather-label">
+      Current Temps – plan your Reunion Weather
+    </span>
+    <div className="flex items-center gap-3 rounded-full border bg-card/80 px-3 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur transition-colors group-hover:border-foreground/40" data-testid="weather-corner">
       {cities.map((r) => {
         const { Icon, text } = describe(r.weather_code);
         const t = num(r.temp_f), hi = num(r.high_f), lo = num(r.low_f);
@@ -48,7 +53,7 @@ export function WeatherCorner({ rows, className }: { rows: WeatherRow[]; classNa
         return (
           <Tooltip key={r.city}>
             <TooltipTrigger asChild>
-              <span className="flex cursor-default items-center gap-1" data-testid={`weather-${SHORT[r.city] ?? r.city}`}>
+              <span className="flex cursor-pointer items-center gap-1" data-testid={`weather-${SHORT[r.city] ?? r.city}`}>
                 <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                 <span className="font-medium text-foreground">{SHORT[r.city] ?? r.city}</span>
                 {t != null && <span>{t}°F</span>}
@@ -57,11 +62,12 @@ export function WeatherCorner({ rows, className }: { rows: WeatherRow[]; classNa
             <TooltipContent className="text-xs">
               <p className="font-medium">{r.city}{text ? ` · ${text}` : ""}</p>
               {t != null && <p>{t}°F / {toC(t)}°C{hi != null && lo != null ? ` · high ${hi}° · low ${lo}°` : ""}</p>}
-              <p className="text-muted-foreground">Checked {asOf} · for info only</p>
+              <p className="text-muted-foreground">Checked {asOf} · click for the Reunion Weather chart</p>
             </TooltipContent>
           </Tooltip>
         );
       })}
     </div>
+    </a>
   );
 }
