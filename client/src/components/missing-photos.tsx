@@ -36,7 +36,7 @@ function WatermarkText({ value }: { value: string | null }) {
  * Yearbook pop-up: classmates who missed the senior photo shoot (or graduation), with the photo
  * they gave us. Public, approved photos only.
  */
-export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWatermarks, showTitles = true, showRip = true, showHonorary = true }: {
+export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWatermarks, showTitles = true, showRip = true }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   fetchPhotos?: () => Promise<MissingPhoto[]>;
@@ -45,10 +45,11 @@ export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWater
   showTitles?: boolean;
   /** Follows the yearbook's RIP button. */
   showRip?: boolean;
-  /** Follows the yearbook's Honorary '87 button: gray frame + label. */
-  showHonorary?: boolean;
 }) {
   const [photos, setPhotos] = useState<MissingPhoto[] | null>(null);
+  // Honorary '87 (gray frame + label): own button on this page, off by default (owner, 2026-11-21).
+  const [showHonorary, setShowHonorary] = useState(false);
+  const hasHonorary = !!photos?.some((p) => p.honorary);
   useEffect(() => {
     if (!open || !fetchPhotos) return;
     let cancelled = false;
@@ -64,6 +65,17 @@ export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWater
         <DialogDescription>
           Classmates who missed the senior portrait shoot or graduation, in the photos they shared with us.
         </DialogDescription>
+        {hasHonorary && (
+          <div className="flex justify-end">
+            <button type="button" aria-pressed={showHonorary} onClick={() => setShowHonorary((v) => !v)}
+              title="Part of the class, but didn't graduate with it"
+              className={cn("yb-chip", showHonorary && "yb-chip-on")}
+              style={showHonorary ? { backgroundColor: "#8a8f98", borderColor: "#6b7078", color: "#fff" } : undefined}
+              data-testid="button-missing-honorary">
+              Honorary &rsquo;87
+            </button>
+          </div>
+        )}
         {photos === null ? (
           <p className="py-10 text-center text-sm text-muted-foreground">Loading photos…</p>
         ) : photos.length === 0 ? (

@@ -91,6 +91,8 @@ const FRAME_CSS = BUTTONS
 const TOTAL_PAGES = 173;
 
 interface YearbookViewerProps {
+  /** Open the Missing photos pop-up straight away (direct link bhs87.com/missing-photos). */
+  initialMissingOpen?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Public overlay data (watermarks + borders). Optional so the viewer still works without it. */
@@ -233,8 +235,8 @@ Page.displayName = "Page";
  * flipbook (react-pageflip) over the 163 pre-rendered page images in
  * /public/yearbook/. Opened from the Yearbook logo in the sticky header.
  */
-export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetchMissingPhotos, searchYearbook }: YearbookViewerProps) {
-  const [missingOpen, setMissingOpen] = useState(false);
+export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetchMissingPhotos, searchYearbook, initialMissingOpen = false }: YearbookViewerProps) {
+  const [missingOpen, setMissingOpen] = useState(initialMissingOpen);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -251,7 +253,6 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
   const [overlays, setOverlays] = useState<YearbookOverlay[] | null>(fetchOverlays ? null : []);
   const [showWatermarks, setShowWatermarks] = useState(() => Date.now() < WATERMARKS_ON_UNTIL);
   const [showRip, setShowRip] = useState(true); // on when the yearbook opens (owner, 2026-11-21)
-  const [showHonorary, setShowHonorary] = useState(true); // Honorary '87 cards on Missing photos (owner, 2026-11-21)
   const [overlayError, setOverlayError] = useState(false);
   // Honor Graduates frames are on when the yearbook opens; every team is its own button, off until clicked.
   // On by default (owner, 2026-11-19): Titles, Honor Grads, Football, Cheer.
@@ -390,14 +391,6 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
                 className={cn("yb-chip", showRip && "yb-chip-on")} style={showRip ? { backgroundColor: "#3f3f46", borderColor: "#27272a", color: "#fff" } : undefined}
                 data-testid="button-yearbook-rip">
                 RIP
-              </button>
-            )}
-            {fetchMissingPhotos && (
-              <button type="button" aria-pressed={showHonorary} onClick={() => setShowHonorary((v) => !v)}
-                title="Classmates who were part of the class but didn't graduate with it (shown on Missing photos)"
-                className={cn("yb-chip", showHonorary && "yb-chip-on")} style={showHonorary ? { backgroundColor: "#8a8f98", borderColor: "#6b7078", color: "#fff" } : undefined}
-                data-testid="button-yearbook-honorary">
-                Honorary &rsquo;87
               </button>
             )}
             {fetchMissingPhotos && (
@@ -568,7 +561,7 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
           </div>
         )}
       </DialogContent>
-      <MissingPhotosDialog open={missingOpen} onOpenChange={setMissingOpen} fetchPhotos={fetchMissingPhotos} showWatermarks={showWatermarks} showTitles={activeCats.includes("Title")} showRip={showRip} showHonorary={showHonorary} />
+      <MissingPhotosDialog open={missingOpen} onOpenChange={setMissingOpen} fetchPhotos={fetchMissingPhotos} showWatermarks={showWatermarks} showTitles={activeCats.includes("Title")} showRip={showRip} />
     </Dialog>
   );
 }

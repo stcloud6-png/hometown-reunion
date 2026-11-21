@@ -21,10 +21,10 @@ const STUB = import.meta.env.VITE_STUB_DATA === "true";
 // #/?tab=yearbook) so a direct link can land members straight on the Group
 // dashboard, or straight into the flipbook yearbook viewer, without them
 // needing to click a nav button first.
-function tabParamFromUrl(): "entry" | "dashboard" | "yearbook" | null {
+function tabParamFromUrl(): "entry" | "dashboard" | "yearbook" | "missing-photos" | null {
   const query = window.location.hash.split("?")[1] ?? "";
   const value = new URLSearchParams(query).get("tab");
-  return value === "dashboard" || value === "yearbook" || value === "entry" ? value : null;
+  return value === "dashboard" || value === "yearbook" || value === "entry" || value === "missing-photos" ? value : null;
 }
 
 function initialTabFromUrl(): "entry" | "dashboard" {
@@ -33,10 +33,15 @@ function initialTabFromUrl(): "entry" | "dashboard" {
 
 // Visitors who arrive on a direct link (yearbook / dashboard) shouldn't get the
 // ticket popup on top of what they came for.
-const arrivedViaDirectLink = tabParamFromUrl() === "yearbook" || tabParamFromUrl() === "dashboard";
+const arrivedViaDirectLink = tabParamFromUrl() === "yearbook" || tabParamFromUrl() === "dashboard" || tabParamFromUrl() === "missing-photos";
+// bhs87.com/missing-photos opens the yearbook with the Missing photos pop-up on top.
+// Read at render time: the path form (/missing-photos) is turned into the hash route after this module loads.
+function missingPhotosLinkFromUrl(): boolean {
+  return tabParamFromUrl() === "missing-photos";
+}
 
 function initialYearbookOpenFromUrl(): boolean {
-  return tabParamFromUrl() === "yearbook";
+  return tabParamFromUrl() === "yearbook" || tabParamFromUrl() === "missing-photos";
 }
 
 export default function Home() {
@@ -48,6 +53,7 @@ export default function Home() {
   const [curtainOpen, setCurtainOpen] = useState(false);
   const [myIdentity, setMyIdentity] = useState<MyIdentity | null>(() => readMyIdentity());
   const [yearbookOpen, setYearbookOpen] = useState(initialYearbookOpenFromUrl);
+  const [missingPhotosLink] = useState(missingPhotosLinkFromUrl);
 
   // Log one anonymous page-visit per browser per day (Maintenance-mode traffic
   // indicator only) — never during stubbed/local QA runs.
@@ -297,7 +303,7 @@ export default function Home() {
         CZR BHS87 Reunion &middot; Jan 9 &ndash; 30, 2027 &middot; Mark once, meet more.
       </footer>
 
-      <YearbookViewer open={yearbookOpen} onOpenChange={setYearbookOpen} fetchOverlays={data.fetchYearbookOverlays} fetchMissingPhotos={data.fetchMissingPhotos} searchYearbook={data.searchYearbook} />
+      <YearbookViewer open={yearbookOpen} onOpenChange={setYearbookOpen} fetchOverlays={data.fetchYearbookOverlays} fetchMissingPhotos={data.fetchMissingPhotos} searchYearbook={data.searchYearbook} initialMissingOpen={missingPhotosLink} />
     </div>
   );
 }
