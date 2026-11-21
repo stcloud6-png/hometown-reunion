@@ -418,7 +418,7 @@ export default function Dashboard({
             <p className="text-sm text-muted-foreground lg:col-span-2">No interests marked yet.</p>
           )}
           <p className="pt-1 text-xs text-muted-foreground lg:col-span-2" data-testid="text-cluster-footnote">
-            Gathering = under {thresholds.candidateAt} interested · Sub-event candidate = {thresholds.candidateAt}+, ready to propose dates · Spin-off = {thresholds.spinoffAt}+, plan a second session. Group sees the top {thresholds.publicTop} clusters (plus any over {thresholds.publicMinInterest} interested). Date-locking opens on Sub-event candidates once Count-me-in passes half of the expected {EXPECTED_HEADCOUNT}.
+            Gathering = under {thresholds.candidateAt} interested · Sub-event candidate = {thresholds.candidateAt}+, ready to propose dates · Spin-off = {thresholds.spinoffAt}+, plan a second session. Group sees the top {thresholds.publicTop} clusters (plus any with {thresholds.publicMinInterest}+ interested). Date-locking opens on Sub-event candidates once Count-me-in passes half of the expected {EXPECTED_HEADCOUNT}.
           </p>
         </div>
       </CollapsibleSection>
