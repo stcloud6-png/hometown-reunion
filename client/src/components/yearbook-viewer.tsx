@@ -187,8 +187,8 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
                 {/* In memoriam: shown in the watermark's place, with its own RIP button (on by default). */}
                 {isRip && (
                   <div className="yb-rip items-center justify-center" data-testid="yearbook-rip-band">
-                    <span className="whitespace-nowrap font-serif font-bold leading-none tracking-[0.12em] text-white [text-shadow:0_0_2px_rgba(0,0,0,.95),0_1px_3px_rgba(0,0,0,.95)]"
-                      style={{ fontSize: "10cqw" }} data-testid="yearbook-rip">
+                    <span className="rip-text whitespace-nowrap leading-none"
+                      style={{ fontSize: "16cqw" }} data-testid="yearbook-rip">
                       RIP
                     </span>
                   </div>

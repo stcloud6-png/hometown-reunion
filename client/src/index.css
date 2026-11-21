@@ -423,3 +423,10 @@
 .yearbook-stage.show-wm .yb-wm { display: flex; }
 .yearbook-stage.show-rip .yb-rip { display: flex; }
 /* Per-category show rules are generated in yearbook-viewer.tsx (FRAME_CSS). */
+
+/* RIP label: red letters with a white outline (owner request 2026-11-21). */
+.rip-text {
+  font-family: Georgia, "Times New Roman", serif; font-weight: 900; letter-spacing: 0.1em;
+  color: #e00000; -webkit-text-stroke: 0.09em #fff; paint-order: stroke fill;
+  text-shadow: 0 0 0.12em rgba(0,0,0,.55), 0 0.04em 0.1em rgba(0,0,0,.6);
+}

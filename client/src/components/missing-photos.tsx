@@ -91,7 +91,7 @@ export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWater
                   )}
                   {showRip && p.rip && (
                     <div className="absolute inset-x-0 bottom-[8%] flex justify-center" data-testid="missing-photo-rip">
-                      <span className="font-serif text-base font-bold tracking-[0.12em] text-white [text-shadow:0_0_2px_rgba(0,0,0,.95),0_1px_3px_rgba(0,0,0,.95)]">RIP</span>
+                      <span className="rip-text text-3xl leading-none">RIP</span>
                     </div>
                   )}
                   {showWatermarks && p.watermark && !p.rip && (
