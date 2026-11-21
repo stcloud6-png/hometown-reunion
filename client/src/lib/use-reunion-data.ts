@@ -701,8 +701,9 @@ export function useReunionData(options: { stub?: boolean } = {}) {
 
   const fetchYearbookOverlays = useCallback(async (): Promise<YearbookOverlay[]> => {
     if (stub) return DEMO_OVERLAYS;
-    return supabaseRpc<YearbookOverlay[]>("yearbook_overlays", {}, session?.accessToken ?? null);
-  }, [stub, session]);
+    // Public data: always asked for as a visitor, so an expired sign-in can't make it fail.
+    return supabaseRpc<YearbookOverlay[]>("yearbook_overlays", {}, null);
+  }, [stub]);
 
   /** Approved missing-classmate photos for the yearbook pop-up (public). */
   const fetchMissingPhotos = useCallback(async (): Promise<MissingPhoto[]> => {
@@ -905,7 +906,7 @@ function stubMyMissingPhoto(email: string): MyMissingPhoto | null {
 const DEMO_OVERLAYS: YearbookOverlay[] = [
   { page: 14, box: [5.51, 10.41, 19.59, 21.45], watermark: "2026", honor: false, categories: [] },
   { page: 14, box: [26.73, 10.41, 19.59, 21.45], watermark: "2026 - Unconfirmed", honor: true, categories: ["Baseball:Devils"] },
-  { page: 14, box: [69.29, 10.41, 19.59, 21.45], watermark: null, honor: false, categories: ["Basketball:Bulldogs"] },
+  { page: 14, box: [69.29, 10.41, 19.59, 21.45], watermark: null, honor: false, categories: ["Basketball:Bulldogs", "RIP"] },
   { page: 14, box: [5.51, 36.04, 19.59, 21.45], watermark: "2026 - Unconfirmed", honor: true, categories: ["Basketball:Bulldogs"] },
   { page: 14, box: [5.51, 61.44, 19.59, 21.45], watermark: "2026", honor: false, categories: ["Basketball:Cougars"] },
   { page: 14, box: [47.86, 10.41, 19.59, 21.45], watermark: null, honor: true, categories: ["Cheerleading:Red"] },

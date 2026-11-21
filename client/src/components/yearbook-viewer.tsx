@@ -46,6 +46,8 @@ function textOn(hex: string): string {
   return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#111" : "#fff";
 }
 const CLUBS = ["Computer Club", "Biological Honor Society"];
+/** In-memoriam category (owner, 2026-11-21): shown like the watermark, with its own button. */
+const RIP = "RIP";
 const CATEGORY_LABEL: Record<string, string> = { Honor: "Honor Graduates", Title: "Class Title Winners" };
 /** Short chip text for the compact button row. */
 const SHORT_LABEL: Record<string, string> = { Title: "Titles", Honor: "Honor Grads", Cheerleading: "Cheer", "Biological Honor Society": "Bio Honor Soc.", "Computer Club": "Computer", "Other Sports": "Other Sports" };
@@ -131,7 +133,8 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
         {overlays?.map((o, i) => {
           // Frames nest from the outside in (owner, 2026-11-19): yellow Honor outermost, then purple title,
           // football/cheer team colour, Computer Club, Bio Honor Society, then the other sports.
-          const frames = [...(o.honor ? ["Honor"] : []), ...o.categories]
+          const isRip = o.categories.includes(RIP);
+          const frames = [...(o.honor ? ["Honor"] : []), ...o.categories.filter((c) => c !== RIP)]
             .map((raw) => parseCat(raw))
             .sort((x, y) => RING_ORDER(x.kind) - RING_ORDER(y.kind));
           const labelStyle = (f: { kind: string; detail: string | null }) => ({
@@ -176,7 +179,16 @@ const Page = forwardRef<HTMLDivElement, { pageNumber: number; overlays?: Yearboo
                 <div className="flex min-h-[17cqw] flex-col-reverse items-stretch gap-[1.5cqw]">
                   {[...fbCheer, ...otherSports].map((f, k) => label(f, `b-${k}`))}
                 </div>
-                {o.watermark && (
+                {/* In memoriam: shown in the watermark's place, with its own RIP button (on by default). */}
+                {isRip && (
+                  <div className="yb-rip items-center justify-center" data-testid="yearbook-rip-band">
+                    <span className="whitespace-nowrap font-serif font-bold leading-none tracking-[0.12em] text-white [text-shadow:0_0_2px_rgba(0,0,0,.95),0_1px_3px_rgba(0,0,0,.95)]"
+                      style={{ fontSize: "10cqw" }} data-testid="yearbook-rip">
+                      RIP
+                    </span>
+                  </div>
+                )}
+                {o.watermark && !isRip && (
                   <div className="yb-wm items-center justify-center" data-testid="yearbook-watermark-band">
                     <span
                       className="whitespace-nowrap font-sans font-bold leading-none text-[#ffd400] [text-shadow:0_0_2px_rgba(0,0,0,.9),0_1px_2px_rgba(0,0,0,.9)]"
@@ -228,6 +240,8 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
   const [jumpValue, setJumpValue] = useState("");
   const [overlays, setOverlays] = useState<YearbookOverlay[] | null>(fetchOverlays ? null : []);
   const [showWatermarks, setShowWatermarks] = useState(() => Date.now() < WATERMARKS_ON_UNTIL);
+  const [showRip, setShowRip] = useState(true); // on when the yearbook opens (owner, 2026-11-21)
+  const [overlayError, setOverlayError] = useState(false);
   // Honor Graduates frames are on when the yearbook opens; every team is its own button, off until clicked.
   // On by default (owner, 2026-11-19): Titles, Honor Grads, Football, Cheer.
   const [activeCats, setActiveCats] = useState<string[]>(DEFAULT_CATS);
@@ -235,18 +249,35 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
 
   // Load overlay data once, the first time the yearbook opens. The flipbook waits for it
   // (or for a failure) so pages render with their overlays from the start.
+  // A slow or dropped phone connection used to leave the book without watermarks until it was reopened:
+  // now a failed load is retried twice, and again the next time the yearbook opens.
   useEffect(() => {
-    if (!open || overlays !== null || !fetchOverlays) return;
+    if (!open || !fetchOverlays || (overlays !== null && !overlayError)) return;
     let cancelled = false;
-    fetchOverlays().then((rows) => { if (!cancelled) setOverlays(rows ?? []); }).catch(() => { if (!cancelled) setOverlays([]); });
+    const attempt = async () => {
+      for (let i = 0; i < 3; i++) {
+        try {
+          const rows = await fetchOverlays();
+          if (!cancelled) { setOverlays(rows ?? []); setOverlayError(false); }
+          return;
+        } catch {
+          await new Promise((r) => setTimeout(r, 1200 * (i + 1)));
+          if (cancelled) return;
+        }
+      }
+      if (!cancelled) { setOverlays((prev) => prev ?? []); setOverlayError(true); }
+    };
+    void attempt();
     return () => { cancelled = true; };
-  }, [open, overlays, fetchOverlays]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, fetchOverlays]);
 
   const byPage = useMemo(() => {
     const m = new Map<number, YearbookOverlay[]>();
     for (const o of overlays ?? []) m.set(o.page, [...(m.get(o.page) ?? []), o]);
     return m;
   }, [overlays]);
+  const hasRip = useMemo(() => (overlays ?? []).some((o) => o.categories.includes(RIP)), [overlays]);
   const legend = useMemo(() => {
     const seen = new Set<string>();
     for (const o of overlays ?? []) { if (o.honor) seen.add("Honor"); o.categories.forEach((c) => seen.add(buttonFor(parseCat(c).kind))); }
@@ -312,6 +343,13 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
               className="yb-chip cursor-not-allowed opacity-50" data-testid="button-yearbook-jul-2027">
               <Stamp className="h-3 w-3" /> Jul 2027
             </button>
+            {hasRip && (
+              <button type="button" aria-pressed={showRip} onClick={() => setShowRip((v) => !v)} title="In memoriam"
+                className={cn("yb-chip", showRip && "yb-chip-on")} style={showRip ? { backgroundColor: "#3f3f46", borderColor: "#27272a", color: "#fff" } : undefined}
+                data-testid="button-yearbook-rip">
+                RIP
+              </button>
+            )}
             {fetchMissingPhotos && (
               <button type="button" onClick={() => setMissingOpen(true)} className="yb-chip" title="Classmates with no senior portrait"
                 data-testid="button-yearbook-missing-photos">
@@ -350,7 +388,7 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
         {/* One slim bar: title + page controls, so the yearbook gets the height. */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pr-8">
           <DialogTitle className="mr-auto flex items-center gap-1.5 text-sm font-semibold">
-            <BookOpen className="h-4 w-4" /> Panama &rsquo;87 Yearbook
+            <BookOpen className="h-4 w-4" /> BHS &rsquo;87 Yearbook
           </DialogTitle>
           {!isPhone && <div className="flex items-center gap-x-2">{navControls}</div>}
           {/* Phone: one button opens page controls + filters in a pop-up. */}
@@ -369,7 +407,7 @@ export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetc
         </div>
 
         <div
-          className={cn("yearbook-stage flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md bg-muted/40 py-1", showWatermarks && "show-wm", activeCats.map((c) => `show-${slug(c)}`))}
+          className={cn("yearbook-stage flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md bg-muted/40 py-1", showWatermarks && "show-wm", showRip && "show-rip", activeCats.map((c) => `show-${slug(c)}`))}
           data-testid="yearbook-stage"
         >
           <style>{FRAME_CSS}</style>
