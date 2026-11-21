@@ -68,7 +68,6 @@ export default function WeatherPage() {
       m = Date.UTC(md.getUTCFullYear(), md.getUTCMonth() + 1, 1);
     }
   }
-  const collectedDays = chart.offsets["Orlando, FL"].days;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -178,8 +177,7 @@ export default function WeatherPage() {
         <div className="mt-6 space-y-2 text-sm text-muted-foreground" data-testid="weather-method">
           <p className="font-medium text-foreground">How the estimate works</p>
           <p>
-            The site has collected {collectedDays} day{collectedDays === 1 ? "" : "s"} of readings so far (since Nov 19, 2026) — too few
-            for a straight-line trend, which would run off the chart within weeks. So each estimate starts from the
+            Each estimate starts from the
             long-term normal for that day of the year and is nudged by how far the site's own readings have recently run
             above or below normal. With few days collected the nudge is small; it grows as readings build up
             (weight = days ÷ (days + {PRIOR_DAYS})). The estimate refreshes every morning with the new reading.
