@@ -91,6 +91,8 @@ const FRAME_CSS = BUTTONS
 const TOTAL_PAGES = 173;
 
 interface YearbookViewerProps {
+  /** Open the Missing photos pop-up straight away (direct link bhs87.com/missing-photos). */
+  initialMissingOpen?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Public overlay data (watermarks + borders). Optional so the viewer still works without it. */
@@ -233,8 +235,8 @@ Page.displayName = "Page";
  * flipbook (react-pageflip) over the 163 pre-rendered page images in
  * /public/yearbook/. Opened from the Yearbook logo in the sticky header.
  */
-export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetchMissingPhotos, searchYearbook }: YearbookViewerProps) {
-  const [missingOpen, setMissingOpen] = useState(false);
+export default function YearbookViewer({ open, onOpenChange, fetchOverlays, fetchMissingPhotos, searchYearbook, initialMissingOpen = false }: YearbookViewerProps) {
+  const [missingOpen, setMissingOpen] = useState(initialMissingOpen);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState("");

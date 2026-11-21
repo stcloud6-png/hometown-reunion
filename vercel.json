@@ -4,9 +4,25 @@
   "buildCommand": "npx vite build",
   "outputDirectory": "dist/public",
   "rewrites": [
-    { "source": "/yearbook", "destination": "/index.html" },
-    { "source": "/dashboard", "destination": "/index.html" },
-    { "source": "/availability", "destination": "/index.html" },
-    { "source": "/entry", "destination": "/index.html" }
+    {
+      "source": "/yearbook",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/availability",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/entry",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/missing-photos",
+      "destination": "/index.html"
+    }
   ]
 }
