@@ -291,7 +291,7 @@ export function useReunionData(options: { stub?: boolean } = {}) {
           .then(async (rows) => {
             const row = Array.isArray(rows) ? rows[0] : null;
             if (!row) { setMyMissingPhoto(null); return; }
-            const urls = row.storage_path ? await supabaseSignedUrls(PHOTO_BUCKET, [row.storage_path], token) : {};
+            const urls = withStaticPhotos(row.storage_path && !isStaticPhoto(row.storage_path) ? await supabaseSignedUrls(PHOTO_BUCKET, [row.storage_path], token) : {}, [row.storage_path]);
             setMyMissingPhoto({ eligible: row.eligible, status: row.status, url: row.storage_path ? urls[row.storage_path] ?? null : null });
           })
           .catch(() => setMyMissingPhoto(null));
@@ -736,8 +736,8 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     }
     const token = session?.accessToken ?? null;
     const rows = await supabaseRpc<{ id: string; display_name: string; storage_path: string | null; watermark: string | null; titles: string[] | null; rip?: boolean | null }[]>("missing_photos_public", {}, token);
-    const paths = rows.flatMap((r) => (r.storage_path ? [r.storage_path] : []));
-    const urls = await supabaseSignedUrls(PHOTO_BUCKET, paths, token);
+    const paths = rows.flatMap((r) => (r.storage_path && !isStaticPhoto(r.storage_path) ? [r.storage_path] : []));
+    const urls = withStaticPhotos(await supabaseSignedUrls(PHOTO_BUCKET, paths, token), rows.map((r) => r.storage_path));
     // A photo whose link couldn't be made is left out; titled classmates with no photo yet show as a placeholder.
     return rows
       .filter((r) => !r.storage_path || urls[r.storage_path])
@@ -766,7 +766,9 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     if (stub) return stubPhotos.map(({ id, roster_id, display_name, status, created_at, url }) => ({ id, roster_id, display_name, status, created_at, url }));
     if (!session) return [];
     const rows = await supabaseRpc<(Omit<AdminMissingPhoto, "url"> & { storage_path: string })[]>("admin_missing_photos", {}, session.accessToken);
-    const urls = await supabaseSignedUrls(PHOTO_BUCKET, rows.map((r) => r.storage_path), session.accessToken);
+    const urls = withStaticPhotos(
+      await supabaseSignedUrls(PHOTO_BUCKET, rows.map((r) => r.storage_path).filter((p) => !isStaticPhoto(p)), session.accessToken),
+      rows.map((r) => r.storage_path));
     return rows.map(({ storage_path, ...r }) => ({ ...r, url: urls[storage_path] ?? null }));
   }, [stub, session]);
 
@@ -958,3 +960,18 @@ const DEMO_OVERLAYS: YearbookOverlay[] = [
   { page: 15, box: [73.47, 35.49, 19.49, 21.21], watermark: null, honor: true, categories: ["Swimming"] },
   { page: 28, box: [68.57, 10.57, 19.29, 20.74], watermark: "2026", honor: true, categories: ["Baseball:Red", "Basketball:Bulldogs", "Football:Cougars"] },
 ];
+
+/**
+ * Photos added by the organizer from a yearbook scan are shipped with the site
+ * (client/public/missing/) instead of the storage bucket. Their path in
+ * missing_photos is "uploads/static/<file>".
+ */
+const STATIC_PREFIX = "uploads/static/";
+function isStaticPhoto(path: string | null | undefined): boolean {
+  return !!path && path.startsWith(STATIC_PREFIX);
+}
+function withStaticPhotos(urls: Record<string, string>, paths: (string | null)[]): Record<string, string> {
+  const out = { ...urls };
+  for (const p of paths) if (p && isStaticPhoto(p)) out[p] = `/missing/${p.slice(STATIC_PREFIX.length)}`;
+  return out;
+}
