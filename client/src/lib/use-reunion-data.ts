@@ -868,9 +868,13 @@ export { parseAuthHashFragment };
 // ---------------------------------------------------------------------------
 // Stub data for offline QA (never written anywhere)
 // ---------------------------------------------------------------------------
-const DEMO_WEATHER: WeatherRow[] = [
-  { city: "Orlando, FL", observed_on: "2026-11-19", temp_f: 68.7, high_f: 71.3, low_f: 68.1, weather_code: 63, fetched_at: "2026-11-19T09:23:09Z" },
-  { city: "Panama City", observed_on: "2026-11-19", temp_f: 77.6, high_f: 88.5, low_f: 77.1, weather_code: 2, fetched_at: "2026-11-19T09:23:09Z" },
+export const DEMO_WEATHER: WeatherRow[] = [
+  { city: "Orlando, FL", observed_on: "2026-11-19", temp_f: 68.3, high_f: 71.4, low_f: 67.5, weather_code: 65, fetched_at: "2026-11-19T11:25:00Z" },
+  { city: "Orlando, FL", observed_on: "2026-11-20", temp_f: 71.0, high_f: 72.8, low_f: 68.2, weather_code: 63, fetched_at: "2026-11-20T11:25:00Z" },
+  { city: "Orlando, FL", observed_on: "2026-11-21", temp_f: 69.4, high_f: 75.7, low_f: 68.9, weather_code: 2, fetched_at: "2026-11-21T11:25:00Z" },
+  { city: "Panama City", observed_on: "2026-11-19", temp_f: 77.2, high_f: 88.5, low_f: 77.1, weather_code: 2, fetched_at: "2026-11-19T11:25:00Z" },
+  { city: "Panama City", observed_on: "2026-11-20", temp_f: 78.8, high_f: 88.5, low_f: 78.3, weather_code: 0, fetched_at: "2026-11-20T11:25:00Z" },
+  { city: "Panama City", observed_on: "2026-11-21", temp_f: 78.5, high_f: 89.1, low_f: 78.3, weather_code: 0, fetched_at: "2026-11-21T11:25:00Z" },
 ];
 
 /** Demo only: give a few stand-in people event answers and pill timeslots so the "who's going" lists have content. */
