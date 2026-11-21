@@ -15,12 +15,19 @@ function pickError(file: File | undefined): string | null {
   return null;
 }
 
+/** Watermark wording (neutral on purpose: nothing says anything about payment). */
+export function watermarkText(v: string): string {
+  if (v === "2026") return "Jan 2027";
+  if (v === "2026 - Unconfirmed?") return "2027 \u2013 Soon?";
+  return "2027 \u2013 Soon";
+}
+
 /** Same neutral wording as the yearbook watermarks — never says anything about payment. */
 function WatermarkText({ value }: { value: string | null }) {
   if (!value) return null;
   return (
     <span className="whitespace-nowrap font-sans text-sm font-bold leading-none text-[#ffd400] [text-shadow:0_0_2px_rgba(0,0,0,.9),0_1px_2px_rgba(0,0,0,.9)]">
-      {value === "2026" ? "Jan 2027" : "2027 – Soon"}
+      {watermarkText(value)}
     </span>
   );
 }
@@ -29,11 +36,15 @@ function WatermarkText({ value }: { value: string | null }) {
  * Yearbook pop-up: classmates who missed the senior photo shoot (or graduation), with the photo
  * they gave us. Public, approved photos only.
  */
-export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWatermarks }: {
+export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWatermarks, showTitles = true, showRip = true }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   fetchPhotos?: () => Promise<MissingPhoto[]>;
   showWatermarks: boolean;
+  /** Follows the yearbook's Titles button: purple frame + label, as on the portraits. */
+  showTitles?: boolean;
+  /** Follows the yearbook's RIP button. */
+  showRip?: boolean;
 }) {
   const [photos, setPhotos] = useState<MissingPhoto[] | null>(null);
   useEffect(() => {
@@ -61,9 +72,29 @@ export function MissingPhotosDialog({ open, onOpenChange, fetchPhotos, showWater
           <ul className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4" data-testid="list-missing-photos">
             {photos.map((p) => (
               <li key={p.id} className="flex flex-col items-center gap-1.5">
-                <div className="relative aspect-[4/5] w-full overflow-hidden bg-muted shadow-md">
-                  <img src={p.url} alt={p.display_name} className="h-full w-full object-cover" loading="lazy" />
-                  {showWatermarks && p.watermark && (
+                <div className={cn("relative aspect-[4/5] w-full overflow-hidden bg-muted shadow-md",
+                  showTitles && p.titles.length > 0 && "outline outline-[3px] outline-[#8e24aa]")} data-testid={`missing-photo-${p.id}`}>
+                  {p.url ? (
+                    <img src={p.url} alt={p.display_name} className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[#e8dfcb] text-[#8a7a5c]" data-testid="missing-photo-placeholder">
+                      <Camera className="h-8 w-8" />
+                      <span className="text-[11px] font-medium">Photo coming soon</span>
+                    </div>
+                  )}
+                  {showTitles && p.titles.length > 0 && (
+                    <div className="absolute inset-x-0 top-0 flex flex-col items-center gap-px" data-testid="missing-photo-titles">
+                      {p.titles.map((t) => (
+                        <span key={t} className="w-full truncate bg-[#8e24aa] px-1 py-0.5 text-center font-sans text-[11px] font-bold leading-tight text-white">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                  {showRip && p.rip && (
+                    <div className="absolute inset-x-0 bottom-[8%] flex justify-center" data-testid="missing-photo-rip">
+                      <span className="font-serif text-base font-bold tracking-[0.12em] text-white [text-shadow:0_0_2px_rgba(0,0,0,.95),0_1px_3px_rgba(0,0,0,.95)]">RIP</span>
+                    </div>
+                  )}
+                  {showWatermarks && p.watermark && !p.rip && (
                     <div className="absolute inset-x-0 bottom-[8%] flex justify-center" data-testid="missing-photo-watermark">
                       <WatermarkText value={p.watermark} />
                     </div>
