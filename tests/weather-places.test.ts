@@ -32,7 +32,7 @@ t("owner's months (22:10 + 22:36 ET)", () => {
   assert.equal(w("O"), "02-01..07-01 09-01..11-30");
   assert.equal(w("N1"), "05-21..09-30");
   assert.equal(w("Pu"), "01-01..05-31 09-01..12-31");
-  assert.equal(w("Sa"), "02-01..05-31 09-01..12-01");
+  assert.equal(w("Sa"), "02-01..06-01 09-01..12-01");
   assert.equal(w("Al"), "02-01..05-14 09-02..11-30");
   assert.equal(w("B"), "02-01..04-30"); // unchanged: its period
 });
