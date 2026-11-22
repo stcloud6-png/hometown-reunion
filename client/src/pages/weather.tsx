@@ -345,7 +345,7 @@ export default function WeatherPage() {
             {placeTable.length > 0 && (
               <div className="mt-4 overflow-x-auto" data-testid="weather-place-table">
                 <table className="w-full text-xs tabular-nums">
-                  <caption className="pb-1 text-left text-muted-foreground">Estimated average high / low, °F, in each selected period</caption>
+                  <caption className="pb-1 text-left text-muted-foreground">Estimated average high / low, °F, for each location’s months</caption>
                   <tbody>
                     {placeTable.map((r) => (
                       <tr key={r.code} className="border-t">

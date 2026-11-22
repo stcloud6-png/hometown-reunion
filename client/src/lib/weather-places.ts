@@ -32,18 +32,48 @@ export type HiLo = "both" | "high" | "low";
 const DAY_MS = 86_400_000;
 export const placeKey = (code: string, which: "hi" | "lo") => `x_${code}_${which}`;
 
-/** The [start, end] day windows a place is drawn over, given the selected periods (overlaps merged). */
-export function windowsFor(place: WeatherPlace, activeSeasons: Set<Season>): [number, number][] {
-  const raw = SEASONS.filter((s) => place.seasons.includes(s.id) && activeSeasons.has(s.id))
-    .map((s) => [toDay(s.start), toDay(s.end)] as [number, number])
-    .sort((a, b) => a[0] - b[0]);
+/**
+ * Owner-set months for some codes (2026-11-21, 22:10 ET), as 2027 "MM-DD" ranges.
+ * Codes not listed here use the months of their periods (spring/summer/fall).
+ */
+export const MONTH_WINDOWS: Record<string, [string, string][]> = {
+  I: [["06-01", "09-30"]],
+  Se: [["01-01", "12-31"]],
+  Po1: [["01-01", "12-31"]],
+  Bu: [["01-01", "12-31"]],
+  Qu: [["01-01", "12-31"]],
+  Pu: [["01-01", "05-31"], ["09-01", "12-31"]],
+  Sa: [["02-01", "05-31"], ["09-01", "12-01"]],
+  Al: [["02-01", "06-30"], ["09-01", "11-30"]],
+};
+
+const mergeWindows = (raw: [number, number][]) => {
+  const sorted = [...raw].sort((a, b) => a[0] - b[0]);
   const merged: [number, number][] = [];
-  for (const w of raw) {
+  for (const w of sorted) {
     const last = merged[merged.length - 1];
     if (last && w[0] <= last[1] + DAY_MS) last[1] = Math.max(last[1], w[1]);
     else merged.push([...w] as [number, number]);
   }
   return merged;
+};
+
+/** All the [start, end] days a place is drawn over, whatever periods are selected. */
+export function placeWindows(place: WeatherPlace): [number, number][] {
+  const custom = MONTH_WINDOWS[place.code];
+  if (custom) return mergeWindows(custom.map(([a, b]) => [toDay(`2027-${a}`), toDay(`2027-${b}`)]));
+  return mergeWindows(SEASONS.filter((s) => place.seasons.includes(s.id)).map((s) => [toDay(s.start), toDay(s.end)]));
+}
+
+/**
+ * A place shows (over all of its months) when any of its months fall in a
+ * selected period; otherwise it's hidden.
+ */
+export function windowsFor(place: WeatherPlace, activeSeasons: Set<Season>): [number, number][] {
+  const own = placeWindows(place);
+  const selected = SEASONS.filter((s) => activeSeasons.has(s.id)).map((s) => [toDay(s.start), toDay(s.end)]);
+  const overlaps = own.some(([a, b]) => selected.some(([c, d]) => a <= d && c <= b));
+  return overlaps ? own : [];
 }
 
 export function visiblePlaces(places: WeatherPlace[], activeGroups: Set<number>, activeSeasons: Set<Season>) {
@@ -89,7 +119,8 @@ export function monthlyRows(visible: ReturnType<typeof visiblePlaces>) {
     const months: { label: string; high: number; low: number }[] = [];
     const seen = new Set<number>();
     for (const [a, b] of windows) {
-      for (let m = new Date(a).getUTCMonth(); m <= new Date(b).getUTCMonth(); m++) {
+      const lastM = new Date(b).getUTCDate() === 1 ? new Date(b).getUTCMonth() - 1 : new Date(b).getUTCMonth();
+      for (let m = new Date(a).getUTCMonth(); m <= lastM; m++) {
         if (seen.has(m)) continue;
         seen.add(m);
         months.push({
