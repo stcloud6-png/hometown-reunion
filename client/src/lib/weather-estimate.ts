@@ -43,8 +43,8 @@ export const PRIOR_DAYS = 14;
 /** Never move the estimate more than this far from normal. */
 export const MAX_OFFSET_F = 6;
 
-/** The chart runs through the Fall period (owner, 2026-11-21). */
-export const CHART_END = "2027-11-30";
+/** The chart runs through December 2027 so all-year locations fit (owner, 2026-11-21). */
+export const CHART_END = "2027-12-31";
 
 export const MILESTONES = [
   { date: "2027-01-15", label: "15 Jan 2027" },
