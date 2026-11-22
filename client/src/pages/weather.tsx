@@ -67,7 +67,8 @@ export default function WeatherPage() {
   const groupColor = dark ? GROUP_COLORS.dark : GROUP_COLORS.light;
   const [places, setPlaces] = useState<WeatherPlace[]>([]);
   const [activeGroups, setActiveGroups] = useState<Set<number>>(new Set());
-  const [activeSeasons, setActiveSeasons] = useState<Set<Season>>(new Set(SEASONS.map((x) => x.id)));
+  // Period buttons were removed (owner, 2026-11-21 23:01 ET): every location shows all of its months.
+  const activeSeasons = useMemo(() => new Set<Season>(SEASONS.map((x) => x.id)), []);
   const [hiLo, setHiLo] = useState<HiLo>("both");
   // Short names: only after the database accepts the Maintenance PIN. Kept in memory, never stored.
   const [names, setNames] = useState<Record<string, string> | null>(null);
@@ -167,7 +168,7 @@ export default function WeatherPage() {
         <p className="mt-2 max-w-2xl text-muted-foreground">
           Daily highs and lows the site collects each morning for Orlando and Panama City, with an estimate
           out to two milestones: <strong className="text-foreground">15 Jan 2027</strong> and{" "}
-          <strong className="text-foreground">4 Jul 2027</strong>. Use the period and location buttons on the
+          <strong className="text-foreground">4 Jul 2027</strong>. Use the location buttons on the
           chart to add other places' estimated temperatures.
         </p>
 
@@ -205,19 +206,8 @@ export default function WeatherPage() {
                 {names ? <LockOpen className="h-3.5 w-3.5" aria-hidden="true" /> : <Lock className="h-3.5 w-3.5" aria-hidden="true" />}
               </Button>
             </div>
-            {/* Filters, one row: periods · locations · high/low. */}
+            {/* Filters, one row: locations · high/low. */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-2" data-testid="weather-controls">
-              <div className="flex flex-wrap gap-1" role="group" aria-label="Weather periods">
-                {SEASONS.map((x) => (
-                  <Button
-                    key={x.id} size="sm" variant={activeSeasons.has(x.id) ? "default" : "outline"} className="h-8 rounded-full px-3 text-xs"
-                    aria-pressed={activeSeasons.has(x.id)} onClick={() => setActiveSeasons((cur) => toggle(cur, x.id))}
-                    data-testid={`button-season-${x.id}`}
-                  >
-                    {x.label} <span className="ml-1 opacity-70">({x.months})</span>
-                  </Button>
-                ))}
-              </div>
               <div className="flex flex-wrap gap-1" role="group" aria-label="Locations">
                 {GEO_GROUPS.map((g) => {
                   const codes = places.filter((p) => p.geo_group === g).map((p) => p.code);
@@ -312,7 +302,7 @@ export default function WeatherPage() {
                         showLow && <Line key={`${k}LowEst`} dataKey={`${k}LowEst`} {...common} strokeDasharray="6 4" strokeOpacity={0.85} dot={false} activeDot={{ r: 4 }} label={hiLo === "low" ? endLabel : undefined} />,
                       ].filter(Boolean);
                     })}
-                    {/* Planning locations: thin lines inside their periods only, labelled with their code. */}
+                    {/* Planning locations: thin lines over their own months, labelled with their code. */}
                     {visible.flatMap(({ place }) => {
                       const c = groupColor[place.geo_group];
                       const which: ("hi" | "lo")[] = [...(showHigh ? ["hi" as const] : []), ...(showLow ? ["lo" as const] : [])];
