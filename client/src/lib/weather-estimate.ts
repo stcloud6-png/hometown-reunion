@@ -43,6 +43,9 @@ export const PRIOR_DAYS = 14;
 /** Never move the estimate more than this far from normal. */
 export const MAX_OFFSET_F = 6;
 
+/** The chart runs through the Fall period (owner, 2026-11-21). */
+export const CHART_END = "2027-11-30";
+
 export const MILESTONES = [
   { date: "2027-01-15", label: "15 Jan 2027" },
   { date: "2027-07-04", label: "4 Jul 2027" },
@@ -53,8 +56,11 @@ export const toDay = (iso: string) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7
 export const dayIso = (t: number) => new Date(t).toISOString().slice(0, 10);
 const num = (v: number | string | null) => (v == null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
 
-/** Normal [high, low] for a calendar day: monthly values sit on the 15th, linear in between (wraps the year). */
-export function normalFor(city: City, iso: string): { high: number; low: number } {
+/**
+ * Value for a calendar day from a 12-month [high, low] table: each month sits on
+ * the 15th, linear in between (wraps the year).
+ */
+export function interpolateMonthly(table: [number, number][], iso: string): { high: number; low: number } {
   const t = toDay(iso);
   const y = +iso.slice(0, 4);
   const m = +iso.slice(5, 7) - 1;
@@ -65,9 +71,14 @@ export function normalFor(city: City, iso: string): { high: number; low: number 
   if (bM > 11) { bM = 0; bY = aY + 1; }
   const a = mid(aY, aM), b = mid(bY, bM);
   const f = (t - a) / (b - a);
-  const [ah, al] = MONTHLY_NORMALS[city][aM];
-  const [bh, bl] = MONTHLY_NORMALS[city][bM];
+  const [ah, al] = table[aM];
+  const [bh, bl] = table[bM];
   return { high: ah + (bh - ah) * f, low: al + (bl - al) * f };
+}
+
+/** Normal [high, low] for a calendar day in one of the two reunion cities. */
+export function normalFor(city: City, iso: string): { high: number; low: number } {
+  return interpolateMonthly(MONTHLY_NORMALS[city], iso);
 }
 
 export interface CityOffset { high: number; low: number; days: number; weight: number }
@@ -111,7 +122,7 @@ const KEY: Record<City, "o" | "p"> = { "Orlando, FL": "o", "Panama City": "p" };
  * Collected highs/lows plus estimate curves from the day after the latest reading
  * through `endIso` (weekly, plus each milestone day so the markers sit on the line).
  */
-export function buildChart(rows: DailyReading[], endIso = "2027-07-31") {
+export function buildChart(rows: DailyReading[], endIso = CHART_END) {
   const byT = new Map<number, ChartPoint>();
   const at = (t: number) => byT.get(t) ?? (byT.set(t, { t }), byT.get(t)!);
   let latest = 0;
