@@ -23,13 +23,17 @@ t("O shows in two separate windows; Po2 summer+fall merge into one", () => {
   assert.equal(po2.length, 1);
   assert.equal(po2[0][0], toDay("2027-05-01")); assert.equal(po2[0][1], toDay("2027-11-30"));
 });
-t("owner's months (22:10 ET)", () => {
+t("owner's months (22:10 + 22:36 ET)", () => {
   const w = (code: string) => placeWindows(P(code)).map(([a, b]) => `${new Date(a).toISOString().slice(5, 10)}..${new Date(b).toISOString().slice(5, 10)}`).join(" ");
   assert.equal(w("I"), "06-01..09-30");
-  for (const c of ["Se", "Po1", "Bu", "Qu"]) assert.equal(w(c), "01-01..12-31", c);
+  for (const c of ["Po1", "Qu"]) assert.equal(w(c), "01-01..12-31", c);
+  assert.equal(w("Se"), "01-01..05-14 10-02..12-31");
+  assert.equal(w("Bu"), "01-01..06-19 08-25..12-31");
+  assert.equal(w("O"), "02-01..07-01 09-01..11-30");
+  assert.equal(w("N1"), "05-21..09-30");
   assert.equal(w("Pu"), "01-01..05-31 09-01..12-31");
-  assert.equal(w("Sa"), "02-01..05-31 09-01..12-01");
-  assert.equal(w("Al"), "02-01..06-30 09-01..11-30");
+  assert.equal(w("Sa"), "02-01..06-01 09-01..12-01");
+  assert.equal(w("Al"), "02-01..05-14 09-02..11-30");
   assert.equal(w("B"), "02-01..04-30"); // unchanged: its period
 });
 t("a place shows when any of its months are in a selected period", () => {
@@ -51,7 +55,7 @@ t("place values only inside windows, unbroken within, broken between", () => {
   const v = visiblePlaces(DEMO_PLACES, new Set([3]), all);
   const pts = addPlacesToChart(c.points, v) as unknown as Record<string, number>[];
   const k = placeKey("O", "hi");
-  const inWin = (x: number) => (x >= toDay("2027-02-01") && x <= toDay("2027-04-30")) || (x >= toDay("2027-09-01") && x <= toDay("2027-11-30"));
+  const inWin = (x: number) => (x >= toDay("2027-02-01") && x <= toDay("2027-07-01")) || (x >= toDay("2027-09-01") && x <= toDay("2027-11-30"));
   for (const r of pts) assert.equal(r[k] != null, inWin(r.t), `row ${new Date(r.t).toISOString()}`);
   assert.ok(pts.some((r) => r.t === toDay("2027-02-01")) && pts.some((r) => r.t === toDay("2027-11-30")));
   // Orlando estimate now runs to the end of December 2027.

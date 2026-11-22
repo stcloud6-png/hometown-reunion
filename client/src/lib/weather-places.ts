@@ -33,18 +33,20 @@ const DAY_MS = 86_400_000;
 export const placeKey = (code: string, which: "hi" | "lo") => `x_${code}_${which}`;
 
 /**
- * Owner-set months for some codes (2026-11-21, 22:10 ET), as 2027 "MM-DD" ranges.
+ * Owner-set months for some codes (2026-11-21, 22:10 and 22:36 ET), as 2027 "MM-DD" ranges.
  * Codes not listed here use the months of their periods (spring/summer/fall).
  */
 export const MONTH_WINDOWS: Record<string, [string, string][]> = {
   I: [["06-01", "09-30"]],
-  Se: [["01-01", "12-31"]],
+  Se: [["01-01", "05-14"], ["10-02", "12-31"]], // none 15 May – 1 Oct (22:36 ET)
   Po1: [["01-01", "12-31"]],
-  Bu: [["01-01", "12-31"]],
+  Bu: [["01-01", "06-19"], ["08-25", "12-31"]], // none 20 Jun – 24 Aug (22:36 ET)
   Qu: [["01-01", "12-31"]],
   Pu: [["01-01", "05-31"], ["09-01", "12-31"]],
-  Sa: [["02-01", "05-31"], ["09-01", "12-01"]],
-  Al: [["02-01", "06-30"], ["09-01", "11-30"]],
+  Sa: [["02-01", "06-01"], ["09-01", "12-01"]], // first stretch ends 1 Jun (22:44 ET)
+  Al: [["02-01", "05-14"], ["09-02", "11-30"]], // none 15 May – 1 Sep (22:36 ET)
+  O: [["02-01", "07-01"], ["09-01", "11-30"]], // spring extended to 1 Jul (22:36 ET)
+  N1: [["05-21", "09-30"]], // starts 21 May (22:36 ET)
 };
 
 const mergeWindows = (raw: [number, number][]) => {
