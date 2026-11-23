@@ -170,9 +170,10 @@ export const TRAIL_GROUPS: { id: Trail["group"]; label: string }[] = [
 ];
 
 export const TRAILS: Trail[] = [
-  // Owner's favourites first, then the others; each group in the owner's chosen order (2026-11-23).
+  // Owner's favourites first, then the others; lettered A–H, J in display order (2026-11-23; no "I",
+  // to avoid confusion with location code I). Titles come from weather_trail_titles(pin).
   {
-    id: "D", label: "Option D", group: "fav",
+    id: "A", label: "Option A", group: "fav",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "B", from: "02-01", to: "04-15" },
@@ -184,7 +185,7 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "C", label: "Option C", group: "fav",
+    id: "B", label: "Option B", group: "fav",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "B", from: "02-01", to: "04-15" },
@@ -196,7 +197,7 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "F", label: "Option F", group: "fav",
+    id: "C", label: "Option C", group: "fav",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "B", from: "02-01", to: "04-04" },
@@ -207,7 +208,7 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "K", label: "Option K", group: "fav",
+    id: "D", label: "Option D", group: "fav",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "B", from: "02-01", to: "04-15" },
@@ -220,7 +221,7 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "J", label: "Option J", group: "fav",
+    id: "E", label: "Option E", group: "fav",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "B", from: "02-01", to: "04-05" },
@@ -232,7 +233,7 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "E", label: "Option E", group: "more",
+    id: "F", label: "Option F", group: "more",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "B", from: "02-01", to: "04-15" },
@@ -245,7 +246,7 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "B", label: "Option B", group: "more",
+    id: "G", label: "Option G", group: "more",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "Se", from: "02-01", to: "05-01" },
@@ -267,7 +268,7 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "G", label: "Option G", group: "more",
+    id: "J", label: "Option J", group: "more",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "B", from: "02-01", to: "03-14" },
