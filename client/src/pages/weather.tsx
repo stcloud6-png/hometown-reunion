@@ -6,13 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import type { WeatherRow } from "@/components/weather-corner";
 import { supabaseRest, supabaseRpc } from "@/lib/reunion";
 import { DEMO_WEATHER } from "@/lib/use-reunion-data";
 import { useDarkMode } from "@/hooks/use-dark-mode";
-import { buildChart, CITIES, dayIso, PRIOR_DAYS, type ChartPoint, type City } from "@/lib/weather-estimate";
+import { buildChart, CITIES, dayIso, MONTHLY_NORMALS, PRIOR_DAYS, type ChartPoint, type City } from "@/lib/weather-estimate";
 import {
-  addPlacesToChart, DEMO_PLACES, GEO_GROUPS, monthlyRows, placeKey, SEASONS, visiblePlaces,
+  addPlacesToChart, addTrailToChart, DEMO_PLACES, GEO_GROUPS, monthlyRows, placeKey, SEASONS, stopRange, trailKey, trailRows, TRAILS, visiblePlaces,
   type HiLo, type Season, type WeatherPlace,
 } from "@/lib/weather-places";
 
@@ -29,6 +33,8 @@ const GROUP_COLORS = {
   dark: { 1: "#199e70", 2: "#c98500", 3: "#d55181", 4: "#0ca30c" },
 } as Record<"light" | "dark", Record<number, string>>;
 const SHORT: Record<City, string> = { "Orlando, FL": "Orlando", "Panama City": "Panama" };
+// Button #5 trail: categorical slot 7 (violet), drawn thick so it reads as a path, plus stop labels.
+const TRAIL_COLORS = { light: "#6250d6", dark: "#9085e9" };
 const KEY: Record<City, "o" | "p"> = { "Orlando, FL": "o", "Panama City": "p" };
 
 const fmtAxis = (t: number) => new Date(t).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
@@ -39,9 +45,11 @@ const SERIES_LABEL: Record<string, string> = {
   oHighEst: "Orlando high (est.)", oLowEst: "Orlando low (est.)", pHighEst: "Panama high (est.)", pLowEst: "Panama low (est.)",
 };
 
-function ChartTooltip({ active, payload, label, placeLabel }: { active?: boolean; payload?: { dataKey: string; value: number; color: string }[]; label?: number; placeLabel: (code: string) => string }) {
+function ChartTooltip({ active, payload, label, placeLabel, trailStop }: { active?: boolean; payload?: { dataKey: string; value: number; color: string }[]; label?: number; placeLabel: (code: string) => string; trailStop: (i: number) => string }) {
   if (!active || !payload?.length || label == null) return null;
   const nameOf = (key: string) => {
+    const tm = key.match(/^t_(\d+)_(hi|lo)$/);
+    if (tm) return `Trail: ${trailStop(+tm[1])} ${tm[2] === "hi" ? "high" : "low"}`;
     const m = key.match(/^x_(.+)_(hi|lo)$/);
     return m ? `${placeLabel(m[1])} ${m[2] === "hi" ? "high" : "low"} (est.)` : SERIES_LABEL[key] ?? key;
   };
@@ -65,8 +73,13 @@ export default function WeatherPage() {
   const { dark } = useDarkMode(); // applies the visitor's saved light/dark choice
   const color = dark ? COLORS.dark : COLORS.light;
   const groupColor = dark ? GROUP_COLORS.dark : GROUP_COLORS.light;
+  const trailColor = dark ? TRAIL_COLORS.dark : TRAIL_COLORS.light;
   const [places, setPlaces] = useState<WeatherPlace[]>([]);
-  const [activeGroups, setActiveGroups] = useState<Set<number>>(new Set());
+  // Locations are switched on one by one from the checklists under buttons #1–#4.
+  const [activeCodes, setActiveCodes] = useState<Set<string>>(new Set());
+  // Button #5: one trail (or none) at a time.
+  const [trailId, setTrailId] = useState<string>("none");
+  const trail = TRAILS.find((t) => t.id === trailId) ?? null;
   // Period buttons were removed (owner, 2026-11-21 23:01 ET): every location shows all of its months.
   const activeSeasons = useMemo(() => new Set<Season>(SEASONS.map((x) => x.id)), []);
   const [hiLo, setHiLo] = useState<HiLo>("both");
@@ -106,8 +119,16 @@ export default function WeatherPage() {
   }, []);
 
   const chart = useMemo(() => buildChart(rows ?? []), [rows]);
-  const visible = useMemo(() => visiblePlaces(places, activeGroups, activeSeasons), [places, activeGroups, activeSeasons]);
-  const points = useMemo(() => addPlacesToChart(chart.points, visible), [chart.points, visible]);
+  const visible = useMemo(() => visiblePlaces(places, activeCodes, activeSeasons), [places, activeCodes, activeSeasons]);
+  const cityNormals = useMemo(() => ({ Orlando: MONTHLY_NORMALS["Orlando, FL"], Panama: MONTHLY_NORMALS["Panama City"] }), []);
+  const points = useMemo(
+    // Trail first (adds its rows), then locations fill every row, then the trail again
+    // fills the rows locations added, so no line is broken by the other's rows.
+    () => addTrailToChart(addPlacesToChart(addTrailToChart(chart.points, trail, places, cityNormals), visible), trail, places, cityNormals),
+    [chart.points, visible, trail, places, cityNormals],
+  );
+  const trailTable = useMemo(() => (trail ? trailRows(trail, places, cityNormals) : []), [trail, places, cityNormals]);
+  const stopLabel = (code: string) => (code === "Orlando" || code === "Panama" ? code : placeLabel(code));
   const placeTable = useMemo(() => monthlyRows(visible), [visible]);
   const showHigh = hiLo !== "low";
   const showLow = hiLo !== "high";
@@ -211,18 +232,71 @@ export default function WeatherPage() {
               <div className="flex flex-wrap gap-1" role="group" aria-label="Locations">
                 {GEO_GROUPS.map((g) => {
                   const codes = places.filter((p) => p.geo_group === g).map((p) => p.code);
-                  const on = activeGroups.has(g);
+                  const onCount = codes.filter((c) => activeCodes.has(c)).length;
+                  const allOn = codes.length > 0 && onCount === codes.length;
                   return (
-                    <Button
-                      key={g} size="sm" variant={on ? "default" : "outline"} className="h-8 gap-1.5 rounded-full px-3 text-xs"
-                      aria-pressed={on} disabled={!codes.length} onClick={() => setActiveGroups((cur) => toggle(cur, g))}
-                      title={codes.join(", ")} data-testid={`button-geo-${g}`}
-                    >
-                      <span className="inline-block h-2.5 w-2.5 rounded-full ring-1 ring-background" style={{ background: groupColor[g] }} aria-hidden="true" />
-                      #{g}
-                    </Button>
+                    <Popover key={g}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          size="sm" variant={onCount ? "default" : "outline"} className="h-8 gap-1.5 rounded-full px-3 text-xs"
+                          disabled={!codes.length} data-testid={`button-geo-${g}`}
+                        >
+                          <span className="inline-block h-2.5 w-2.5 rounded-full ring-1 ring-background" style={{ background: groupColor[g] }} aria-hidden="true" />
+                          #{g}{onCount > 0 && <span className="opacity-80">· {onCount}</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-48 p-3" data-testid={`popover-geo-${g}`}>
+                        <label className="flex items-center gap-2 border-b pb-2 text-xs font-medium">
+                          <Checkbox
+                            checked={allOn ? true : onCount ? "indeterminate" : false}
+                            onCheckedChange={() => setActiveCodes((cur) => {
+                              const n = new Set(cur);
+                              for (const c of codes) { if (allOn) n.delete(c); else n.add(c); }
+                              return n;
+                            })}
+                            data-testid={`check-geo-${g}-all`}
+                          />
+                          All in #{g}
+                        </label>
+                        <div className="space-y-1.5 pt-2">
+                          {codes.map((c) => (
+                            <label key={c} className="flex items-center gap-2 text-xs">
+                              <Checkbox checked={activeCodes.has(c)} onCheckedChange={() => setActiveCodes((cur) => toggle(cur, c))} data-testid={`check-place-${c}`} />
+                              {placeLabel(c)}
+                            </label>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   );
                 })}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button size="sm" variant={trail ? "default" : "outline"} className="h-8 gap-1.5 rounded-full px-3 text-xs" data-testid="button-geo-5">
+                      <span className="inline-block h-1 w-3 rounded-full ring-1 ring-background" style={{ background: trailColor }} aria-hidden="true" />
+                      #5{trail && <span className="opacity-80">· {trail.id}</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-80 p-3" data-testid="popover-geo-5">
+                    <p className="pb-2 text-xs font-medium">Year trail</p>
+                    <RadioGroup value={trailId} onValueChange={setTrailId} className="gap-2">
+                      <Label className="flex items-center gap-2 text-xs font-normal">
+                        <RadioGroupItem value="none" data-testid="radio-trail-none" /> None
+                      </Label>
+                      {TRAILS.map((t) => (
+                        <Label key={t.id} className="flex items-start gap-2 text-xs font-normal leading-snug">
+                          <RadioGroupItem value={t.id} className="mt-0.5" data-testid={`radio-trail-${t.id}`} />
+                          <span>
+                            <span className="font-medium">{t.label}</span>
+                            <span className="block text-muted-foreground">
+                              {t.stops.map((st) => `${stopLabel(st.code)} ${stopRange(st)}`).join(" → ")}
+                            </span>
+                          </span>
+                        </Label>
+                      ))}
+                    </RadioGroup>
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="inline-flex rounded-full border p-0.5" role="group" aria-label="Show highs, lows or both">
                 {(["both", "high", "low"] as HiLo[]).map((v) => (
@@ -256,6 +330,12 @@ export default function WeatherPage() {
                   {placeLabel(place.code)}
                 </span>
               ))}
+              {trail && (
+                <span className="flex items-center gap-1.5" data-testid="legend-trail">
+                  <span className="inline-block h-1 w-5 rounded-full opacity-60" style={{ background: trailColor }} aria-hidden="true" />
+                  {trail.label} trail
+                </span>
+              )}
               {visible.length > 0 && showLow && (
                 <span className="flex items-center gap-1.5">
                   <span className="inline-block w-5 border-t-2 border-dotted border-foreground/70" aria-hidden="true" /> location low
@@ -280,7 +360,7 @@ export default function WeatherPage() {
                       domain={[30, 100]} ticks={[30, 40, 50, 60, 70, 80, 90, 100]} unit="°"
                       tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} width={44}
                     />
-                    <Tooltip content={<ChartTooltip placeLabel={placeLabel} />} cursor={{ stroke: "hsl(var(--muted-foreground))", strokeDasharray: "3 3" }} />
+                    <Tooltip content={<ChartTooltip placeLabel={placeLabel} trailStop={(i) => (trail ? stopLabel(trail.stops[i].code) : "")} />} cursor={{ stroke: "hsl(var(--muted-foreground))", strokeDasharray: "3 3" }} />
                     {chart.milestones.map((m) => (
                       <ReferenceLine
                         key={m.date} x={m.t} stroke="hsl(var(--foreground))" strokeOpacity={0.5} strokeDasharray="4 4"
@@ -322,6 +402,26 @@ export default function WeatherPage() {
                         );
                       });
                     })}
+                    {/* Button #5 trail: one thick violet run per stop, labelled at its start. */}
+                    {trail && trail.stops.flatMap((st, i) => {
+                      const which: ("hi" | "lo")[] = [...(showHigh ? ["hi" as const] : []), ...(showLow ? ["lo" as const] : [])];
+                      return which.map((w) => {
+                        const key = trailKey(i, w);
+                        const firstIdx = (points as unknown as Record<string, number | undefined>[]).findIndex((r) => r[key] != null);
+                        const labelHere = w === "hi" || !showHigh;
+                        return (
+                          <Line
+                            key={key} dataKey={key} stroke={trailColor} strokeWidth={w === "hi" ? 5 : 3} strokeOpacity={w === "hi" ? 0.55 : 0.45}
+                            strokeLinecap="round" strokeDasharray={w === "lo" ? "1 6" : undefined}
+                            dot={false} activeDot={{ r: 4 }} isAnimationActive={false} connectNulls={false}
+                            label={(props: { x: number; y: number; index: number }) =>
+                              labelHere && props.index === firstIdx
+                                ? <text key={`tl${i}`} x={props.x} y={props.y - 10} fontSize={10} fontWeight={600} fill={trailColor}>{stopLabel(st.code)}</text>
+                                : <g key={props.index} />}
+                          />
+                        );
+                      });
+                    })}
                     {/* Milestone markers: one ring per city high/low, sitting on the estimate line. */}
                     {chart.milestones.flatMap((m) => m.cities.flatMap((c) => [
                       showHigh && <ReferenceDot key={`${m.date}-${c.city}-h`} x={m.t} y={c.high} r={6} fill={color[c.city]} stroke="hsl(var(--card))" strokeWidth={2} />,
@@ -332,6 +432,29 @@ export default function WeatherPage() {
               </div>
             )}
             {failed && <p className="mt-2 text-xs text-muted-foreground">Couldn't load the collected readings just now; showing the estimate only.</p>}
+            {trail && (
+              <div className="mt-4 overflow-x-auto" data-testid="weather-trail-table">
+                <table className="w-full text-xs tabular-nums">
+                  <caption className="pb-1 text-left text-muted-foreground">
+                    {trail.label}: average high / low, °F, at each stop
+                  </caption>
+                  <tbody>
+                    {trailTable.map((r, i) => (
+                      <tr key={i} className="border-t">
+                        <th scope="row" className="whitespace-nowrap py-1 pr-3 text-left font-medium">
+                          <span className="mr-1.5 inline-block h-1 w-3 rounded-full align-middle" style={{ background: trailColor }} aria-hidden="true" />
+                          {stopLabel(r.code)}
+                        </th>
+                        <td className="whitespace-nowrap py-1 pr-3 text-muted-foreground">{r.range}</td>
+                        <td className="whitespace-nowrap py-1">
+                          {r.high == null ? "—" : hiLo === "low" ? `${r.low}°` : hiLo === "high" ? `${r.high}°` : `${r.high}° / ${r.low}°`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {placeTable.length > 0 && (
               <div className="mt-4 overflow-x-auto" data-testid="weather-place-table">
                 <table className="w-full text-xs tabular-nums">
