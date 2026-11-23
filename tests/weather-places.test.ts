@@ -71,10 +71,10 @@ t("checking one box shows just that location", () => {
   const v = visiblePlaces(DEMO_PLACES, new Set(["Po2"]), all);
   assert.deepEqual(v.map((x) => x.place.code), ["Po2"]);
 });
-t("trail A matches the owner's stops", () => {
+t("trail A matches the owner's stops (trimmed 23:57)", () => {
   const a = TRAILS.find((t) => t.id === "A")!;
   assert.deepEqual(a.stops.map((s) => `${s.code} ${s.from}-${s.to}`), [
-    "Orlando 01-01-02-01", "Se 02-01-05-01", "I 05-01-08-01", "Po1 08-01-11-01", "Po2 08-01-11-01", "Orlando 11-01-12-31",
+    "Orlando 01-01-02-01", "Se 02-01-05-01", "I 05-02-07-30", "Po1 08-01-10-29", "Po2 08-01-10-29", "Orlando 10-30-12-31",
   ]);
   assert.deepEqual(TRAILS.map((t) => t.id), ["A", "B", "C", "D", "E", "F", "G", "H"]);
 });
