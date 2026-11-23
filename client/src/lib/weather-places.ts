@@ -33,19 +33,19 @@ const DAY_MS = 86_400_000;
 export const placeKey = (code: string, which: "hi" | "lo") => `x_${code}_${which}`;
 
 /**
- * Owner-set months for some codes (2026-11-21, 22:10 and 22:36 ET), as 2027 "MM-DD" ranges.
+ * Owner-set months for some codes (2026-11-21 and 2026-11-22), as 2027 "MM-DD" ranges.
  * Codes not listed here use the months of their periods (spring/summer/fall).
  */
 export const MONTH_WINDOWS: Record<string, [string, string][]> = {
   I: [["06-01", "09-30"]],
   Se: [["01-01", "05-14"], ["10-02", "12-31"]], // none 15 May – 1 Oct (22:36 ET)
   Po1: [["01-01", "12-31"]],
-  Bu: [["01-01", "06-19"], ["08-25", "12-31"]], // none 20 Jun – 24 Aug (22:36 ET)
+  Bu: [["03-15", "06-19"], ["08-25", "11-07"]], // 15 Mar – 7 Nov, none 20 Jun – 24 Aug (11-22)
   Qu: [["01-01", "12-31"]],
-  Pu: [["01-01", "05-31"], ["09-01", "12-31"]],
-  Sa: [["02-01", "06-01"], ["09-01", "12-01"]], // first stretch ends 1 Jun (22:44 ET)
+  Pu: [["03-15", "05-20"], ["10-01", "11-07"]], // 15 Mar – 7 Nov, none 21 May – 30 Sep (11-22)
+  Sa: [["03-15", "06-01"], ["09-01", "11-07"]], // 15 Mar – 7 Nov, none 2 Jun – 31 Aug (11-22)
   Al: [["02-01", "05-14"], ["09-02", "11-30"]], // none 15 May – 1 Sep (22:36 ET)
-  O: [["02-01", "07-01"], ["09-01", "11-30"]], // spring extended to 1 Jul (22:36 ET)
+  O: [["02-01", "07-01"], ["09-01", "10-27"]], // to 1 Jul; fall ends 27 Oct (11-22)
   N1: [["05-21", "09-30"]], // starts 21 May (22:36 ET)
 };
 
@@ -78,9 +78,10 @@ export function windowsFor(place: WeatherPlace, activeSeasons: Set<Season>): [nu
   return overlaps ? own : [];
 }
 
-export function visiblePlaces(places: WeatherPlace[], activeGroups: Set<number>, activeSeasons: Set<Season>) {
+/** Places switched on individually (checkboxes under buttons #1–#4). */
+export function visiblePlaces(places: WeatherPlace[], activeCodes: Set<string>, activeSeasons: Set<Season>) {
   return places
-    .filter((p) => activeGroups.has(p.geo_group))
+    .filter((p) => activeCodes.has(p.code))
     .map((p) => ({ place: p, windows: windowsFor(p, activeSeasons) }))
     .filter((v) => v.windows.length > 0);
 }
@@ -153,3 +154,153 @@ export const DEMO_PLACES: WeatherPlace[] = [
     return [Math.round(base + swing + 10), Math.round(base + swing - 5)] as [number, number];
   }),
 }));
+
+/* ------------------------------------------------------------------------ */
+/* Button #5: year-long "trails" (owner, 2026-11-22 23:49). Codes only; the */
+/* reunion cities use their public names.                                  */
+/* ------------------------------------------------------------------------ */
+
+export type TrailStopCode = string; // a location code, or "Orlando" / "Panama"
+export interface TrailStop { code: TrailStopCode; from: string; to: string } // 2027 "MM-DD"
+export interface Trail { id: string; label: string; stops: TrailStop[] }
+
+export const TRAILS: Trail[] = [
+  {
+    id: "A", label: "Option A",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "Se", from: "02-01", to: "05-01" },
+      { code: "I", from: "05-02", to: "07-30" },
+      { code: "Po1", from: "08-01", to: "10-29" },
+      { code: "Po2", from: "08-01", to: "10-29" },
+      { code: "Orlando", from: "10-30", to: "12-31" },
+    ],
+  },
+  {
+    id: "B", label: "Option B",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "Se", from: "02-01", to: "05-01" },
+      { code: "I", from: "05-02", to: "07-30" },
+      { code: "Po1", from: "09-03", to: "10-31" },
+      { code: "Po2", from: "09-03", to: "10-31" },
+      { code: "Orlando", from: "11-01", to: "12-31" },
+    ],
+  },
+  {
+    id: "C", label: "Option C",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-15" },
+      { code: "Orlando", from: "04-15", to: "06-01" },
+      { code: "I", from: "06-01", to: "08-29" },
+      { code: "Po1", from: "08-30", to: "11-27" },
+      { code: "Po2", from: "08-30", to: "11-27" },
+      { code: "Orlando", from: "11-28", to: "12-31" },
+    ],
+  },
+  {
+    id: "D", label: "Option D",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-15" },
+      { code: "Orlando", from: "04-15", to: "06-01" },
+      { code: "Qu", from: "06-01", to: "08-29" },
+      { code: "Bu", from: "08-30", to: "11-07" },
+      { code: "Sa", from: "10-01", to: "11-07" },
+      { code: "Orlando", from: "11-07", to: "12-31" },
+    ],
+  },
+  {
+    id: "E", label: "Option E",
+    stops: [
+      { code: "Panama", from: "01-01", to: "04-30" },
+      { code: "O", from: "05-01", to: "07-01" },
+      { code: "N1", from: "07-02", to: "08-31" },
+      { code: "O", from: "09-01", to: "10-27" },
+      { code: "N2", from: "10-28", to: "11-14" },
+      { code: "Orlando", from: "11-15", to: "12-31" },
+    ],
+  },
+  {
+    id: "F", label: "Option F",
+    stops: [
+      { code: "Panama", from: "01-01", to: "03-14" },
+      { code: "Bu", from: "03-15", to: "06-12" },
+      { code: "Qu", from: "06-13", to: "09-10" },
+      { code: "Sa", from: "09-11", to: "11-07" },
+      { code: "Orlando", from: "11-08", to: "12-31" },
+    ],
+  },
+  {
+    id: "G", label: "Option G",
+    stops: [
+      { code: "Panama", from: "01-01", to: "03-14" },
+      { code: "Se", from: "03-15", to: "05-14" },
+      { code: "Po2", from: "05-15", to: "05-31" },
+      { code: "I", from: "06-01", to: "08-29" },
+      { code: "Al", from: "09-02", to: "10-31" },
+      { code: "Orlando", from: "11-01", to: "12-31" },
+    ],
+  },
+  {
+    id: "H", label: "Option H",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "Se", from: "02-01", to: "05-01" },
+      { code: "I", from: "05-02", to: "07-30" },
+      { code: "Po2", from: "08-01", to: "08-31" },
+      { code: "Al", from: "09-02", to: "11-30" },
+      { code: "Orlando", from: "12-01", to: "12-31" },
+    ],
+  },
+];
+
+export const trailKey = (i: number, which: "hi" | "lo") => `t_${i}_${which}`;
+const fmtMD = (md: string) => new Date(Date.UTC(2027, +md.slice(0, 2) - 1, +md.slice(3, 5))).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+export const stopRange = (s: TrailStop) => `${fmtMD(s.from)} – ${fmtMD(s.to)}`;
+
+/** The [high, low] table for a trail stop: a location's normals, or a reunion city's. */
+export function stopNormals(code: TrailStopCode, places: WeatherPlace[], cityNormals: Record<string, [number, number][]>) {
+  return cityNormals[code] ?? places.find((p) => p.code === code)?.normals ?? null;
+}
+
+/** Adds one high/low series per trail stop, drawn only over that stop's days. */
+export function addTrailToChart(
+  points: ChartPoint[], trail: Trail | null, places: WeatherPlace[], cityNormals: Record<string, [number, number][]>,
+): ChartPoint[] {
+  if (!trail) return points;
+  const rows = new Map<number, Record<string, number>>();
+  for (const p of points) rows.set(p.t, { ...(p as unknown as Record<string, number>) });
+  const ensure = (t: number) => rows.get(t) ?? (rows.set(t, { t }), rows.get(t)!);
+  const spans = trail.stops.map((s) => [toDay(`2027-${s.from}`), toDay(`2027-${s.to}`)] as [number, number]);
+  for (const [a, b] of spans) { for (let t = a; t < b; t += 7 * DAY_MS) ensure(t); ensure(b); }
+  const all = Array.from(rows.values());
+  trail.stops.forEach((s, i) => {
+    const table = stopNormals(s.code, places, cityNormals);
+    if (!table) return;
+    const [a, b] = spans[i];
+    for (const row of all) {
+      if (row.t < a || row.t > b) continue;
+      const v = interpolateMonthly(table, dayIso(row.t));
+      row[trailKey(i, "hi")] = Math.round(v.high * 10) / 10;
+      row[trailKey(i, "lo")] = Math.round(v.low * 10) / 10;
+    }
+  });
+  return all.sort((x, y) => x.t - y.t) as unknown as ChartPoint[];
+}
+
+/** Average high/low over each stop's days, for the table under the chart. */
+export function trailRows(trail: Trail, places: WeatherPlace[], cityNormals: Record<string, [number, number][]>) {
+  return trail.stops.map((s) => {
+    const table = stopNormals(s.code, places, cityNormals);
+    let hi = 0, lo = 0, n = 0;
+    if (table) {
+      for (let t = toDay(`2027-${s.from}`); t <= toDay(`2027-${s.to}`); t += DAY_MS) {
+        const v = interpolateMonthly(table, dayIso(t));
+        hi += v.high; lo += v.low; n++;
+      }
+    }
+    return { code: s.code, range: stopRange(s), high: n ? Math.round(hi / n) : null, low: n ? Math.round(lo / n) : null };
+  });
+}
