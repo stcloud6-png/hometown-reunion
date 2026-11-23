@@ -95,6 +95,9 @@ export default function WeatherPage() {
   const [trailOpen, setTrailOpen] = useState(false);
   // Cost estimates: fetched with the PIN, memory only, cleared with the names.
   const [costs, setCosts] = useState<CostRow[] | null>(null);
+  // Long option titles: fetched with the PIN, memory only (owner, 2026-11-23).
+  const [titles, setTitles] = useState<Record<string, string> | null>(null);
+  const trailTitle = (t: { id: string; label: string }) => (titles?.[t.id] ? `${t.label} - ${titles[t.id]}` : t.label);
   const trailAllowed = names !== null;
   const trail = trailAllowed ? TRAILS.find((t) => t.id === trailId) ?? null : null;
   const [pinOpen, setPinOpen] = useState(false);
@@ -116,6 +119,10 @@ export default function WeatherPage() {
         ? stubCosts()
         : await supabaseRpc<CostRow[]>("weather_trail_costs", { p_pin: pin }).catch(() => null);
       setCosts(costRows);
+      const titleRows = STUB
+        ? TRAILS.map((t) => ({ trail_id: t.id, title: `Demo title ${t.id}` }))
+        : await supabaseRpc<{ trail_id: string; title: string }[]>("weather_trail_titles", { p_pin: pin }).catch(() => []);
+      setTitles(Object.fromEntries(titleRows.map((r) => [r.trail_id, r.title])));
       setNames(Object.fromEntries(list.map((r) => [r.code, r.short_name])));
       setPinOpen(false);
       setPin("");
@@ -241,7 +248,7 @@ export default function WeatherPage() {
               <CardTitle className="text-base">Daily high &amp; low, °F</CardTitle>
               <Button
                 variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground"
-                onClick={() => (names ? (setNames(null), setCosts(null)) : setPinOpen(true))}
+                onClick={() => (names ? (setNames(null), setCosts(null), setTitles(null)) : setPinOpen(true))}
                 aria-label={names ? "Hide location names" : "Maintenance: show location names"}
                 data-testid="button-weather-pin"
               >
@@ -311,10 +318,10 @@ export default function WeatherPage() {
                             <Label key={t.id} className="flex items-start gap-2 text-xs font-normal leading-snug">
                               <RadioGroupItem value={t.id} className="mt-0.5" data-testid={`radio-trail-${t.id}`} />
                               <span>
-                                <span className="font-medium">{t.label}</span>
+                                <span className="font-medium" data-testid={`trail-title-${t.id}`}>{trailTitle(t)}</span>
                                 {costByTrail.get(t.id) && (
                                   <span className="ml-1.5 text-muted-foreground" data-testid={`trail-cost-${t.id}`}>
-                                    ≈ {usd(costByTrail.get(t.id)!.total)}
+                                    - ≈ {usd(costByTrail.get(t.id)!.total)}
                                   </span>
                                 )}
                                 <span className="block text-muted-foreground">
@@ -364,7 +371,7 @@ export default function WeatherPage() {
               {trail && (
                 <span className="flex items-center gap-1.5" data-testid="legend-trail">
                   <span className="inline-block h-1 w-5 rounded-full opacity-60" style={{ background: trailColor }} aria-hidden="true" />
-                  {trail.label} trail
+                  {trailTitle(trail)}
                 </span>
               )}
               {visible.length > 0 && showLow && (
@@ -467,7 +474,7 @@ export default function WeatherPage() {
               <div className="mt-4 overflow-x-auto" data-testid="weather-trail-table">
                 <table className="w-full text-xs tabular-nums">
                   <caption className="pb-1 text-left text-muted-foreground">
-                    {trail.label}: average high / low, °F, at each stop
+                    {trailTitle(trail)}: average high / low, °F, at each stop
                     {trailCostNow && " · estimated cost for 2 (travel in, lodging)"}
                   </caption>
                   {trailCostNow && (

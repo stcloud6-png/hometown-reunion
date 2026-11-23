@@ -71,10 +71,11 @@ t("checking one box shows just that location", () => {
   const v = visiblePlaces(DEMO_PLACES, new Set(["Po2"]), all);
   assert.deepEqual(v.map((x) => x.place.code), ["Po2"]);
 });
-t("trail order: favourites D, C, F, K, J then E, B, H, G; no A", () => {
-  assert.deepEqual(TRAILS.map((t) => t.id), ["D", "C", "F", "K", "J", "E", "B", "H", "G"]);
-  assert.deepEqual(TRAILS.filter((t) => t.group === "fav").map((t) => t.id), ["D", "C", "F", "K", "J"]);
-  const b = TRAILS.find((t) => t.id === "B")!;
+t("trail letters run A–H, J in display order; favourites A–E", () => {
+  assert.deepEqual(TRAILS.map((t) => t.id), ["A", "B", "C", "D", "E", "F", "G", "H", "J"]);
+  assert.deepEqual(TRAILS.filter((t) => t.group === "fav").map((t) => t.id), ["A", "B", "C", "D", "E"]);
+  assert.ok(TRAILS.every((t) => t.label === `Option ${t.id}`));
+  const b = TRAILS.find((t) => t.id === "G")!;
   assert.ok(b.stops.some((s) => s.code === "Po1" && s.from === "07-31" && s.to === "10-28"));
 })
 t("trail lines only over each stop's days; reunion cities use city normals", () => {
@@ -94,7 +95,7 @@ t("every trail stop is a known code or a reunion city", () => {
 });
 t("trail + locations together: no line is broken mid-window", () => {
   const city = { Orlando: Array(12).fill([80, 60]) as [number, number][], Panama: Array(12).fill([88, 76]) as [number, number][] };
-  const tr = TRAILS.find((t) => t.id === "B")!;
+  const tr = TRAILS.find((t) => t.id === "G")!;
   const v = visiblePlaces(DEMO_PLACES, new Set(["Se"]), all);
   const pts = addTrailToChart(addPlacesToChart(addTrailToChart(buildChart([]).points, tr, DEMO_PLACES, city), v), tr, DEMO_PLACES, city) as unknown as Record<string, number>[];
   const k = placeKey("Se", "hi");
