@@ -182,9 +182,9 @@ export const TRAILS: Trail[] = [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "Se", from: "02-01", to: "05-01" },
       { code: "I", from: "05-02", to: "07-30" },
-      { code: "Po1", from: "09-03", to: "10-31" },
-      { code: "Po2", from: "09-03", to: "10-31" },
-      { code: "Orlando", from: "11-01", to: "12-31" },
+      { code: "Po1", from: "07-31", to: "10-28" },
+      { code: "Po2", from: "07-31", to: "10-28" },
+      { code: "Orlando", from: "10-29", to: "12-31" },
     ],
   },
   {
@@ -214,8 +214,10 @@ export const TRAILS: Trail[] = [
   {
     id: "E", label: "Option E",
     stops: [
-      { code: "Panama", from: "01-01", to: "04-30" },
-      { code: "O", from: "05-01", to: "07-01" },
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-15" },
+      { code: "Orlando", from: "04-15", to: "06-01" },
+      { code: "O", from: "06-01", to: "07-01" },
       { code: "N1", from: "07-02", to: "08-31" },
       { code: "O", from: "09-01", to: "10-27" },
       { code: "N2", from: "10-28", to: "11-14" },
@@ -225,8 +227,9 @@ export const TRAILS: Trail[] = [
   {
     id: "F", label: "Option F",
     stops: [
-      { code: "Panama", from: "01-01", to: "03-14" },
-      { code: "Bu", from: "03-15", to: "06-12" },
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-04" },
+      { code: "Bu", from: "04-05", to: "06-12" },
       { code: "Qu", from: "06-13", to: "09-10" },
       { code: "Sa", from: "09-11", to: "11-07" },
       { code: "Orlando", from: "11-08", to: "12-31" },
@@ -235,7 +238,8 @@ export const TRAILS: Trail[] = [
   {
     id: "G", label: "Option G",
     stops: [
-      { code: "Panama", from: "01-01", to: "03-14" },
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "03-14" },
       { code: "Se", from: "03-15", to: "05-14" },
       { code: "Po2", from: "05-15", to: "05-31" },
       { code: "I", from: "06-01", to: "08-29" },
@@ -252,6 +256,31 @@ export const TRAILS: Trail[] = [
       { code: "Po2", from: "08-01", to: "08-31" },
       { code: "Al", from: "09-02", to: "11-30" },
       { code: "Orlando", from: "12-01", to: "12-31" },
+    ],
+  },
+  {
+    id: "J", label: "Option J",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-05" },
+      { code: "Bu", from: "04-06", to: "06-08" },
+      { code: "I", from: "06-09", to: "09-06" },
+      { code: "Po1", from: "09-07", to: "10-29" },
+      { code: "Po2", from: "09-07", to: "10-29" },
+      { code: "Orlando", from: "10-30", to: "12-31" },
+    ],
+  },
+  {
+    id: "K", label: "Option K",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-15" },
+      { code: "Orlando", from: "04-15", to: "05-15" },
+      { code: "O", from: "05-16", to: "07-04" },
+      { code: "I", from: "07-05", to: "10-02" },
+      { code: "Po1", from: "10-03", to: "11-27" },
+      { code: "Po2", from: "10-03", to: "11-27" },
+      { code: "Orlando", from: "11-28", to: "12-31" },
     ],
   },
 ];
