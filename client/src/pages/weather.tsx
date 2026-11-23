@@ -89,6 +89,8 @@ export default function WeatherPage() {
   // Period buttons were removed (owner, 2026-11-21 23:01 ET): every location shows all of its months.
   const activeSeasons = useMemo(() => new Set<Season>(SEASONS.map((x) => x.id)), []);
   const [hiLo, setHiLo] = useState<HiLo>("both");
+  // Collected days: smooth lines (default) or every daily dot (owner, 2026-11-23).
+  const [lineView, setLineView] = useState<"smooth" | "dots">("smooth");
   // Short names: only after the database accepts the Maintenance PIN. Kept in memory, never stored.
   const [names, setNames] = useState<Record<string, string> | null>(null);
   // #5 does nothing until the Maintenance PIN has been accepted (owner, 2026-11-23).
@@ -347,6 +349,17 @@ export default function WeatherPage() {
                   </button>
                 ))}
               </div>
+              <div className="inline-flex rounded-full border p-0.5" role="group" aria-label="Show collected days as smooth lines or daily dots">
+                {(["smooth", "dots"] as const).map((v) => (
+                  <button
+                    key={v} type="button" aria-pressed={lineView === v} onClick={() => setLineView(v)}
+                    className={cn("rounded-full px-3 py-1 text-xs", lineView === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                    data-testid={`button-lineview-${v}`}
+                  >
+                    {v === "smooth" ? "Smooth lines" : "Daily dots"}
+                  </button>
+                ))}
+              </div>
             </div>
             {/* Legend: identity never rests on colour alone (city names + line style). */}
             <div className="flex flex-wrap gap-x-5 gap-y-1 pt-1 text-xs text-muted-foreground" data-testid="weather-legend">
@@ -413,9 +426,13 @@ export default function WeatherPage() {
                         props.index === points.length - 1
                           ? <text key="lbl" x={props.x + 6} y={props.y + nudge(labelKey, props.index)} dy={4} fontSize={11} fill="hsl(var(--foreground))">{SHORT[c]}</text>
                           : <g key={props.index} />;
+                      // Collected days: smooth curve without markers (default) or straight segments with every daily dot.
+                      const collected = lineView === "smooth"
+                        ? ({ type: "monotone", dot: false } as const)
+                        : ({ type: "linear", dot: { r: 4, strokeWidth: 2, fill: "hsl(var(--card))" } } as const);
                       return [
-                        showHigh && <Line key={`${k}High`} dataKey={`${k}High`} {...common} dot={{ r: 4, strokeWidth: 2, fill: "hsl(var(--card))" }} activeDot={{ r: 5 }} />,
-                        showLow && <Line key={`${k}Low`} dataKey={`${k}Low`} {...common} dot={{ r: 4, strokeWidth: 2, fill: "hsl(var(--card))" }} activeDot={{ r: 5 }} />,
+                        showHigh && <Line key={`${k}High`} dataKey={`${k}High`} {...common} {...collected} activeDot={{ r: 5 }} />,
+                        showLow && <Line key={`${k}Low`} dataKey={`${k}Low`} {...common} {...collected} activeDot={{ r: 5 }} />,
                         showHigh && <Line key={`${k}HighEst`} dataKey={`${k}HighEst`} {...common} strokeDasharray="6 4" strokeOpacity={0.85} dot={false} activeDot={{ r: 4 }} label={endLabel} />,
                         showLow && <Line key={`${k}LowEst`} dataKey={`${k}LowEst`} {...common} strokeDasharray="6 4" strokeOpacity={0.85} dot={false} activeDot={{ r: 4 }} label={hiLo === "low" ? endLabel : undefined} />,
                       ].filter(Boolean);
