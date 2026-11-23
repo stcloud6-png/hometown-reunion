@@ -76,7 +76,7 @@ t("trail A matches the owner's stops (trimmed 23:57)", () => {
   assert.deepEqual(a.stops.map((s) => `${s.code} ${s.from}-${s.to}`), [
     "Orlando 01-01-02-01", "Se 02-01-05-01", "I 05-02-07-30", "Po1 08-01-10-29", "Po2 08-01-10-29", "Orlando 10-30-12-31",
   ]);
-  assert.deepEqual(TRAILS.map((t) => t.id), ["A", "B", "C", "D", "E", "F", "G", "H"]);
+  assert.deepEqual(TRAILS.map((t) => t.id), ["A", "B", "C", "D", "E", "F", "G", "H", "J", "K"]);
 });
 t("trail lines only over each stop's days; reunion cities use city normals", () => {
   const city = { Orlando: [[72, 50], [75, 53], [79, 56], [84, 61], [88, 66], [91, 72], [92, 74], [92, 74], [90, 72], [85, 66], [78, 58], [74, 53]] as [number, number][], Panama: Array(12).fill([88, 76]) as [number, number][] };

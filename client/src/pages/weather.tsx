@@ -79,12 +79,15 @@ export default function WeatherPage() {
   const [activeCodes, setActiveCodes] = useState<Set<string>>(new Set());
   // Button #5: one trail (or none) at a time.
   const [trailId, setTrailId] = useState<string>("none");
-  const trail = TRAILS.find((t) => t.id === trailId) ?? null;
   // Period buttons were removed (owner, 2026-11-21 23:01 ET): every location shows all of its months.
   const activeSeasons = useMemo(() => new Set<Season>(SEASONS.map((x) => x.id)), []);
   const [hiLo, setHiLo] = useState<HiLo>("both");
   // Short names: only after the database accepts the Maintenance PIN. Kept in memory, never stored.
   const [names, setNames] = useState<Record<string, string> | null>(null);
+  // #5 does nothing until the Maintenance PIN has been accepted (owner, 2026-11-23).
+  const [trailOpen, setTrailOpen] = useState(false);
+  const trailAllowed = names !== null;
+  const trail = trailAllowed ? TRAILS.find((t) => t.id === trailId) ?? null : null;
   const [pinOpen, setPinOpen] = useState(false);
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
@@ -189,8 +192,7 @@ export default function WeatherPage() {
         <p className="mt-2 max-w-2xl text-muted-foreground">
           Daily highs and lows the site collects each morning for Orlando and Panama City, with an estimate
           out to two milestones: <strong className="text-foreground">15 Jan 2027</strong> and{" "}
-          <strong className="text-foreground">4 Jul 2027</strong>. Use the location buttons on the
-          chart to add other places' estimated temperatures.
+          <strong className="text-foreground">4 Jul 2027</strong>.
         </p>
 
         {/* Milestone estimates: the headline numbers, read before the chart. */}
@@ -270,7 +272,7 @@ export default function WeatherPage() {
                     </Popover>
                   );
                 })}
-                <Popover>
+                <Popover open={trailAllowed && trailOpen} onOpenChange={(o) => setTrailOpen(trailAllowed && o)}>
                   <PopoverTrigger asChild>
                     <Button size="sm" variant={trail ? "default" : "outline"} className="h-8 gap-1.5 rounded-full px-3 text-xs" data-testid="button-geo-5">
                       <span className="inline-block h-1 w-3 rounded-full ring-1 ring-background" style={{ background: trailColor }} aria-hidden="true" />
