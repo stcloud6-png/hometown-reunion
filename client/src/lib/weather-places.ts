@@ -182,9 +182,9 @@ export const TRAILS: Trail[] = [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "Se", from: "02-01", to: "05-01" },
       { code: "I", from: "05-02", to: "07-30" },
-      { code: "Po1", from: "09-03", to: "10-31" },
-      { code: "Po2", from: "09-03", to: "10-31" },
-      { code: "Orlando", from: "11-01", to: "12-31" },
+      { code: "Po1", from: "07-31", to: "10-28" },
+      { code: "Po2", from: "07-31", to: "10-28" },
+      { code: "Orlando", from: "10-29", to: "12-31" },
     ],
   },
   {
