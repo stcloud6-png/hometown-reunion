@@ -162,45 +162,17 @@ export const DEMO_PLACES: WeatherPlace[] = [
 
 export type TrailStopCode = string; // a location code, or "Orlando" / "Panama"
 export interface TrailStop { code: TrailStopCode; from: string; to: string } // 2027 "MM-DD"
-export interface Trail { id: string; label: string; stops: TrailStop[] }
+export interface Trail { id: string; label: string; group: "fav" | "more"; stops: TrailStop[] }
+
+export const TRAIL_GROUPS: { id: Trail["group"]; label: string }[] = [
+  { id: "fav", label: "Favorites" },
+  { id: "more", label: "Worth considering" },
+];
 
 export const TRAILS: Trail[] = [
+  // Owner's favourites first, then the others; each group in the owner's chosen order (2026-11-23).
   {
-    id: "A", label: "Option A",
-    stops: [
-      { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "Se", from: "02-01", to: "05-01" },
-      { code: "I", from: "05-02", to: "07-30" },
-      { code: "Po1", from: "08-01", to: "10-29" },
-      { code: "Po2", from: "08-01", to: "10-29" },
-      { code: "Orlando", from: "10-30", to: "12-31" },
-    ],
-  },
-  {
-    id: "B", label: "Option B",
-    stops: [
-      { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "Se", from: "02-01", to: "05-01" },
-      { code: "I", from: "05-02", to: "07-30" },
-      { code: "Po1", from: "07-31", to: "10-28" },
-      { code: "Po2", from: "07-31", to: "10-28" },
-      { code: "Orlando", from: "10-29", to: "12-31" },
-    ],
-  },
-  {
-    id: "C", label: "Option C",
-    stops: [
-      { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "B", from: "02-01", to: "04-15" },
-      { code: "Orlando", from: "04-15", to: "06-01" },
-      { code: "I", from: "06-01", to: "08-29" },
-      { code: "Po1", from: "08-30", to: "11-27" },
-      { code: "Po2", from: "08-30", to: "11-27" },
-      { code: "Orlando", from: "11-28", to: "12-31" },
-    ],
-  },
-  {
-    id: "D", label: "Option D",
+    id: "D", label: "Option D", group: "fav",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "B", from: "02-01", to: "04-15" },
@@ -212,7 +184,55 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "E", label: "Option E",
+    id: "C", label: "Option C", group: "fav",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-15" },
+      { code: "Orlando", from: "04-15", to: "06-01" },
+      { code: "I", from: "06-01", to: "08-29" },
+      { code: "Po1", from: "08-30", to: "11-27" },
+      { code: "Po2", from: "08-30", to: "11-27" },
+      { code: "Orlando", from: "11-28", to: "12-31" },
+    ],
+  },
+  {
+    id: "F", label: "Option F", group: "fav",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-04" },
+      { code: "Bu", from: "04-05", to: "06-12" },
+      { code: "Qu", from: "06-13", to: "09-10" },
+      { code: "Sa", from: "09-11", to: "11-07" },
+      { code: "Orlando", from: "11-08", to: "12-31" },
+    ],
+  },
+  {
+    id: "K", label: "Option K", group: "fav",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-15" },
+      { code: "Orlando", from: "04-15", to: "05-15" },
+      { code: "O", from: "05-16", to: "07-04" },
+      { code: "I", from: "07-05", to: "10-02" },
+      { code: "Po1", from: "10-03", to: "11-27" },
+      { code: "Po2", from: "10-03", to: "11-27" },
+      { code: "Orlando", from: "11-28", to: "12-31" },
+    ],
+  },
+  {
+    id: "J", label: "Option J", group: "fav",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-05" },
+      { code: "Bu", from: "04-06", to: "06-08" },
+      { code: "I", from: "06-09", to: "09-06" },
+      { code: "Po1", from: "09-07", to: "10-29" },
+      { code: "Po2", from: "09-07", to: "10-29" },
+      { code: "Orlando", from: "10-30", to: "12-31" },
+    ],
+  },
+  {
+    id: "E", label: "Option E", group: "more",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "B", from: "02-01", to: "04-15" },
@@ -225,30 +245,18 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "F", label: "Option F",
+    id: "B", label: "Option B", group: "more",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "B", from: "02-01", to: "04-04" },
-      { code: "Bu", from: "04-05", to: "06-12" },
-      { code: "Qu", from: "06-13", to: "09-10" },
-      { code: "Sa", from: "09-11", to: "11-07" },
-      { code: "Orlando", from: "11-08", to: "12-31" },
+      { code: "Se", from: "02-01", to: "05-01" },
+      { code: "I", from: "05-02", to: "07-30" },
+      { code: "Po1", from: "07-31", to: "10-28" },
+      { code: "Po2", from: "07-31", to: "10-28" },
+      { code: "Orlando", from: "10-29", to: "12-31" },
     ],
   },
   {
-    id: "G", label: "Option G",
-    stops: [
-      { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "B", from: "02-01", to: "03-14" },
-      { code: "Se", from: "03-15", to: "05-14" },
-      { code: "Po2", from: "05-15", to: "05-31" },
-      { code: "I", from: "06-01", to: "08-29" },
-      { code: "Al", from: "09-02", to: "10-31" },
-      { code: "Orlando", from: "11-01", to: "12-31" },
-    ],
-  },
-  {
-    id: "H", label: "Option H",
+    id: "H", label: "Option H", group: "more",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "Se", from: "02-01", to: "05-01" },
@@ -259,28 +267,15 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "J", label: "Option J",
+    id: "G", label: "Option G", group: "more",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "B", from: "02-01", to: "04-05" },
-      { code: "Bu", from: "04-06", to: "06-08" },
-      { code: "I", from: "06-09", to: "09-06" },
-      { code: "Po1", from: "09-07", to: "10-29" },
-      { code: "Po2", from: "09-07", to: "10-29" },
-      { code: "Orlando", from: "10-30", to: "12-31" },
-    ],
-  },
-  {
-    id: "K", label: "Option K",
-    stops: [
-      { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "B", from: "02-01", to: "04-15" },
-      { code: "Orlando", from: "04-15", to: "05-15" },
-      { code: "O", from: "05-16", to: "07-04" },
-      { code: "I", from: "07-05", to: "10-02" },
-      { code: "Po1", from: "10-03", to: "11-27" },
-      { code: "Po2", from: "10-03", to: "11-27" },
-      { code: "Orlando", from: "11-28", to: "12-31" },
+      { code: "B", from: "02-01", to: "03-14" },
+      { code: "Se", from: "03-15", to: "05-14" },
+      { code: "Po2", from: "05-15", to: "05-31" },
+      { code: "I", from: "06-01", to: "08-29" },
+      { code: "Al", from: "09-02", to: "10-31" },
+      { code: "Orlando", from: "11-01", to: "12-31" },
     ],
   },
 ];

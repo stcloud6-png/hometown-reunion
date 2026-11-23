@@ -16,7 +16,7 @@ import { DEMO_WEATHER } from "@/lib/use-reunion-data";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { buildChart, CITIES, dayIso, MONTHLY_NORMALS, PRIOR_DAYS, type ChartPoint, type City } from "@/lib/weather-estimate";
 import {
-  addPlacesToChart, addTrailToChart, DEMO_PLACES, GEO_GROUPS, monthlyRows, placeKey, SEASONS, stopRange, trailKey, trailRows, TRAILS, visiblePlaces,
+  addPlacesToChart, addTrailToChart, DEMO_PLACES, GEO_GROUPS, monthlyRows, placeKey, SEASONS, stopRange, trailKey, trailRows, TRAIL_GROUPS, TRAILS, visiblePlaces,
   type HiLo, type Season, type WeatherPlace,
 } from "@/lib/weather-places";
 
@@ -285,16 +285,21 @@ export default function WeatherPage() {
                       <Label className="flex items-center gap-2 text-xs font-normal">
                         <RadioGroupItem value="none" data-testid="radio-trail-none" /> None
                       </Label>
-                      {TRAILS.map((t) => (
-                        <Label key={t.id} className="flex items-start gap-2 text-xs font-normal leading-snug">
-                          <RadioGroupItem value={t.id} className="mt-0.5" data-testid={`radio-trail-${t.id}`} />
-                          <span>
-                            <span className="font-medium">{t.label}</span>
-                            <span className="block text-muted-foreground">
-                              {t.stops.map((st) => `${stopLabel(st.code)} ${stopRange(st)}`).join(" → ")}
-                            </span>
-                          </span>
-                        </Label>
+                      {TRAIL_GROUPS.map((g) => (
+                        <div key={g.id} className="space-y-2">
+                          <p className="pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{g.label}</p>
+                          {TRAILS.filter((t) => t.group === g.id).map((t) => (
+                            <Label key={t.id} className="flex items-start gap-2 text-xs font-normal leading-snug">
+                              <RadioGroupItem value={t.id} className="mt-0.5" data-testid={`radio-trail-${t.id}`} />
+                              <span>
+                                <span className="font-medium">{t.label}</span>
+                                <span className="block text-muted-foreground">
+                                  {t.stops.map((st) => `${stopLabel(st.code)} ${stopRange(st)}`).join(" → ")}
+                                </span>
+                              </span>
+                            </Label>
+                          ))}
+                        </div>
                       ))}
                     </RadioGroup>
                   </PopoverContent>

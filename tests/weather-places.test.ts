@@ -71,13 +71,12 @@ t("checking one box shows just that location", () => {
   const v = visiblePlaces(DEMO_PLACES, new Set(["Po2"]), all);
   assert.deepEqual(v.map((x) => x.place.code), ["Po2"]);
 });
-t("trail A matches the owner's stops (trimmed 23:57)", () => {
-  const a = TRAILS.find((t) => t.id === "A")!;
-  assert.deepEqual(a.stops.map((s) => `${s.code} ${s.from}-${s.to}`), [
-    "Orlando 01-01-02-01", "Se 02-01-05-01", "I 05-02-07-30", "Po1 08-01-10-29", "Po2 08-01-10-29", "Orlando 10-30-12-31",
-  ]);
-  assert.deepEqual(TRAILS.map((t) => t.id), ["A", "B", "C", "D", "E", "F", "G", "H", "J", "K"]);
-});
+t("trail order: favourites D, C, F, K, J then E, B, H, G; no A", () => {
+  assert.deepEqual(TRAILS.map((t) => t.id), ["D", "C", "F", "K", "J", "E", "B", "H", "G"]);
+  assert.deepEqual(TRAILS.filter((t) => t.group === "fav").map((t) => t.id), ["D", "C", "F", "K", "J"]);
+  const b = TRAILS.find((t) => t.id === "B")!;
+  assert.ok(b.stops.some((s) => s.code === "Po1" && s.from === "07-31" && s.to === "10-28"));
+})
 t("trail lines only over each stop's days; reunion cities use city normals", () => {
   const city = { Orlando: [[72, 50], [75, 53], [79, 56], [84, 61], [88, 66], [91, 72], [92, 74], [92, 74], [90, 72], [85, 66], [78, 58], [74, 53]] as [number, number][], Panama: Array(12).fill([88, 76]) as [number, number][] };
   for (const tr of TRAILS) {
@@ -95,7 +94,7 @@ t("every trail stop is a known code or a reunion city", () => {
 });
 t("trail + locations together: no line is broken mid-window", () => {
   const city = { Orlando: Array(12).fill([80, 60]) as [number, number][], Panama: Array(12).fill([88, 76]) as [number, number][] };
-  const tr = TRAILS.find((t) => t.id === "A")!;
+  const tr = TRAILS.find((t) => t.id === "B")!;
   const v = visiblePlaces(DEMO_PLACES, new Set(["Se"]), all);
   const pts = addTrailToChart(addPlacesToChart(addTrailToChart(buildChart([]).points, tr, DEMO_PLACES, city), v), tr, DEMO_PLACES, city) as unknown as Record<string, number>[];
   const k = placeKey("Se", "hi");
