@@ -16,11 +16,18 @@ import { DEMO_WEATHER } from "@/lib/use-reunion-data";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { buildChart, CITIES, dayIso, MONTHLY_NORMALS, PRIOR_DAYS, type ChartPoint, type City } from "@/lib/weather-estimate";
 import {
-  addPlacesToChart, addTrailToChart, DEMO_PLACES, GEO_GROUPS, monthlyRows, placeKey, SEASONS, stopRange, trailKey, trailRows, TRAILS, visiblePlaces,
+  addPlacesToChart, addTrailToChart, DEMO_PLACES, GEO_GROUPS, monthlyRows, placeKey, SEASONS, stopRange, trailCost, trailKey, trailRows, usd, type CostRow, type TrailCost, TRAIL_GROUPS, TRAILS, visiblePlaces,
   type HiLo, type Season, type WeatherPlace,
 } from "@/lib/weather-places";
 
 const STUB = import.meta.env.VITE_STUB_DATA === "true";
+/** Stub mode only: made-up round numbers so the layout can be checked without the database. */
+function stubCosts(): CostRow[] {
+  const codes = Array.from(new Set(TRAILS.flatMap((t) => t.stops.map((s) => s.code)))).filter((c) => c !== "Orlando");
+  const rows: CostRow[] = codes.map((c) => ({ kind: "lodging", code_a: c, code_b: null, usd: 900 }));
+  for (const a of ["Orlando", ...codes]) for (const b of codes) if (a < b || a === "Orlando") rows.push({ kind: "fare", code_a: a, code_b: b, usd: 100 });
+  return rows;
+}
 
 // Categorical slots 1–2 of the validated chart palette (light / dark steps).
 const COLORS = {
@@ -86,6 +93,8 @@ export default function WeatherPage() {
   const [names, setNames] = useState<Record<string, string> | null>(null);
   // #5 does nothing until the Maintenance PIN has been accepted (owner, 2026-11-23).
   const [trailOpen, setTrailOpen] = useState(false);
+  // Cost estimates: fetched with the PIN, memory only, cleared with the names.
+  const [costs, setCosts] = useState<CostRow[] | null>(null);
   const trailAllowed = names !== null;
   const trail = trailAllowed ? TRAILS.find((t) => t.id === trailId) ?? null : null;
   const [pinOpen, setPinOpen] = useState(false);
@@ -103,6 +112,10 @@ export default function WeatherPage() {
         ? (pin === "0000" ? DEMO_PLACES.map((p) => ({ code: p.code, short_name: `Demo-${p.code}` })) : Promise.reject(new Error("invalid pin")))
         : await supabaseRpc<{ code: string; short_name: string }[]>("weather_place_names", { p_pin: pin });
       const list = await res;
+      const costRows = STUB
+        ? stubCosts()
+        : await supabaseRpc<CostRow[]>("weather_trail_costs", { p_pin: pin }).catch(() => null);
+      setCosts(costRows);
       setNames(Object.fromEntries(list.map((r) => [r.code, r.short_name])));
       setPinOpen(false);
       setPin("");
@@ -130,6 +143,12 @@ export default function WeatherPage() {
     () => addTrailToChart(addPlacesToChart(addTrailToChart(chart.points, trail, places, cityNormals), visible), trail, places, cityNormals),
     [chart.points, visible, trail, places, cityNormals],
   );
+  const costByTrail = useMemo(() => {
+    const m = new Map<string, TrailCost>();
+    if (costs) for (const t of TRAILS) m.set(t.id, trailCost(t, costs));
+    return m;
+  }, [costs]);
+  const trailCostNow = trail ? costByTrail.get(trail.id) ?? null : null;
   const trailTable = useMemo(() => (trail ? trailRows(trail, places, cityNormals) : []), [trail, places, cityNormals]);
   const stopLabel = (code: string) => (code === "Orlando" || code === "Panama" ? code : placeLabel(code));
   const placeTable = useMemo(() => monthlyRows(visible), [visible]);
@@ -222,7 +241,7 @@ export default function WeatherPage() {
               <CardTitle className="text-base">Daily high &amp; low, °F</CardTitle>
               <Button
                 variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground"
-                onClick={() => (names ? setNames(null) : setPinOpen(true))}
+                onClick={() => (names ? (setNames(null), setCosts(null)) : setPinOpen(true))}
                 aria-label={names ? "Hide location names" : "Maintenance: show location names"}
                 data-testid="button-weather-pin"
               >
@@ -285,16 +304,26 @@ export default function WeatherPage() {
                       <Label className="flex items-center gap-2 text-xs font-normal">
                         <RadioGroupItem value="none" data-testid="radio-trail-none" /> None
                       </Label>
-                      {TRAILS.map((t) => (
-                        <Label key={t.id} className="flex items-start gap-2 text-xs font-normal leading-snug">
-                          <RadioGroupItem value={t.id} className="mt-0.5" data-testid={`radio-trail-${t.id}`} />
-                          <span>
-                            <span className="font-medium">{t.label}</span>
-                            <span className="block text-muted-foreground">
-                              {t.stops.map((st) => `${stopLabel(st.code)} ${stopRange(st)}`).join(" → ")}
-                            </span>
-                          </span>
-                        </Label>
+                      {TRAIL_GROUPS.map((g) => (
+                        <div key={g.id} className="space-y-2">
+                          <p className="pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{g.label}</p>
+                          {TRAILS.filter((t) => t.group === g.id).map((t) => (
+                            <Label key={t.id} className="flex items-start gap-2 text-xs font-normal leading-snug">
+                              <RadioGroupItem value={t.id} className="mt-0.5" data-testid={`radio-trail-${t.id}`} />
+                              <span>
+                                <span className="font-medium">{t.label}</span>
+                                {costByTrail.get(t.id) && (
+                                  <span className="ml-1.5 text-muted-foreground" data-testid={`trail-cost-${t.id}`}>
+                                    ≈ {usd(costByTrail.get(t.id)!.total)}
+                                  </span>
+                                )}
+                                <span className="block text-muted-foreground">
+                                  {t.stops.map((st) => `${stopLabel(st.code)} ${stopRange(st)}`).join(" → ")}
+                                </span>
+                              </span>
+                            </Label>
+                          ))}
+                        </div>
                       ))}
                     </RadioGroup>
                   </PopoverContent>
@@ -439,7 +468,19 @@ export default function WeatherPage() {
                 <table className="w-full text-xs tabular-nums">
                   <caption className="pb-1 text-left text-muted-foreground">
                     {trail.label}: average high / low, °F, at each stop
+                    {trailCostNow && " · estimated cost for 2 (travel in, lodging)"}
                   </caption>
+                  {trailCostNow && (
+                    <thead>
+                      <tr className="text-left text-[11px] text-muted-foreground">
+                        <th className="py-1 pr-3 font-normal">Stop</th>
+                        <th className="py-1 pr-3 font-normal">Dates</th>
+                        <th className="py-1 font-normal">°F</th>
+                        <th className="py-1 pl-3 text-right font-normal">Travel in</th>
+                        <th className="py-1 pl-3 text-right font-normal">Lodging</th>
+                      </tr>
+                    </thead>
+                  )}
                   <tbody>
                     {trailTable.map((r, i) => (
                       <tr key={i} className="border-t">
@@ -451,8 +492,26 @@ export default function WeatherPage() {
                         <td className="whitespace-nowrap py-1">
                           {r.high == null ? "—" : hiLo === "low" ? `${r.low}°` : hiLo === "high" ? `${r.high}°` : `${r.high}° / ${r.low}°`}
                         </td>
+                        {trailCostNow && (
+                          <>
+                            <td className="whitespace-nowrap py-1 pl-3 text-right text-muted-foreground">
+                              {i === 0 ? "" : trailCostNow.stops[i].travelIn == null ? "?" : usd(trailCostNow.stops[i].travelIn!)}
+                            </td>
+                            <td className="whitespace-nowrap py-1 pl-3 text-right text-muted-foreground">
+                              {trailCostNow.stops[i].lodging ? usd(trailCostNow.stops[i].lodging) : "$0"}
+                            </td>
+                          </>
+                        )}
                       </tr>
                     ))}
+                    {trailCostNow && (
+                      <tr className="border-t font-medium" data-testid="trail-cost-total">
+                        <th scope="row" className="py-1 pr-3 text-left">Estimated total</th>
+                        <td className="py-1 pr-3" colSpan={2}>{usd(trailCostNow.total)}</td>
+                        <td className="whitespace-nowrap py-1 pl-3 text-right">{usd(trailCostNow.travel)}</td>
+                        <td className="whitespace-nowrap py-1 pl-3 text-right">{usd(trailCostNow.lodging)}</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>

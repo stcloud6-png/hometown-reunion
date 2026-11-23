@@ -162,45 +162,17 @@ export const DEMO_PLACES: WeatherPlace[] = [
 
 export type TrailStopCode = string; // a location code, or "Orlando" / "Panama"
 export interface TrailStop { code: TrailStopCode; from: string; to: string } // 2027 "MM-DD"
-export interface Trail { id: string; label: string; stops: TrailStop[] }
+export interface Trail { id: string; label: string; group: "fav" | "more"; stops: TrailStop[] }
+
+export const TRAIL_GROUPS: { id: Trail["group"]; label: string }[] = [
+  { id: "fav", label: "Favorites" },
+  { id: "more", label: "Worth considering" },
+];
 
 export const TRAILS: Trail[] = [
+  // Owner's favourites first, then the others; each group in the owner's chosen order (2026-11-23).
   {
-    id: "A", label: "Option A",
-    stops: [
-      { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "Se", from: "02-01", to: "05-01" },
-      { code: "I", from: "05-02", to: "07-30" },
-      { code: "Po1", from: "08-01", to: "10-29" },
-      { code: "Po2", from: "08-01", to: "10-29" },
-      { code: "Orlando", from: "10-30", to: "12-31" },
-    ],
-  },
-  {
-    id: "B", label: "Option B",
-    stops: [
-      { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "Se", from: "02-01", to: "05-01" },
-      { code: "I", from: "05-02", to: "07-30" },
-      { code: "Po1", from: "07-31", to: "10-28" },
-      { code: "Po2", from: "07-31", to: "10-28" },
-      { code: "Orlando", from: "10-29", to: "12-31" },
-    ],
-  },
-  {
-    id: "C", label: "Option C",
-    stops: [
-      { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "B", from: "02-01", to: "04-15" },
-      { code: "Orlando", from: "04-15", to: "06-01" },
-      { code: "I", from: "06-01", to: "08-29" },
-      { code: "Po1", from: "08-30", to: "11-27" },
-      { code: "Po2", from: "08-30", to: "11-27" },
-      { code: "Orlando", from: "11-28", to: "12-31" },
-    ],
-  },
-  {
-    id: "D", label: "Option D",
+    id: "D", label: "Option D", group: "fav",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "B", from: "02-01", to: "04-15" },
@@ -212,7 +184,55 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "E", label: "Option E",
+    id: "C", label: "Option C", group: "fav",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-15" },
+      { code: "Orlando", from: "04-15", to: "06-01" },
+      { code: "I", from: "06-01", to: "08-29" },
+      { code: "Po1", from: "08-30", to: "11-27" },
+      { code: "Po2", from: "08-30", to: "11-27" },
+      { code: "Orlando", from: "11-28", to: "12-31" },
+    ],
+  },
+  {
+    id: "F", label: "Option F", group: "fav",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-04" },
+      { code: "Bu", from: "04-05", to: "06-12" },
+      { code: "Qu", from: "06-13", to: "09-10" },
+      { code: "Sa", from: "09-11", to: "11-07" },
+      { code: "Orlando", from: "11-08", to: "12-31" },
+    ],
+  },
+  {
+    id: "K", label: "Option K", group: "fav",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-15" },
+      { code: "Orlando", from: "04-15", to: "05-15" },
+      { code: "O", from: "05-16", to: "07-04" },
+      { code: "I", from: "07-05", to: "10-02" },
+      { code: "Po1", from: "10-03", to: "11-27" },
+      { code: "Po2", from: "10-03", to: "11-27" },
+      { code: "Orlando", from: "11-28", to: "12-31" },
+    ],
+  },
+  {
+    id: "J", label: "Option J", group: "fav",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-05" },
+      { code: "Bu", from: "04-06", to: "06-08" },
+      { code: "I", from: "06-09", to: "09-06" },
+      { code: "Po1", from: "09-07", to: "10-29" },
+      { code: "Po2", from: "09-07", to: "10-29" },
+      { code: "Orlando", from: "10-30", to: "12-31" },
+    ],
+  },
+  {
+    id: "E", label: "Option E", group: "more",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "B", from: "02-01", to: "04-15" },
@@ -225,30 +245,18 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "F", label: "Option F",
+    id: "B", label: "Option B", group: "more",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "B", from: "02-01", to: "04-04" },
-      { code: "Bu", from: "04-05", to: "06-12" },
-      { code: "Qu", from: "06-13", to: "09-10" },
-      { code: "Sa", from: "09-11", to: "11-07" },
-      { code: "Orlando", from: "11-08", to: "12-31" },
+      { code: "Se", from: "02-01", to: "05-01" },
+      { code: "I", from: "05-02", to: "07-30" },
+      { code: "Po1", from: "07-31", to: "10-28" },
+      { code: "Po2", from: "07-31", to: "10-28" },
+      { code: "Orlando", from: "10-29", to: "12-31" },
     ],
   },
   {
-    id: "G", label: "Option G",
-    stops: [
-      { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "B", from: "02-01", to: "03-14" },
-      { code: "Se", from: "03-15", to: "05-14" },
-      { code: "Po2", from: "05-15", to: "05-31" },
-      { code: "I", from: "06-01", to: "08-29" },
-      { code: "Al", from: "09-02", to: "10-31" },
-      { code: "Orlando", from: "11-01", to: "12-31" },
-    ],
-  },
-  {
-    id: "H", label: "Option H",
+    id: "H", label: "Option H", group: "more",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
       { code: "Se", from: "02-01", to: "05-01" },
@@ -259,28 +267,15 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "J", label: "Option J",
+    id: "G", label: "Option G", group: "more",
     stops: [
       { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "B", from: "02-01", to: "04-05" },
-      { code: "Bu", from: "04-06", to: "06-08" },
-      { code: "I", from: "06-09", to: "09-06" },
-      { code: "Po1", from: "09-07", to: "10-29" },
-      { code: "Po2", from: "09-07", to: "10-29" },
-      { code: "Orlando", from: "10-30", to: "12-31" },
-    ],
-  },
-  {
-    id: "K", label: "Option K",
-    stops: [
-      { code: "Orlando", from: "01-01", to: "02-01" },
-      { code: "B", from: "02-01", to: "04-15" },
-      { code: "Orlando", from: "04-15", to: "05-15" },
-      { code: "O", from: "05-16", to: "07-04" },
-      { code: "I", from: "07-05", to: "10-02" },
-      { code: "Po1", from: "10-03", to: "11-27" },
-      { code: "Po2", from: "10-03", to: "11-27" },
-      { code: "Orlando", from: "11-28", to: "12-31" },
+      { code: "B", from: "02-01", to: "03-14" },
+      { code: "Se", from: "03-15", to: "05-14" },
+      { code: "Po2", from: "05-15", to: "05-31" },
+      { code: "I", from: "06-01", to: "08-29" },
+      { code: "Al", from: "09-02", to: "10-31" },
+      { code: "Orlando", from: "11-01", to: "12-31" },
     ],
   },
 ];
@@ -333,3 +328,68 @@ export function trailRows(trail: Trail, places: WeatherPlace[], cityNormals: Rec
     return { code: s.code, range: stopRange(s), high: n ? Math.round(hi / n) : null, low: n ? Math.round(lo / n) : null };
   });
 }
+
+/* ------------------------------------------------------------------------ */
+/* Trail cost estimates (owner, 2026-11-23). The numbers come only from      */
+/* weather_trail_costs(pin) after the Maintenance PIN; nothing is stored     */
+/* here. Orlando lodging is $0.                                              */
+/* ------------------------------------------------------------------------ */
+
+export interface CostRow { kind: "lodging" | "fare"; code_a: string; code_b: string | null; usd: number }
+export const TRAVELERS = 2;
+const HOME = "Orlando";
+
+export interface TrailCost {
+  travel: number;
+  lodging: number;
+  total: number;
+  /** Per stop: lodging over its days, and the fare(s) to get there (all travelers). */
+  stops: { lodging: number; travelIn: number | null }[];
+  /** Legs with no fare in the table (counted as $0 in the totals). */
+  missing: string[];
+}
+
+export function trailCost(trail: Trail, rows: CostRow[]): TrailCost {
+  const rent = new Map<string, number>();
+  const fares = new Map<string, number>();
+  for (const r of rows) {
+    if (r.kind === "lodging") rent.set(r.code_a, r.usd);
+    else if (r.code_b) { fares.set(`${r.code_a}|${r.code_b}`, r.usd); fares.set(`${r.code_b}|${r.code_a}`, r.usd); }
+  }
+  const missing: string[] = [];
+  const fare = (a: string, b: string) => {
+    if (a === b) return 0;
+    const f = fares.get(`${a}|${b}`);
+    if (f == null) { missing.push(`${a}→${b}`); return null; }
+    return f * TRAVELERS;
+  };
+
+  // Lodging: one unit at a time. On a day covered by several stops (parallel stops,
+  // or a hand-over day), the day's rent is the average of those stops' daily rents.
+  const spans = trail.stops.map((s) => [toDay(`2027-${s.from}`), toDay(`2027-${s.to}`)] as [number, number]);
+  const lodging = trail.stops.map(() => 0);
+  const first = Math.min(...spans.map((s) => s[0])), last = Math.max(...spans.map((s) => s[1]));
+  for (let t = first; t <= last; t += DAY_MS) {
+    const active = spans.map((sp, i) => (t >= sp[0] && t <= sp[1] ? i : -1)).filter((i) => i >= 0);
+    if (!active.length) continue;
+    for (const i of active) {
+      const code = trail.stops[i].code;
+      const perDay = code === HOME ? 0 : (rent.get(code) ?? 0) * 12 / 365;
+      lodging[i] += perDay / active.length;
+    }
+  }
+
+  // Travel: one leg into each stop from the stop before it (list order).
+  const travelIn: (number | null)[] = trail.stops.map((s, i) => (i === 0 ? 0 : fare(trail.stops[i - 1].code, s.code)));
+  const travel = travelIn.reduce<number>((a, b) => a + (b ?? 0), 0);
+  const lodgingTotal = lodging.reduce((a, b) => a + b, 0);
+  return {
+    travel: Math.round(travel),
+    lodging: Math.round(lodgingTotal),
+    total: Math.round(travel + lodgingTotal),
+    stops: trail.stops.map((_, i) => ({ lodging: Math.round(lodging[i]), travelIn: travelIn[i] })),
+    missing,
+  };
+}
+
+export const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;

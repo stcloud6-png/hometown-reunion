@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { addPlacesToChart, addTrailToChart, DEMO_PLACES, monthlyRows, placeKey, placeWindows, trailKey, trailRows, TRAILS, visiblePlaces, windowsFor, type Season } from "../client/src/lib/weather-places";
+import { addPlacesToChart, addTrailToChart, DEMO_PLACES, monthlyRows, placeKey, placeWindows, trailCost, trailKey, trailRows, TRAILS, type CostRow, visiblePlaces, windowsFor, type Season } from "../client/src/lib/weather-places";
 import { buildChart, toDay } from "../client/src/lib/weather-estimate";
 
 let n = 0;
@@ -71,13 +71,12 @@ t("checking one box shows just that location", () => {
   const v = visiblePlaces(DEMO_PLACES, new Set(["Po2"]), all);
   assert.deepEqual(v.map((x) => x.place.code), ["Po2"]);
 });
-t("trail A matches the owner's stops (trimmed 23:57)", () => {
-  const a = TRAILS.find((t) => t.id === "A")!;
-  assert.deepEqual(a.stops.map((s) => `${s.code} ${s.from}-${s.to}`), [
-    "Orlando 01-01-02-01", "Se 02-01-05-01", "I 05-02-07-30", "Po1 08-01-10-29", "Po2 08-01-10-29", "Orlando 10-30-12-31",
-  ]);
-  assert.deepEqual(TRAILS.map((t) => t.id), ["A", "B", "C", "D", "E", "F", "G", "H", "J", "K"]);
-});
+t("trail order: favourites D, C, F, K, J then E, B, H, G; no A", () => {
+  assert.deepEqual(TRAILS.map((t) => t.id), ["D", "C", "F", "K", "J", "E", "B", "H", "G"]);
+  assert.deepEqual(TRAILS.filter((t) => t.group === "fav").map((t) => t.id), ["D", "C", "F", "K", "J"]);
+  const b = TRAILS.find((t) => t.id === "B")!;
+  assert.ok(b.stops.some((s) => s.code === "Po1" && s.from === "07-31" && s.to === "10-28"));
+})
 t("trail lines only over each stop's days; reunion cities use city normals", () => {
   const city = { Orlando: [[72, 50], [75, 53], [79, 56], [84, 61], [88, 66], [91, 72], [92, 74], [92, 74], [90, 72], [85, 66], [78, 58], [74, 53]] as [number, number][], Panama: Array(12).fill([88, 76]) as [number, number][] };
   for (const tr of TRAILS) {
@@ -95,7 +94,7 @@ t("every trail stop is a known code or a reunion city", () => {
 });
 t("trail + locations together: no line is broken mid-window", () => {
   const city = { Orlando: Array(12).fill([80, 60]) as [number, number][], Panama: Array(12).fill([88, 76]) as [number, number][] };
-  const tr = TRAILS.find((t) => t.id === "A")!;
+  const tr = TRAILS.find((t) => t.id === "B")!;
   const v = visiblePlaces(DEMO_PLACES, new Set(["Se"]), all);
   const pts = addTrailToChart(addPlacesToChart(addTrailToChart(buildChart([]).points, tr, DEMO_PLACES, city), v), tr, DEMO_PLACES, city) as unknown as Record<string, number>[];
   const k = placeKey("Se", "hi");
@@ -103,4 +102,39 @@ t("trail + locations together: no line is broken mid-window", () => {
   assert.equal(runs, placeWindows(P("Se")).length);
   tr.stops.forEach((s, i) => assert.equal(pts.filter((r, j) => r[trailKey(i, "hi")] != null && pts[j + 1]?.[trailKey(i, "hi")] == null).length, 1, `stop ${i}`));
 });
+// Costs: synthetic numbers only (real ones live behind the PIN).
+const fakeCosts: CostRow[] = [
+  { kind: "lodging", code_a: "X", code_b: null, usd: 365 },   // $12/day
+  { kind: "lodging", code_a: "Y", code_b: null, usd: 730 },   // $24/day
+  { kind: "fare", code_a: "Orlando", code_b: "X", usd: 100 },
+  { kind: "fare", code_a: "X", code_b: "Y", usd: 50 },
+];
+const fakeTrail = (stops: { code: string; from: string; to: string }[]) => ({ id: "z", label: "Z", group: "more" as const, stops });
+t("cost: Orlando lodging is $0; fares x2 travelers, either direction", () => {
+  const c = trailCost(fakeTrail([
+    { code: "Orlando", from: "01-01", to: "01-10" },
+    { code: "X", from: "01-11", to: "01-20" },      // 10 days x $12
+    { code: "Orlando", from: "01-21", to: "01-31" },
+  ]), fakeCosts);
+  assert.equal(c.lodging, 120);
+  assert.equal(c.travel, 400);                     // (100 out + 100 back) x 2
+  assert.equal(c.total, 520);
+  assert.deepEqual(c.missing, []);
+});
+t("cost: parallel stops share one unit (average rent); missing fare flagged", () => {
+  const c = trailCost(fakeTrail([
+    { code: "X", from: "02-01", to: "02-10" },
+    { code: "Y", from: "02-01", to: "02-10" },     // same days: avg $18/day x 10
+    { code: "Q", from: "02-11", to: "02-11" },
+  ]), fakeCosts);
+  assert.equal(c.lodging, 180);
+  assert.equal(c.travel, 100);                     // X->Y only; Y->Q unknown
+  assert.deepEqual(c.missing, ["Y→Q"]);
+});
+t("cost never changes the trail order", () => {
+  const before = TRAILS.map((x) => x.id).join();
+  for (const x of TRAILS) trailCost(x, fakeCosts);
+  assert.equal(TRAILS.map((x) => x.id).join(), before);
+});
+
 console.log(`weather-places: ${n} passed`);
