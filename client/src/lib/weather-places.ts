@@ -328,3 +328,68 @@ export function trailRows(trail: Trail, places: WeatherPlace[], cityNormals: Rec
     return { code: s.code, range: stopRange(s), high: n ? Math.round(hi / n) : null, low: n ? Math.round(lo / n) : null };
   });
 }
+
+/* ------------------------------------------------------------------------ */
+/* Trail cost estimates (owner, 2026-11-23). The numbers come only from      */
+/* weather_trail_costs(pin) after the Maintenance PIN; nothing is stored     */
+/* here. Orlando lodging is $0.                                              */
+/* ------------------------------------------------------------------------ */
+
+export interface CostRow { kind: "lodging" | "fare"; code_a: string; code_b: string | null; usd: number }
+export const TRAVELERS = 2;
+const HOME = "Orlando";
+
+export interface TrailCost {
+  travel: number;
+  lodging: number;
+  total: number;
+  /** Per stop: lodging over its days, and the fare(s) to get there (all travelers). */
+  stops: { lodging: number; travelIn: number | null }[];
+  /** Legs with no fare in the table (counted as $0 in the totals). */
+  missing: string[];
+}
+
+export function trailCost(trail: Trail, rows: CostRow[]): TrailCost {
+  const rent = new Map<string, number>();
+  const fares = new Map<string, number>();
+  for (const r of rows) {
+    if (r.kind === "lodging") rent.set(r.code_a, r.usd);
+    else if (r.code_b) { fares.set(`${r.code_a}|${r.code_b}`, r.usd); fares.set(`${r.code_b}|${r.code_a}`, r.usd); }
+  }
+  const missing: string[] = [];
+  const fare = (a: string, b: string) => {
+    if (a === b) return 0;
+    const f = fares.get(`${a}|${b}`);
+    if (f == null) { missing.push(`${a}→${b}`); return null; }
+    return f * TRAVELERS;
+  };
+
+  // Lodging: one unit at a time. On a day covered by several stops (parallel stops,
+  // or a hand-over day), the day's rent is the average of those stops' daily rents.
+  const spans = trail.stops.map((s) => [toDay(`2027-${s.from}`), toDay(`2027-${s.to}`)] as [number, number]);
+  const lodging = trail.stops.map(() => 0);
+  const first = Math.min(...spans.map((s) => s[0])), last = Math.max(...spans.map((s) => s[1]));
+  for (let t = first; t <= last; t += DAY_MS) {
+    const active = spans.map((sp, i) => (t >= sp[0] && t <= sp[1] ? i : -1)).filter((i) => i >= 0);
+    if (!active.length) continue;
+    for (const i of active) {
+      const code = trail.stops[i].code;
+      const perDay = code === HOME ? 0 : (rent.get(code) ?? 0) * 12 / 365;
+      lodging[i] += perDay / active.length;
+    }
+  }
+
+  // Travel: one leg into each stop from the stop before it (list order).
+  const travelIn: (number | null)[] = trail.stops.map((s, i) => (i === 0 ? 0 : fare(trail.stops[i - 1].code, s.code)));
+  const travel = travelIn.reduce<number>((a, b) => a + (b ?? 0), 0);
+  const lodgingTotal = lodging.reduce((a, b) => a + b, 0);
+  return {
+    travel: Math.round(travel),
+    lodging: Math.round(lodgingTotal),
+    total: Math.round(travel + lodgingTotal),
+    stops: trail.stops.map((_, i) => ({ lodging: Math.round(lodging[i]), travelIn: travelIn[i] })),
+    missing,
+  };
+}
+
+export const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
