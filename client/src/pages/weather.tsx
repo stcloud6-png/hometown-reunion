@@ -277,7 +277,7 @@ export default function WeatherPage() {
                       #5{trail && <span className="opacity-80">· {trail.id}</span>}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent align="start" className="w-80 p-3" data-testid="popover-geo-5">
+                  <PopoverContent align="start" collisionPadding={8} className="max-h-[var(--radix-popover-content-available-height,70vh)] w-80 overflow-y-auto p-3" data-testid="popover-geo-5">
                     <p className="pb-2 text-xs font-medium">Year trail</p>
                     <RadioGroup value={trailId} onValueChange={setTrailId} className="gap-2">
                       <Label className="flex items-center gap-2 text-xs font-normal">

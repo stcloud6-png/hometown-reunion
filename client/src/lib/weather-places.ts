@@ -156,8 +156,8 @@ export const DEMO_PLACES: WeatherPlace[] = [
 }));
 
 /* ------------------------------------------------------------------------ */
-/* Button #5: year-long "trails" (owner, 2026-11-22). Codes only; the two    */
-/* reunion cities use their public names.                                    */
+/* Button #5: year-long "trails" (owner, 2026-11-22 23:49). Codes only; the */
+/* reunion cities use their public names.                                  */
 /* ------------------------------------------------------------------------ */
 
 export type TrailStopCode = string; // a location code, or "Orlando" / "Panama"
@@ -168,14 +168,51 @@ export const TRAILS: Trail[] = [
   {
     id: "A", label: "Option A",
     stops: [
-      { code: "Al", from: "02-01", to: "05-01" },
-      { code: "I", from: "06-01", to: "09-01" },
-      { code: "Po1", from: "09-01", to: "12-01" },
-      { code: "Po2", from: "09-01", to: "12-01" },
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "Se", from: "02-01", to: "05-01" },
+      { code: "I", from: "05-01", to: "08-01" },
+      { code: "Po1", from: "08-01", to: "11-01" },
+      { code: "Po2", from: "08-01", to: "11-01" },
+      { code: "Orlando", from: "11-01", to: "12-31" },
     ],
   },
   {
     id: "B", label: "Option B",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "Se", from: "02-01", to: "05-01" },
+      { code: "I", from: "05-01", to: "09-03" },
+      { code: "Po1", from: "09-03", to: "12-01" },
+      { code: "Po2", from: "09-03", to: "12-01" },
+      { code: "Orlando", from: "12-01", to: "12-31" },
+    ],
+  },
+  {
+    id: "C", label: "Option C",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-15" },
+      { code: "Orlando", from: "04-15", to: "06-01" },
+      { code: "I", from: "06-01", to: "08-29" },
+      { code: "Po1", from: "08-30", to: "11-27" },
+      { code: "Po2", from: "08-30", to: "11-27" },
+      { code: "Orlando", from: "11-28", to: "12-31" },
+    ],
+  },
+  {
+    id: "D", label: "Option D",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "B", from: "02-01", to: "04-15" },
+      { code: "Orlando", from: "04-15", to: "06-01" },
+      { code: "Qu", from: "06-01", to: "09-30" },
+      { code: "Sa", from: "10-01", to: "11-07" },
+      { code: "Bu", from: "10-01", to: "11-07" },
+      { code: "Orlando", from: "11-07", to: "12-31" },
+    ],
+  },
+  {
+    id: "E", label: "Option E",
     stops: [
       { code: "Panama", from: "01-01", to: "04-30" },
       { code: "O", from: "05-01", to: "07-01" },
@@ -186,7 +223,7 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "C", label: "Option C",
+    id: "F", label: "Option F",
     stops: [
       { code: "Panama", from: "01-01", to: "03-14" },
       { code: "Bu", from: "03-15", to: "04-30" },
@@ -196,14 +233,25 @@ export const TRAILS: Trail[] = [
     ],
   },
   {
-    id: "D", label: "Option D",
+    id: "G", label: "Option G",
     stops: [
       { code: "Panama", from: "01-01", to: "03-14" },
       { code: "Se", from: "03-15", to: "05-14" },
       { code: "Po2", from: "05-15", to: "05-31" },
-      { code: "I", from: "06-01", to: "09-01" },
+      { code: "I", from: "06-01", to: "08-29" },
       { code: "Al", from: "09-02", to: "10-31" },
       { code: "Orlando", from: "11-01", to: "12-31" },
+    ],
+  },
+  {
+    id: "H", label: "Option H",
+    stops: [
+      { code: "Orlando", from: "01-01", to: "02-01" },
+      { code: "Se", from: "02-01", to: "05-01" },
+      { code: "I", from: "05-01", to: "07-29" },
+      { code: "Po1", from: "08-01", to: "10-29" },
+      { code: "Po2", from: "08-01", to: "10-29" },
+      { code: "Orlando", from: "10-29", to: "12-31" },
     ],
   },
 ];
