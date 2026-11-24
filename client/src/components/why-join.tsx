@@ -1,4 +1,4 @@
-import { CalendarCheck, BookOpen, Ticket, Users } from "lucide-react";
+import { CalendarCheck, Camera, Ticket, Users } from "lucide-react";
 
 // Plain-language reasons to sign up, shown under the entry form. The full
 // version (with FAQ and structured data for search engines) is the static
@@ -20,9 +20,9 @@ const REASONS = [
     body: "Join interest groups with classmates who want the same things, and see which events are selling out.",
   },
   {
-    icon: BookOpen,
-    title: "The '87 yearbook",
-    body: "Flip through it online, search by today's name, and add a current photo if you had no portrait.",
+    icon: Camera,
+    title: "Not in the yearbook? Add your photo",
+    body: "Coming to the reunion, but your photo isn't in the '87 yearbook? Add one to the Missing Photos page so the class can put a face to your name.",
   },
 ];
 
