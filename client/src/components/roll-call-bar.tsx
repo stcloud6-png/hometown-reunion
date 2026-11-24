@@ -14,6 +14,7 @@ import {
   mieventoDays,
   mieventoShoppingEvents,
   mieventoTicketTally,
+  ZELLE_PHONE,
 } from "@/lib/reunion";
 
 interface RollCallBarProps {
@@ -179,7 +180,7 @@ export default function RollCallBar({
             <span className="text-base font-semibold text-primary">{yachtPaid.length}</span>
             <span className="text-muted-foreground">Yacht Club paid</span>
             <span className="text-[10px] text-muted-foreground" data-testid="text-yacht-payment-info-rollcall">
-              ($50 / $40 plus-one · Zelle 813-966-8151, or text to mail a check)
+              ($50 / $40 plus-one · {sessionEmail ? `Zelle ${ZELLE_PHONE}, or text to mail a check` : "sign in to see how to pay"})
             </span>
             {showYachtButton && (
               <YachtPaymentDialog

@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReunionData } from "@/lib/use-reunion-data";
 import { useDarkMode } from "@/hooks/use-dark-mode";
-import { readMyIdentity, logVisit, type MyIdentity } from "@/lib/reunion";
+import { readMyIdentity, logVisit, ZELLE_PHONE, type MyIdentity } from "@/lib/reunion";
 
 const STUB = import.meta.env.VITE_STUB_DATA === "true";
 
@@ -76,7 +76,9 @@ export default function Home() {
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-[240px] text-xs">
-                $30 for t-shirts and Dinner Ticket $50/$40-plus-one, Zelle 813-966-8151, and mailing address provided via text.
+                {data.sessionEmail
+                  ? `$30 for t-shirts and Dinner Ticket $50/$40-plus-one, Zelle ${ZELLE_PHONE}, and mailing address provided via text.`
+                  : "$30 for t-shirts and Dinner Ticket $50/$40-plus-one. Sign in to see how to pay."}
               </TooltipContent>
             </Tooltip>
             <div className="flex items-center gap-1.5 border-l pl-2.5" data-testid="header-partner-logos">

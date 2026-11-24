@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Anchor, CheckCircle2, Loader2, Mail } from "lucide-react";
-import { EMAIL_PATTERN, type Person } from "@/lib/reunion";
+import { EMAIL_PATTERN, ZELLE_PHONE, type Person } from "@/lib/reunion";
 
 interface YachtPaymentDialogProps {
   isDemo: boolean;
@@ -83,7 +83,11 @@ export default function YachtPaymentDialog({ isDemo, sessionEmail, myPerson, onS
           </p>
           <p className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm" data-testid="text-yacht-payment-info">
             <span className="font-semibold">$50 per person</span>, <span className="font-semibold">$40 for your plus-one</span>.
-            Send via <span className="font-semibold">Zelle to 813-966-8151</span>, or text that number to request an address to mail a check.
+            {signedIn ? (
+              <>Send via <span className="font-semibold">Zelle to {ZELLE_PHONE}</span>, or text that number to request an address to mail a check.</>
+            ) : (
+              <>Sign in below to see how to pay.</>
+            )}
           </p>
           <p className="text-sm text-muted-foreground">
             Once you've sent payment, confirm it here so the group total stays accurate.

@@ -121,6 +121,15 @@ export interface DayInfo {
 // Constants
 // ---------------------------------------------------------------------------
 
+/** Payment phone for the Yacht Club '87 Dinner/Dance. Shown only to signed-in classmates. */
+export const ZELLE_PHONE = "813-966-8151";
+/** How to pay, worded for signed-in classmates; visitors are asked to sign in instead. */
+export function yachtPayHow(signedIn: boolean): string {
+  return signedIn
+    ? `Zelle ${ZELLE_PHONE} (or text to request a mailing address)`
+    : "sign in to see how to pay";
+}
+
 export const START_DATE = "2027-01-09";
 export const END_DATE = "2027-01-30";
 export const MIEVENTO_START = "2027-01-17";
