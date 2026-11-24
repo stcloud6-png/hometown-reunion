@@ -5,6 +5,14 @@
   "outputDirectory": "dist/public",
   "rewrites": [
     {
+      "source": "/about",
+      "destination": "/about/index.html"
+    },
+    {
+      "source": "/why-join",
+      "destination": "/about/index.html"
+    },
+    {
       "source": "/yearbook",
       "destination": "/index.html"
     },

@@ -9,6 +9,7 @@ import YearbookViewer from "@/components/yearbook-viewer";
 import { AdminMissingPhotos } from "@/components/missing-photos";
 import { TicketWatchCard, TicketWatchMobile } from "@/components/ticket-watch";
 import { WeatherCorner } from "@/components/weather-corner";
+import WhyJoin from "@/components/why-join";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReunionData } from "@/lib/use-reunion-data";
@@ -189,6 +190,7 @@ export default function Home() {
               {/* Small, info-only weather in the top-left corner of the splash. */}
               <WeatherCorner rows={data.weather} className="self-start sm:absolute sm:left-0 sm:top-0" />
               <img src={`${import.meta.env.BASE_URL}reunion-logo.jpg`} alt="CZR BHS87 Reunion" className="h-20 w-20 rounded-full object-cover shadow-md" />
+              <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground" data-testid="text-hero-kicker">Balboa High School &middot; Class of 1987 &middot; 40th Reunion</p>
               <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">CZR BHS87</h1>
               <p className="font-serif text-lg italic text-muted-foreground">The Meetup &amp; Planning Organizer</p>
               <p className="max-w-xl text-muted-foreground">
@@ -205,7 +207,10 @@ export default function Home() {
                   >
                     Find my name &amp; plan my week
                   </Button>
-                  <p className="text-xs text-muted-foreground">Takes about two minutes</p>
+                  <p className="text-xs text-muted-foreground">
+                    Takes about two minutes &middot;{" "}
+                    <a href="/about" className="underline underline-offset-2 hover:text-foreground" data-testid="link-why-sign-up">Why sign up?</a>
+                  </p>
                 </>
               )}
             </div>
@@ -270,6 +275,7 @@ export default function Home() {
               onUploadMissingPhoto={data.uploadMyMissingPhoto}
             />
             )}
+            {!(data.isAdmin && !data.isTestAccount) && <WhyJoin />}
           </>
         ) : (
           <Dashboard
@@ -300,7 +306,9 @@ export default function Home() {
       </main>
 
       <footer className="border-t py-6 text-center text-xs text-muted-foreground">
-        CZR BHS87 Reunion &middot; Jan 9 &ndash; 30, 2027 &middot; Mark once, meet more.
+        CZR BHS87 Reunion &middot; Balboa High School Class of 1987 &middot; Jan 9 &ndash; 30, 2027 &middot; Mark once, meet more.
+        {" "}&middot;{" "}
+        <a href="/about" className="underline underline-offset-2 hover:text-foreground" data-testid="link-footer-about">About &amp; FAQ</a>
       </footer>
 
       <YearbookViewer open={yearbookOpen} onOpenChange={setYearbookOpen} fetchOverlays={data.fetchYearbookOverlays} fetchMissingPhotos={data.fetchMissingPhotos} searchYearbook={data.searchYearbook} initialMissingOpen={missingPhotosLink} />
