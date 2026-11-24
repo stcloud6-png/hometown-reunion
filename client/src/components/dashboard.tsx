@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { friendlyError } from "@/lib/reunion";
+import { friendlyError, yachtPayHow } from "@/lib/reunion";
 import type { MemberDirectoryRow } from "@/lib/use-reunion-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,6 +151,7 @@ export default function Dashboard({
   onSaveChatLink = async () => {},
   onFetchMemberDirectory,
 }: DashboardProps) {
+  const signedIn = Boolean(sessionEmail);
   const canEditEvent = (activityId: string) => isAdmin || ledActivityIds.includes(activityId);
   const [exportError, setExportError] = useState<string | null>(null);
   async function handleExport() {
@@ -252,7 +253,7 @@ export default function Dashboard({
                           <div
                             key={period}
                             className="h-6 w-full rounded-full bg-[hsl(220_10%_15%)]"
-                            title="Yacht Club 87 Dinner/Dance — everyone's there. $50pp / $40 plus-one, Zelle 813-966-8151 (or text to request a mailing address)."
+                            title={`Yacht Club 87 Dinner/Dance — everyone's there. $50pp / $40 plus-one, ${yachtPayHow(signedIn)}.`}
                             data-testid={`window-${row.day.iso}-${period}`}
                           />
                         ) : cell ? (
@@ -429,7 +430,7 @@ export default function Dashboard({
         subcopy="Greener = more of the group can make it. Tap any cell for the full breakdown."
         testId="section-heatmap"
       >
-        <AvailabilityHeatmap people={filteredPeople} activities={activities} onBackToAvailability={onBackToAvailability} />
+        <AvailabilityHeatmap people={filteredPeople} activities={activities} onBackToAvailability={onBackToAvailability} signedIn={signedIn} />
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -617,10 +618,12 @@ function AvailabilityHeatmap({
   people,
   activities,
   onBackToAvailability,
+  signedIn,
 }: {
   people: Person[];
   activities: Activity[];
   onBackToAvailability: () => void;
+  signedIn: boolean;
 }) {
   const rows = useMemo(
     () =>
@@ -679,7 +682,7 @@ function AvailabilityHeatmap({
                         <div
                           className="h-9 w-full rounded-sm border border-white/15 bg-[hsl(220_10%_10%)] sm:h-10"
                           data-testid={`heatmap-cell-${day.iso}-${period}`}
-                          title="Yacht Club 87 Dinner/Dance — everyone's there. $50pp / $40 plus-one, Zelle 813-966-8151 (or text to request a mailing address)."
+                          title={`Yacht Club 87 Dinner/Dance — everyone's there. $50pp / $40 plus-one, ${yachtPayHow(signedIn)}.`}
                         />
                       </td>
                     );

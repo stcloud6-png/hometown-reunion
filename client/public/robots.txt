@@ -1,0 +1,15 @@
+# bhs87.com: Balboa High School Class of 1987 reunion site
+# The home page and the "Why join" page are public and may be indexed.
+# Views that show classmates' names, travel dates or portraits are kept out of search.
+
+User-agent: *
+Allow: /
+Allow: /about
+Disallow: /dashboard
+Disallow: /availability
+Disallow: /entry
+Disallow: /missing-photos
+Disallow: /missing/
+Disallow: /yearbook/
+
+Sitemap: https://bhs87.com/sitemap.xml

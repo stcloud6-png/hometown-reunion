@@ -1,0 +1,13 @@
+{
+  "name": "BHS87 · Balboa High School Class of 1987 Reunion",
+  "short_name": "BHS87",
+  "description": "Balboa High School Class of 1987 40th reunion planner and class site.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f3ec",
+  "theme_color": "#2d5242",
+  "icons": [
+    { "src": "/reunion-logo.jpg", "sizes": "256x253", "type": "image/jpeg" },
+    { "src": "/favicon.png", "type": "image/png" }
+  ]
+}
