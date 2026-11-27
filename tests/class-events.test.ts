@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import {
   buildClassEvents, checkChoice, toggleChoice, applyAnswersToSlots, answersAfterCalendarEdit,
-  applyYachtToSlots, openSlots, periodsForTimeText, calendarIdForTicket, whoIsGoing, whoPicksPills, registerLiveTickets, answersFromCalendar, effectiveAnswers, NAPOLI_KEY, YACHT_KEY,
+  applyYachtToSlots, openSlots, periodsForTimeText, calendarIdForTicket, whoIsGoing, whoPicksPills, registerLiveTickets, answersFromCalendar, effectiveAnswers, effectiveYacht, NAPOLI_KEY, YACHT_KEY,
   type CheckContext,
 } from "../client/src/lib/class-events";
 import { findRepeat, words, type DedupeTarget } from "../client/src/lib/pill-dedupe";
-import { initSlots, labelForTag, BASE_ACTIVITIES, liveStatusFor, canonicalSlots, eventsForDate, groupPlannedEventsForDate, applyGroupPlanDefaults, plannedSlotIds, DASHBOARD_HIDDEN_IDS, HIDDEN_PILL_IDS } from "../client/src/lib/reunion";
+import { storage, initSlots, labelForTag, BASE_ACTIVITIES, liveStatusFor, canonicalSlots, eventsForDate, groupPlannedEventsForDate, applyGroupPlanDefaults, plannedSlotIds, DASHBOARD_HIDDEN_IDS, HIDDEN_PILL_IDS } from "../client/src/lib/reunion";
 import type { TicketWatchRow } from "../client/src/lib/ticket-watch";
 
 // Live MiEvento snapshot as of 2026-11-19.
@@ -238,6 +238,42 @@ assert.ok(!DASHBOARD_HIDDEN_IDS.includes("cruise-87"));
   assert.equal(labelForTag("mv:x|starlight", BASE_ACTIVITIES), "Starlight Social");
   assert.ok(!ids("2027-01-17", "m").some((id) => id === "coronado-25" || id === "el-valle-26"));
   registerLiveTickets([]);
+}
+
+// 2026-11-27: older entries carry over into the new questions.
+{
+  // Yacht: saved answer wins; old "paid" box; Yacht on an old calendar = planning (never paid).
+  const yachtCal = { "2027-01-20": { m: { s: "ok" as const }, a: { s: "ok" as const }, e: { s: "busy" as const, t: YACHT_KEY } } };
+  assert.equal(effectiveYacht({ slots: yachtCal }), "planning");
+  assert.equal(effectiveYacht({ slots: yachtCal, yacht_paid: true }), "paid");
+  assert.equal(effectiveYacht({ slots: yachtCal, yacht_status: "not_attending" }), "not_attending");
+  assert.equal(effectiveYacht({ slots: {} }), null);
+  assert.equal(effectiveYacht(null), null);
+  // The old "czr-napoli" group-plan tag reads as the Napoli lunch (planning), even with no Napoli pill.
+  const napoliCal = canonicalSlots({ "2027-01-20": { a: { s: "busy" as const, t: "czr-napoli" } } } as never);
+  assert.equal(effectiveAnswers({ slots: napoliCal, interests: [] })[NAPOLI_KEY], "planning");
+  // An older calendar lights up the grid rows for events that are listed today.
+  registerLiveTickets(tickets);
+  const keys = new Set(buildClassEvents(tickets).map((e) => e.key));
+  const old = { "2027-01-18": { m: { s: "busy" as const, t: "chichipati-18" } }, "2027-01-21": { e: { s: "busy" as const, t: "chicken-21" } }, "2027-01-22": { e: { s: "busy" as const, t: "pin-ding-22" } } } as never;
+  for (const [k, v] of Object.entries(effectiveAnswers({ slots: old }))) { assert.ok(keys.has(k), k); assert.equal(v, "purchased"); }
+  registerLiveTickets([]);
+}
+
+// 2026-11-27: the sign-in store survives a refresh (localStorage), and falls back to window.name.
+{
+  const mem: Record<string, string> = {};
+  const g = globalThis as unknown as { window: { name: string; localStorage: Storage } };
+  g.window = { name: "", localStorage: { getItem: (k: string) => mem[k] ?? null, setItem: (k: string, v: string) => { mem[k] = v; }, removeItem: (k: string) => { delete mem[k]; } } as unknown as Storage };
+  storage.set("hr-access-token", "tok-1");
+  g.window.name = ""; // phone browser dropped window.name on refresh
+  assert.equal(storage.get("hr-access-token"), "tok-1");
+  storage.del("hr-access-token");
+  assert.equal(storage.get("hr-access-token"), null);
+  // localStorage blocked: window.name still works.
+  g.window.localStorage = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } } as unknown as Storage;
+  storage.set("hr-email", "x");
+  assert.equal(storage.get("hr-email"), "x");
 }
 
 console.log("class-events + pill-dedupe tests passed");

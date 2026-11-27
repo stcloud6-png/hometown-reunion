@@ -24,7 +24,7 @@ import { RosterClaim, YearbookConfirm } from "@/components/roster-claim";
 import { MissingPhotoUpload } from "@/components/missing-photos";
 import {
   buildClassEvents, applyAnswersToSlots, answersAfterCalendarEdit, applyYachtToSlots, checkChoice, clashesWith,
-  openSlots, slotIdLabel, yachtEvent, whoIsGoing, whoPicksPills, effectiveAnswers, NAPOLI_KEY, YACHT_KEY,
+  openSlots, slotIdLabel, yachtEvent, whoIsGoing, whoPicksPills, effectiveAnswers, effectiveYacht, NAPOLI_KEY, YACHT_KEY,
   type EventAnswers, type YachtStatus,
 } from "@/lib/class-events";
 import { findRepeat, type DedupeHit } from "@/lib/pill-dedupe";
@@ -105,9 +105,9 @@ interface EntryFormProps {
   onConfirmYearbook?: (yes: boolean) => Promise<void>;
 }
 
+/** Saved Yacht answer, or what an older entry implies (see effectiveYacht). */
 function yachtFrom(p?: Person | null): YachtStatus | null {
-  if (!p) return null;
-  return p.yacht_status ?? (p.yacht_paid ? "paid" : null);
+  return effectiveYacht(p);
 }
 
 /** Saved grid answers; the Napoli pill carries over as "plan to attend" Napoli lunch (owner, 2026-11-19). */
@@ -327,8 +327,11 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
   }, [sessionEmail, myRoster, initial]);
 
   // Calendar edits that take a grid event off all its slots untick it in the grid.
+  // Only real edits: on first load an older entry's carried-over answers (e.g. the Napoli pill → Napoli
+  // lunch) may not be on its calendar yet, and must not be unticked before the member touches anything.
+  const firstSlots = useRef(slots);
   useEffect(() => {
-    if (!eventsDone) return;
+    if (!eventsDone || slots === firstSlots.current) return;
     const { answers, dropped } = answersAfterCalendarEdit(slots, eventAnswers, catalog);
     if (!dropped.length) return;
     setEventAnswers(answers);

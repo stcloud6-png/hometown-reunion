@@ -125,6 +125,20 @@ export function answersFromCalendar(slots: PersonSlots | null | undefined): Even
   return out;
 }
 
+/**
+ * Yacht Club answer to start from: the saved one; else the old "paid" box; else, if the Yacht Club
+ * dinner is on an older calendar, "planning" (never "paid": payment is only ever self-confirmed).
+ */
+export function effectiveYacht(p: { slots?: PersonSlots | null; yacht_status?: YachtStatus | null; yacht_paid?: boolean | null } | null | undefined): YachtStatus | null {
+  if (!p) return null;
+  if (p.yacht_status) return p.yacht_status;
+  if (p.yacht_paid) return "paid";
+  for (const day of Object.values(p.slots ?? {})) {
+    for (const slot of Object.values(day ?? {})) if (slot?.t === YACHT_KEY) return "planning";
+  }
+  return null;
+}
+
 /** Everything we know: calendar-implied answers, Napoli pill = planning, then saved answers win. */
 export function effectiveAnswers(p: { slots?: PersonSlots | null; interests?: string[] | null; event_answers?: EventAnswers | null }): EventAnswers {
   const a: EventAnswers = answersFromCalendar(p.slots);
