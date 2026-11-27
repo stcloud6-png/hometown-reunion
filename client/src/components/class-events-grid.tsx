@@ -75,7 +75,8 @@ const YACHT_OPTIONS: { value: YachtStatus; title: string; hint: string }[] = [
   { value: "not_attending", title: "Can't make it", hint: "I won't be at the Wed 20 dinner/dance." },
 ];
 
-export function YachtGate({ value, onChange, disabled, who }: { value: YachtStatus | null; onChange: (v: YachtStatus) => void; disabled?: boolean; who?: WhoGoing }) {
+/** `zellePhone` is passed only for signed-in visitors (owner rule: payment details only after sign-in). */
+export function YachtGate({ value, onChange, disabled, who, zellePhone }: { value: YachtStatus | null; onChange: (v: YachtStatus) => void; disabled?: boolean; who?: WhoGoing; zellePhone?: string | null }) {
   return (
     <Card data-testid="card-yacht-gate">
       <CardHeader>
@@ -84,6 +85,12 @@ export function YachtGate({ value, onChange, disabled, who }: { value: YachtStat
         </WhoPopover>
         <p className="text-sm text-muted-foreground">
           The class event everyone should be at. Let us know where you stand — you can change this later.
+        </p>
+        <p className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm" data-testid="text-yacht-how-to-pay">
+          <span className="font-semibold">How to pay:</span> Dinner ticket $50 ($40 for a plus-one); T-shirts $30.{" "}
+          {zellePhone
+            ? <>Send by <span className="font-semibold">Zelle to {zellePhone}</span>, or text that number to get an address to mail a check.</>
+            : <>Sign in to see the payment details.</>}
         </p>
       </CardHeader>
       <CardContent className="grid gap-3 sm:grid-cols-3">

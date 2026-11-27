@@ -223,7 +223,8 @@ export const BASE_ACTIVITIES: Activity[] = [
  * Pills no longer shown or offered: the first five duplicate MiEvento events, and Napoli is now
  * a class event in the events grid. Existing picks stay in the database untouched.
  */
-export const HIDDEN_PILL_IDS = ["railway-87", "pin-ding", "golf", "bay-cruise-87", "chicken-coup", "napoli", "poolside-87"];
+// Sky Diving and Charter Deep-Sea Fishing removed by the owner (2026-11-27).
+export const HIDDEN_PILL_IDS = ["railway-87", "pin-ding", "golf", "bay-cruise-87", "chicken-coup", "napoli", "poolside-87", "deep-sea-fishing", "sky-diving"];
 
 /**
  * "Exclusive for 87" activities kept out of the Group dashboard's interest clusters and filter
@@ -231,7 +232,7 @@ export const HIDDEN_PILL_IDS = ["railway-87", "pin-ding", "golf", "bay-cruise-87
  * Chiva 87 ("cruise-87") is the one exclusive that stays. "Chicken coup" is hidden too: the
  * MiEvento Midnite Chicken Coop (Thu 21) is the only chicken-coop event, offered in the timeslots.
  */
-export const DASHBOARD_HIDDEN_IDS = ["railway-87", "bay-cruise-87", "golf", "pin-ding", "poolside-87", "chicken-coup"];
+export const DASHBOARD_HIDDEN_IDS = ["railway-87", "bay-cruise-87", "golf", "pin-ding", "poolside-87", "chicken-coup", "deep-sea-fishing", "sky-diving"];
 
 /**
  * Timeslots an organizer (event lead) has set for an activity via its open group plan,

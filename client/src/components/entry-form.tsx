@@ -41,6 +41,7 @@ import {
   type ScheduledEvent,
   DAYS,
   HIDDEN_PILL_IDS,
+  ZELLE_PHONE,
   plannedSlotIds,
   toGroupPlannedId,
   EMAIL_PATTERN,
@@ -892,7 +893,7 @@ export default function EntryForm({ initial, activities, eventPlans, tickets = [
       </Card>
       )}
 
-      {showYachtSection && <YachtGate value={yachtStatus} onChange={changeYacht} who={whoGoing[YACHT_KEY]} />}
+      {showYachtSection && <YachtGate value={yachtStatus} onChange={changeYacht} who={whoGoing[YACHT_KEY]} zellePhone={sessionEmail ? ZELLE_PHONE : null} />}
 
       {showGridSection && (
         <ClassEventsGrid
