@@ -1128,15 +1128,60 @@ export function exportAvailabilityCsv(people: Person[], activities: Activity[], 
 // storage-partitioned contexts. Falls back to an in-memory object if `window`
 // is unavailable (SSR-safe no-op).
 
-const STORE_PREFIX = "hr-store:";
+//
+// 2026-11-27: the same store is now also kept in localStorage, so a sign-in
+// survives a refresh, a closed tab or a new tab. window.name alone was lost on
+// refresh by some phone browsers (notably ones opened from an email app).
+// localStorage wins when both exist, because it is shared by every tab and so
+// holds the newest refresh token; window.name stays as the fallback where
+// localStorage is blocked.
 
-function readStore(): Record<string, unknown> {
+const STORE_PREFIX = "hr-store:";
+const LOCAL_KEY = "hr-store";
+
+function parseStore(raw: string | null | undefined): Record<string, unknown> {
+  try {
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function readWindowName(): Record<string, unknown> {
   try {
     const raw = window.name;
     if (!raw || !raw.startsWith(STORE_PREFIX)) return {};
-    return JSON.parse(raw.slice(STORE_PREFIX.length));
+    return parseStore(raw.slice(STORE_PREFIX.length));
   } catch {
     return {};
+  }
+}
+
+function readLocal(): Record<string, unknown> {
+  try {
+    return parseStore(window.localStorage.getItem(LOCAL_KEY));
+  } catch {
+    return {};
+  }
+}
+
+function readStore(): Record<string, unknown> {
+  return { ...readWindowName(), ...readLocal() };
+}
+
+function writeStore(store: Record<string, unknown>): void {
+  const json = JSON.stringify(store);
+  try {
+    window.name = STORE_PREFIX + json;
+  } catch {
+    /* ignore */
+  }
+  try {
+    window.localStorage.setItem(LOCAL_KEY, json);
+  } catch {
+    /* storage blocked (private mode, sandboxed preview): window.name still holds it */
   }
 }
 
@@ -1153,7 +1198,7 @@ export const storage = {
     try {
       const store = readStore();
       store[key] = value;
-      window.name = STORE_PREFIX + JSON.stringify(store);
+      writeStore(store);
     } catch {
       /* ignore */
     }
@@ -1162,7 +1207,7 @@ export const storage = {
     try {
       const store = readStore();
       delete store[key];
-      window.name = STORE_PREFIX + JSON.stringify(store);
+      writeStore(store);
     } catch {
       /* ignore */
     }

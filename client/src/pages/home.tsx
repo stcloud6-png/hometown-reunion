@@ -246,8 +246,28 @@ export default function Home() {
               </div>
               <AdminMissingPhotos roster={data.roster} fetchAll={data.fetchAdminMissingPhotos} onAdd={data.adminAddMissingPhoto} onReview={data.adminReviewMissingPhoto} />
               </>
+            ) : data.sessionEmail && !data.myEntryReady ? (
+              // Signed in, but their own entry hasn't arrived yet (or couldn't be fetched).
+              // Never show a blank "new person" form here: it looked like their data was gone.
+              <div className="mx-auto max-w-xl rounded-lg border bg-muted/40 p-5 text-center" data-testid="notice-entry-loading">
+                {data.myEntryFailed && !data.loading ? (
+                  <>
+                    <p className="font-semibold">We couldn't load your saved entry just now</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Nothing is lost: your entry is safe. This is usually a brief connection hiccup.
+                    </p>
+                    <div className="mt-4 flex flex-wrap justify-center gap-2">
+                      <Button size="sm" onClick={() => void data.refresh()} data-testid="button-entry-retry">Try again</Button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Loading your entry…</p>
+                )}
+              </div>
             ) : (
             <EntryForm
+              // Remount when the signed-in person or their entry changes, so the form starts from their saved answers.
+              key={`${data.sessionEmail ?? "guest"}:${data.myPerson(data.sessionEmail)?.id ?? "new"}`}
               initial={data.myPerson(data.sessionEmail)}
               activities={data.activities}
               eventPlans={data.eventPlans}

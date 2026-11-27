@@ -115,6 +115,11 @@ export function writePendingClaim(c: PendingClaim | null) {
 
 const LEAD_COLUMNS = "id,activity_id,lead_name,chat_link,created_at";
 
+/** Try a request again once after a short pause: rides out one-off hiccups (e.g. a just-issued sign-in token refused once). */
+export function retryOnce<T>(f: () => Promise<T>, delayMs = 800): Promise<T> {
+  return f().catch(() => new Promise<void>((resolve) => setTimeout(resolve, delayMs)).then(f));
+}
+
 /** Member directory row — returned only to verified admins. */
 export interface MemberDirectoryRow {
   id: string;
@@ -186,6 +191,10 @@ export function useReunionData(options: { stub?: boolean } = {}) {
   const [session, setSession] = useState<Session | null>(() => (stub ? null : loadStoredSession()));
   const [linkError, setLinkError] = useState<string | null>(null);
   const [myEntry, setMyEntry] = useState<Person | null>(null);
+  /** True when the signed-in member's own entry could not be fetched (network or server hiccup). */
+  const [myEntryFailed, setMyEntryFailed] = useState(false);
+  /** Email whose own-entry lookup has completed (found or truly none). Until it matches the session, the form waits. */
+  const [myEntryCheckedFor, setMyEntryCheckedFor] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isTestAccount, setIsTestAccount] = useState(false);
   const [ledActivityIds, setLedActivityIds] = useState<string[]>([]);
@@ -243,30 +252,39 @@ export function useReunionData(options: { stub?: boolean } = {}) {
       // Caller-specific facts (own entry, admin/organizer status). These are
       // answered by the database from the verified sign-in, never from what
       // the browser claims. Failures degrade to "not signed in" rights.
+      //
+      // 2026-11-27: a single failed request used to reject the whole load, which
+      // threw away the caller's own entry and left a blank "new person" form.
+      // Now every request is retried once; side lists fall back to what is
+      // already on screen; and a failed own-entry lookup is reported (see
+      // myEntryFailed) instead of looking like "no entry yet".
       const mine = token
         ? Promise.all([
-            supabaseRpc<Person[]>("my_entry", {}, token).catch(() => [] as Person[]),
-            supabaseRpc<boolean>("app_is_admin", {}, token).catch(() => false),
-            supabaseRpc<boolean>("app_is_test_account", {}, token).catch(() => false),
-            supabaseRpc<string[]>("my_led_activities", {}, token).catch(() => [] as string[]),
-          ])
-        : Promise.resolve([[] as Person[], false, false, [] as string[]] as const);
+            retryOnce(() => supabaseRpc<Person[]>("my_entry", {}, token))
+              .then((rows) => ({ ok: true as const, rows: Array.isArray(rows) ? rows : [] }))
+              .catch(() => ({ ok: false as const, rows: [] as Person[] })),
+            retryOnce(() => supabaseRpc<boolean>("app_is_admin", {}, token)).catch(() => false),
+            retryOnce(() => supabaseRpc<boolean>("app_is_test_account", {}, token)).catch(() => false),
+            retryOnce(() => supabaseRpc<string[]>("my_led_activities", {}, token)).catch(() => [] as string[]),
+          ] as const)
+        : Promise.resolve([{ ok: true as const, rows: [] as Person[] }, false, false, [] as string[]] as const);
+      const optional = <T,>(f: () => Promise<T>): Promise<T | null> => retryOnce(f).catch(() => null);
       const [peopleRes, activitiesRes, resourcesRes, leadsRes, plansRes, settingsRes, mineRes] = await Promise.all([
-        supabaseRest<Person[]>(`/people?select=${PEOPLE_COLUMNS}&order=name.asc`, { accessToken: token }).catch(() =>
+        retryOnce(() => supabaseRest<Person[]>(`/people?select=${PEOPLE_COLUMNS}&order=name.asc`, { accessToken: token })).catch(() =>
           // Before the is_test column exists (mid-rollout), read without it.
           supabaseRest<Person[]>(`/people?select=${PEOPLE_COLUMNS.replace(/,?is_test/, "")}&order=name.asc`, { accessToken: token }),
         ),
-        supabaseRest<Activity[]>("/activities?select=*&order=id.asc", { accessToken: token }),
-        supabaseRest<ClusterResource[]>("/cluster_resources?select=*&order=created_at.asc", { accessToken: token }),
-        supabaseRest<ClusterLead[]>(`/cluster_leads?select=${LEAD_COLUMNS}`, { accessToken: token }),
-        supabaseRest<EventPlan[]>("/event_plans?select=*", { accessToken: token }),
-        supabaseRest<AppSettingsRow[]>("/app_settings?select=*&id=eq.default", { accessToken: token }).catch(() => []),
+        optional(() => supabaseRest<Activity[]>("/activities?select=*&order=id.asc", { accessToken: token })),
+        optional(() => supabaseRest<ClusterResource[]>("/cluster_resources?select=*&order=created_at.asc", { accessToken: token })),
+        optional(() => supabaseRest<ClusterLead[]>(`/cluster_leads?select=${LEAD_COLUMNS}`, { accessToken: token })),
+        optional(() => supabaseRest<EventPlan[]>("/event_plans?select=*", { accessToken: token })),
+        optional(() => supabaseRest<AppSettingsRow[]>("/app_settings?select=*&id=eq.default", { accessToken: token })),
         mine,
       ]);
       // Ticket watch is optional extra info — never let it block the page.
       void Promise.all([
-        supabaseRest<TicketWatchRow[]>("/ticket_watch?select=*&order=event_date.asc", { accessToken: token }),
-        supabaseRest<TicketWatchRun[]>("/ticket_watch_runs?select=ran_at,ok,tickets,sold_out&ok=eq.true&order=ran_at.desc&limit=1", { accessToken: token }),
+        retryOnce(() => supabaseRest<TicketWatchRow[]>("/ticket_watch?select=*&order=event_date.asc", { accessToken: token })),
+        retryOnce(() => supabaseRest<TicketWatchRun[]>("/ticket_watch_runs?select=ran_at,ok,tickets,sold_out&ok=eq.true&order=ran_at.desc&limit=1", { accessToken: token })),
         // Latest run of any outcome (for the Maintenance health line).
         supabaseRest<TicketWatchRun[]>("/ticket_watch_runs?select=ran_at,ok,tickets,sold_out,health,warnings,dates,layout_changed&order=ran_at.desc&limit=1", { accessToken: token }).catch(() => []),
       ])
@@ -283,12 +301,12 @@ export function useReunionData(options: { stub?: boolean } = {}) {
       void supabaseRest<WeatherRow[]>("/weather_daily?select=city,observed_on,temp_f,high_f,low_f,weather_code,fetched_at&order=observed_on.desc&limit=6", { accessToken: token })
         .then(setWeather).catch(() => setWeather([]));
       // Roster names (for the "find your name" picker) and the caller's own roster row.
-      void supabaseRest<RosterEntry[]>("/roster?select=id,display_name,search_names,status,person_id&order=display_name.asc", { accessToken: token })
-        .then(setRoster).catch(() => setRoster([]));
+      void retryOnce(() => supabaseRest<RosterEntry[]>("/roster?select=id,display_name,search_names,status,person_id&order=display_name.asc", { accessToken: token }))
+        .then(setRoster).catch(() => undefined);
       if (token) {
-        void supabaseRpc<MyRoster[]>("my_roster", {}, token)
+        void retryOnce(() => supabaseRpc<MyRoster[]>("my_roster", {}, token))
           .then((rows) => setMyRoster(Array.isArray(rows) && rows[0] ? rows[0] : null))
-          .catch(() => setMyRoster(null));
+          .catch(() => undefined); // keep the last known roster row rather than dropping to "not signed in"
         void supabaseRpc<{ eligible: boolean; storage_path: string | null; status: "pending" | "approved" | null }[]>("my_missing_photo", {}, token)
           .then(async (rows) => {
             const row = Array.isArray(rows) ? rows[0] : null;
@@ -298,23 +316,31 @@ export function useReunionData(options: { stub?: boolean } = {}) {
           })
           .catch(() => setMyMissingPhoto(null));
       } else { setMyRoster(null); setMyMissingPhoto(null); }
-      const [myRows, admin, tester, led] = mineRes;
-      setMyEntry(Array.isArray(myRows) && myRows[0] ? withCanonicalSlots(myRows[0]) : null);
+      const [myResult, admin, tester, led] = mineRes;
+      if (myResult.ok) {
+        setMyEntry(myResult.rows[0] ? withCanonicalSlots(myResult.rows[0]) : null);
+        setMyEntryFailed(false);
+        setMyEntryCheckedFor(session?.email ?? null);
+      } else {
+        // Keep whatever was loaded before; never show a signed-in member a blank form.
+        setMyEntryFailed(true);
+      }
       setIsAdmin(admin === true);
       setIsTestAccount(tester === true);
       setLedActivityIds(Array.isArray(led) ? led.map((v) => (typeof v === "string" ? v : String((v as Record<string, unknown>).my_led_activities ?? ""))).filter(Boolean) : []);
       setPeople(peopleRes.map(withCanonicalSlots));
-      setActivities(mergeActivities(activitiesRes));
-      setClusterResources(resourcesRes);
-      setClusterLeads(leadsRes);
-      setEventPlans(plansRes);
-      if (settingsRes[0]) setAppSettings(rowToThresholds(settingsRes[0]));
+      if (activitiesRes) setActivities(mergeActivities(activitiesRes));
+      if (resourcesRes) setClusterResources(resourcesRes);
+      if (leadsRes) setClusterLeads(leadsRes);
+      if (plansRes) setEventPlans(plansRes);
+      if (settingsRes?.[0]) setAppSettings(rowToThresholds(settingsRes[0]));
       setIsDemo(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load reunion data.");
       // Fall back to demo data so the page still renders something useful.
       setPeople(DEMO_PEOPLE);
       setIsDemo(true);
+      if (session) setMyEntryFailed(true);
     } finally {
       setLoading(false);
     }
@@ -827,6 +853,8 @@ export function useReunionData(options: { stub?: boolean } = {}) {
     updateAppSettings,
     loading,
     error,
+    myEntryFailed,
+    myEntryReady: stub || !session || myEntryCheckedFor === session.email,
     isDemo,
     savePerson,
     suggestActivity,
