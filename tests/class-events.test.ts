@@ -201,7 +201,7 @@ assert.deepEqual(words("Exclusive Bay Cruise for 87"), ["bay", "cruise"]);
 // Organizer's set time for a pill; Railway and Chicken coup hidden as pills and on the dashboard.
 assert.deepEqual(plannedSlotIds("karaoke", [{ activity_id: "karaoke", status: "open", event_date: "2027-01-22", start_time: "8pm", venue: null, max_size: null }]), ["2027-01-22:e"]);
 assert.deepEqual(plannedSlotIds("karaoke", [{ activity_id: "karaoke", status: "cancelled", event_date: "2027-01-22", start_time: null, venue: null, max_size: null }]), []);
-for (const id of ["railway-87", "chicken-coup"]) { assert.ok(HIDDEN_PILL_IDS.includes(id)); assert.ok(DASHBOARD_HIDDEN_IDS.includes(id)); }
+for (const id of ["railway-87", "chicken-coup", "deep-sea-fishing", "sky-diving"]) { assert.ok(HIDDEN_PILL_IDS.includes(id)); assert.ok(DASHBOARD_HIDDEN_IDS.includes(id)); }
 assert.ok(!DASHBOARD_HIDDEN_IDS.includes("cruise-87"));
 
 // Old calendars count as answers: MiEvento on the calendar = have the ticket; saved answers win.
